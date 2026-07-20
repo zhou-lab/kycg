@@ -67,6 +67,8 @@
 
 #include "kycg.h"
 #include "enrich.h"
+#include "store.h"
+#include "ui.h"
 
 /* YAME (submodule) */
 #include "cfile.h"
@@ -128,6 +130,52 @@ static int usage(void) {
   fprintf(stderr, "they describe the same row space.\n");
   fprintf(stderr, "\n");
   return 1;
+}
+
+/**
+ * Row count of a file's first record, or 0 if it cannot be read.
+ *
+ * Only the first record is touched. A knowledgebase's records all index the
+ * same row list by construction, so one is enough to identify the row space,
+ * and the cost is proportional to that record rather than to the file — a
+ * 54 MB multi-record .cm is probed as cheaply as a 3 KB one.
+ *
+ * The count has to come from prepare_mask() rather than from the raw header:
+ * cdata_t.n means bytes for some formats and units for others, and reconciling
+ * that by hand is exactly the trap DESIGN.md flags around cdata_nbytes().
+ */
+static uint64_t first_record_rows(const char *path) {
+  /* open_cfile() exits the process on a file it cannot open, which would be a
+   * hostile way to react to one stray file while scanning a whole store. */
+  FILE *probe = fopen(path, "rb");
+  if (!probe) return 0;
+  fclose(probe);
+
+  cfile_t cf = open_cfile((char *)path);
+  cdata_t c = read_cdata1(&cf);
+
+  uint64_t n = 0;
+  if (c.n) {
+    prepare_mask(&c);
+    n = c.n;
+  }
+
+  free_cdata(&c);
+  bgzf_close(cf.fh);
+  return n;
+}
+
+/* Group digits for readability: 21867837 -> "21,867,837". */
+static const char *commify(uint64_t v, char *buf, size_t n) {
+  char raw[32];
+  snprintf(raw, sizeof(raw), "%" PRIu64, v);
+  size_t len = strlen(raw), out = 0;
+  for (size_t i = 0; i < len && out + 2 < n; ++i) {
+    if (i && (len - i) % 3 == 0) buf[out++] = ',';
+    buf[out++] = raw[i];
+  }
+  buf[out] = '\0';
+  return buf;
 }
 
 /* Growable result table. */
@@ -255,6 +303,98 @@ int main_test(int argc, char *argv[]) {
     usage();
     wzfatal("Please supply a query file.\n");
   }
+  /* No -m: offer what is already in the store. Only on a terminal -- a
+   * pipeline that forgot -m must fail loudly rather than wait for an answer
+   * nobody is there to give. */
+  if (!n_masks && kycg_ui_interactive()) {
+    if (optind >= argc) {
+      usage();
+      wzfatal("Please supply a query file.\n");
+    }
+
+    const char *root = kycg_store_root(NULL);
+    size_t n_found = 0;
+    char **found = kycg_store_find_cm(root, &n_found);
+
+    if (!n_found) {
+      kycg_store_free_list(found, n_found);
+      usage();
+      wzfatal("No knowledgebase given, and the store at %s is empty.\n"
+              "Run `kycg fetch` to populate it.\n", root);
+    }
+
+    /* Offer only knowledgebases in the query's row space.
+     *
+     * A .cm from another row space is not a worse choice, it is a
+     * meaningless one: `kycg test` would refuse it on the row-count check
+     * anyway. Filtering here turns that late error into a list the user
+     * cannot pick wrong from, and it is the one place kycg can act on row
+     * spaces without guessing, because both counts are known exactly. */
+    uint64_t qrows = first_record_rows(argv[optind]);
+    if (!qrows) {
+      kycg_store_free_list(found, n_found);
+      wzfatal("Cannot read a record from query '%s'.\n", argv[optind]);
+    }
+
+    if (kycg_ui_fancy())
+      fprintf(stderr, "%s  scanning the store...%s\r",
+              kycg_ui_dim(), kycg_ui_reset());
+
+    char **match = malloc(n_found * sizeof(char *));
+    size_t n_match = 0;
+    for (size_t i = 0; i < n_found; ++i)
+      if (first_record_rows(found[i]) == qrows) match[n_match++] = found[i];
+
+    if (kycg_ui_fancy()) fputs("\r\033[2K", stderr);
+
+    if (!n_match) {
+      char qb[32];
+      fprintf(stderr,
+              "No knowledgebase in %s indexes the same row list as '%s'\n"
+              "(%s rows). Sequencing queries need sets for their genome, and\n"
+              "array queries need sets for their platform; a .cm from one row\n"
+              "space is meaningless in the other.\n"
+              "Run `kycg list` to see what is cached, or `kycg fetch`.\n",
+              root, argv[optind], commify(qrows, qb, sizeof(qb)));
+      free(match);
+      kycg_store_free_list(found, n_found);
+      return 1;
+    }
+
+    /* Store-relative paths; the absolute ones are mostly $HOME repeated. */
+    const char **labels = malloc(n_match * sizeof(char *));
+    for (size_t i = 0; i < n_match; ++i)
+      labels[i] = kycg_store_relative(root, match[i]);
+
+    char title[256], qb[32];
+    snprintf(title, sizeof(title),
+             "Knowledgebases matching %s rows (%zu of %zu in the store)",
+             commify(qrows, qb, sizeof(qb)), n_match, n_found);
+
+    /* Default to all: testing a query against everything on hand is the
+     * workflow the store exists for, and it means the Enter key does
+     * something useful rather than looping on an empty selection. */
+    int *flags = kycg_ui_multiselect(title, labels, NULL, n_match, 1);
+    free(labels);
+
+    if (!flags) {
+      free(match);
+      kycg_store_free_list(found, n_found);
+      wzfatal("No knowledgebase selected.\n");
+    }
+
+    for (size_t i = 0; i < n_match; ++i) {
+      if (!flags[i]) continue;
+      mask_names = realloc(mask_names, (n_masks + 1) * sizeof(char *));
+      if (!mask_names) wzfatal("[%s:%d] Cannot allocate.\n", __func__, __LINE__);
+      mask_names[n_masks++] = strdup(match[i]);
+    }
+    free(flags);
+    free(match);
+    kycg_store_free_list(found, n_found);
+    fputc('\n', stderr);
+  }
+
   if (!n_masks) {
     usage();
     wzfatal("Please supply at least one knowledgebase with -m.\n");

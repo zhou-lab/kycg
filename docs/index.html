@@ -64,6 +64,11 @@
   .full>h2 .m{color:var(--muted);font-weight:400;font-size:.85rem}
   .full>p{color:var(--muted);font-size:.88rem;margin:0 0 14px;max-width:98ch}
   .full h3{font-size:.8rem;margin:12px 0 6px;color:var(--fg);font-weight:700}
+  /* figures live in the kycg-examples repo; see the note in the gallery */
+  figure{margin:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--soft)}
+  figure img{width:100%;height:auto;display:block;background:#fff}
+  figcaption{font-size:.78rem;color:var(--muted);padding:8px 11px;border-top:1px solid var(--line)}
+  figcaption b{color:var(--fg)}
   .cols{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px}
   .cols3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px}
   @media(max-width:900px){.cols3{grid-template-columns:1fr 1fr}}
@@ -104,15 +109,19 @@ cd kycg &amp;&amp; make</code></pre>
     <p style="margin-top:11px">Dependencies are YAME's: vendored htslib, zlib, libm.
       <b>libcurl is optional</b> and used by <code class="inl">fetch</code> alone — a box
       without it still builds a fully working analysis tool.</p>
-    <pre><code><span class="cm"># one-time: build the knowledgebase store</span>
+    <pre><code><span class="cm"># guided: location, collection, sets, confirm</span>
+kycg <span class="sub">fetch</span>
+
+<span class="cm"># or name what you want outright</span>
 kycg <span class="sub">fetch</span> mm10
-kycg <span class="sub">fetch</span> MSA
+kycg <span class="sub">fetch</span> hg38:CGI,ChromHMM
 
 <span class="cm"># see what you have</span>
 kycg <span class="sub">list</span></code></pre>
-    <div class="note"><b>Never implicitly, never interactively.</b> Network access happens
-      in <code class="inl">fetch</code> and nowhere else, and it never prompts — a prompt
-      would hang a Nextflow job or a Docker build with no indication of why.</div>
+    <div class="note"><b>Downloads happen in <code class="inl">fetch</code> and nowhere
+      else</b>, and every question is gated on an interactive terminal. Inside a Nextflow
+      job or a Docker build there is nobody to answer, so an explicit target proceeds
+      without asking and a missing one is an error rather than a hang.</div>
   </section>
 
   <section class="card">
@@ -177,6 +186,18 @@ $ kycg <span class="sub">fetch</span> -o CGI,ChromHMM hg38</code></pre>
     <pre><code>kycg <span class="sub">test</span> $(for f in ~/.cache/kycg/mm10/*.cm; do
         printf -- '-m %s ' $f; done) \
   query.cg &gt; res.tsv</code></pre>
+    <p style="margin-top:11px">Omit <code class="inl">-m</code> on a terminal and kycg offers
+      the store — filtered to the sets that share your query's row space, so the list
+      cannot be picked wrong:</p>
+    <pre><code>$ kycg <span class="sub">test</span> onecell.cg
+
+Knowledgebases matching 21,867,837 rows
+  (29 of 34 in the store)
+   1  mm10/Blacklist.20220304.cm
+   2  mm10/CGI.20220904.cm
+   3  mm10/ChromHMM.20220414.cm
+   …
+  select: 'all', 'none', or a list like 1-5,8  [all]</code></pre>
     <div class="note">Testing against 30 knowledgebases in 30 processes decompresses the
       query 30 times. Pooling them decompresses it <b>once</b>.</div>
   </section>
@@ -218,7 +239,8 @@ lists and cannot be compared.</span></code></pre>
     <div class="note">kycg checks lengths and stops there. It cannot detect two files that
       share a row count but come from different row spaces — sequencing indexes a
       whole-genome <code class="inl">.cr</code>, arrays a per-platform ordering. Matching
-      them is yours to get right.</div>
+      them is yours to get right; the picker above helps by offering only sets whose
+      row count already agrees.</div>
   </section>
 
   <section class="card">
@@ -234,23 +256,39 @@ cinderplot 'res.tsv
       of three separate plots. Any arithmetic a plot needs is done in C.</div>
   </section>
 
-  <section class="card">
-    <h2>Why not R <span class="m">— what this replaces</span></h2>
-    <p>The knowYourCG sequencing workflow was already a shell pipeline around
-      <code class="inl">yame</code>. R contributed three things on top:</p>
-    <pre><code><span class="cm"># the old way</span>
-yame unpack cpg_nocontig.cr \
-| bedtools intersect -a - -b in.bed -c -sorted \
-| cut -f4 | yame pack -fb - &gt; in.cg
-yame summary -m feature.cm in.cg &gt; out.txt
-<span class="cm"># …then R, for the test, the FDR, and the plot</span></code></pre>
-    <div class="note">Worse, <code class="inl">knowYourCG/src/</code> was a <b>vendored copy of
-      YAME</b> returning results as one TSV string that R re-parsed. Two copies of YAME, two
-      independent log2-odds-ratio implementations. kycg collapses that: YAME as a submodule,
-      one implementation of each statistic.</div>
-  </section>
-
 </div>
+
+<section class="full">
+  <h2>Worked example <span class="m">— one mouse cell methylome, 21.8M rows</span></h2>
+  <p>Everything below comes from <code class="inl">kycg test</code> over four mm10
+    knowledgebases, plotted with <a href="https://github.com/zhou-lab/cinderplot">cinderplot</a>.
+    Data, output table, and the exact commands are in
+    <a href="https://github.com/zhou-lab/kycg-examples">kycg-examples</a>.</p>
+  <pre style="margin-bottom:14px"><code>D=~/.cache/kycg/mm10
+kycg <span class="sub">test</span> -m $D/ChromHMM.20220414.cm -m $D/CGI.20220904.cm \
+          -m $D/PMD.20220911.cm  -m $D/rmsk1.20220321.cm \
+  onecell.cg &gt; res.tsv</code></pre>
+  <div class="cols">
+    <figure>
+      <img src="https://github.com/zhou-lab/kycg-examples/raw/main/figures/volcano.png"
+           alt="Volcano plot: log2 odds ratio against -log10 FDR, colored by knowledgebase"
+           loading="lazy">
+      <figcaption><b>Volcano.</b> <code>aes(estimate, neglog10_fdr, colour=group)</code>.
+        Sets with no overlap are filtered first — their odds ratio is zero, so log2(OR)
+        saturates at <code>log2(DBL_MIN) = -1022</code> (matching knowYourCG) and a single
+        such point would compress every real effect size into one pixel column.</figcaption>
+    </figure>
+    <figure>
+      <img src="https://github.com/zhou-lab/kycg-examples/raw/main/figures/top_sets.png"
+           alt="Bar chart of the twelve most significant CpG sets by -log10 FDR"
+           loading="lazy">
+      <figcaption><b>Top sets.</b> The table arrives sorted by significance, so this is a
+        <code>head</code>. Partially methylated domains and quiescent chromatin dominate,
+        at <code>-log10 FDR ≈ 2567</code> — a number the <code>fdr</code> column cannot
+        represent.</figcaption>
+    </figure>
+  </div>
+</section>
 
 <section class="full">
   <h2>What the store holds <span class="m">— the comprehensive list</span></h2>

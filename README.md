@@ -46,11 +46,21 @@ Dependencies are YAME's: vendored htslib, zlib, libm, pthreads. Nothing else.
 ### `kycg fetch` — build the knowledgebase store
 
 ```bash
-kycg fetch mm10          # sequencing knowledgebases + cpg_nocontig.cr
-kycg fetch MSA           # array knowledgebases for a platform
-kycg list                # what exists, what is cached
-kycg list hg38           # the individual sets (works offline)
+kycg fetch                    # guided: location, collection, sets, confirm
+kycg fetch mm10               # every set for a target
+kycg fetch hg38:CGI,ChromHMM  # just those sets
+kycg list                     # what exists, what is cached
+kycg list hg38                # the individual sets (works offline)
 ```
+
+Nothing downloads until a plan has been shown — which files, how large, where
+they land, and what is already present — followed by a `Proceed?` confirmation.
+
+**Every prompt is gated on an interactive terminal.** DESIGN.md's original rule
+was "never prompt", because a prompt hangs a Nextflow job or a Docker build with
+no indication of why. That guarantee is preserved: off a TTY an explicit target
+proceeds without asking, and a missing target is an error rather than a wait.
+`-y` forces the same on a TTY. kycg still downloads in `fetch` and nowhere else.
 
 ```
     -d DIR    store directory [$KYCG_DATA_DIR, else ~/.cache/kycg]
@@ -95,6 +105,20 @@ times, and pooling them decompresses it once:
 ```bash
 kycg test $(for f in ~/.cache/kycg/mm10/*.cm; do printf -- '-m %s ' $f; done) \
   query.cg > res.tsv
+```
+
+Omitting `-m` on a terminal offers the store instead, **filtered to the sets
+whose row count matches the query**. A `.cm` from another row space is not a
+worse choice but a meaningless one — `kycg test` would refuse it on the
+row-count check anyway — so the picker turns that late error into a list you
+cannot pick wrong from:
+
+```
+Knowledgebases matching 21,867,837 rows (29 of 34 in the store)
+   1  mm10/Blacklist.20220304.cm
+   2  mm10/CGI.20220904.cm
+   ...
+  select: 'all', 'none', or a list like 1-5,8  [all]
 ```
 
 ```
