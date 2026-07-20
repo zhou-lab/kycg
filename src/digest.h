@@ -18,15 +18,24 @@
  * along with kycg.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef _KYCG_H
-#define _KYCG_H
+#ifndef _KYCG_DIGEST_H
+#define _KYCG_DIGEST_H
 
-#define KYCG_VERSION "0.1.0"
+#include <stddef.h>
+#include <stdint.h>
 
-/* Subcommand entry points, dispatched from main() on argv[1]. */
-int main_test(int argc, char *argv[]);
-int main_info(int argc, char *argv[]);
-int main_fetch(int argc, char *argv[]);
-int main_list(int argc, char *argv[]);
+/**
+ * Hex digest of a file. `out` must hold 65 bytes (sha256) or 33 (md5),
+ * including the terminating NUL. Returns 0 on success, -1 if the file could
+ * not be read.
+ */
+int kycg_sha256_file(const char *path, char out[65]);
+int kycg_md5_file(const char *path, char out[33]);
 
-#endif /* _KYCG_H */
+/** Hex sha256 of a memory buffer. `out` must hold 65 bytes. */
+void kycg_sha256_buf(const void *data, size_t len, char out[65]);
+
+/** Constant-time-ish case-insensitive hex comparison. Nonzero if equal. */
+int kycg_digest_equal(const char *a, const char *b);
+
+#endif /* _KYCG_DIGEST_H */

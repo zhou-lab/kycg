@@ -32,6 +32,28 @@ YAME_HTSLIB = $(YAME_DIR)/htslib/libhts.a
 
 CFLAGS += -I$(SRC_DIR) -I$(YAME_DIR)/src -I$(YAME_DIR)/htslib
 
+# libcurl is OPTIONAL and used by `kycg fetch` alone. Everything that analyzes
+# data -- test, info, list -- works without it, so a build box with no curl
+# headers still produces a fully functional analysis tool; fetch then reports
+# that the build has no network support instead of silently missing. Set
+# CURL=0 to force it off even where curl-config exists.
+CURL ?= auto
+ifeq ($(CURL),auto)
+  CURL_CFLAGS := $(shell curl-config --cflags 2>/dev/null)
+  CURL_LIBS   := $(shell curl-config --libs 2>/dev/null)
+else ifeq ($(CURL),0)
+  CURL_CFLAGS :=
+  CURL_LIBS   :=
+else
+  CURL_CFLAGS := $(shell curl-config --cflags 2>/dev/null)
+  CURL_LIBS   := $(shell curl-config --libs 2>/dev/null)
+endif
+
+ifneq ($(CURL_LIBS),)
+  CFLAGS += -DKYCG_HAVE_CURL $(CURL_CFLAGS)
+  CLIB   += $(CURL_LIBS)
+endif
+
 SOURCES := $(wildcard $(SRC_DIR)/*.c)
 OBJECTS := $(SOURCES:$(SRC_DIR)/%.c=$(SRC_DIR)/%.o)
 # Everything except the CLI dispatcher, so tests can link the library half.

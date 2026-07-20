@@ -38,6 +38,8 @@ static int usage(void) {
   fprintf(stderr, "Usage:   kycg <command> [options]\n");
   fprintf(stderr, "\n");
   fprintf(stderr, "Commands:\n");
+  fprintf(stderr, "    fetch     download and verify knowledgebases\n");
+  fprintf(stderr, "    list      show available and cached knowledgebases\n");
   fprintf(stderr, "    test      set enrichment against a knowledgebase\n");
   fprintf(stderr, "    info      describe the records in a .cg or .cm file\n");
   fprintf(stderr, "\n");
@@ -49,8 +51,10 @@ int main(int argc, char *argv[]) {
 
   if (argc < 2) return usage();
 
-  if      (strcmp(argv[1], "test") == 0) ret = main_test(argc - 1, argv + 1);
-  else if (strcmp(argv[1], "info") == 0) ret = main_info(argc - 1, argv + 1);
+  if      (strcmp(argv[1], "test") == 0)  ret = main_test(argc - 1, argv + 1);
+  else if (strcmp(argv[1], "info") == 0)  ret = main_info(argc - 1, argv + 1);
+  else if (strcmp(argv[1], "fetch") == 0) ret = main_fetch(argc - 1, argv + 1);
+  else if (strcmp(argv[1], "list") == 0)  ret = main_list(argc - 1, argv + 1);
   else if (strcmp(argv[1], "-h") == 0 ||
            strcmp(argv[1], "--help") == 0) return usage();
   else if (strcmp(argv[1], "--version") == 0) {

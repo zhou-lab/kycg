@@ -75,7 +75,6 @@
 #include "wzmisc.h"
 
 typedef struct {
-  char *fname_mask;
   char *fname_out;
   char *fname_snames;
   kycg_alt_t alt;
@@ -85,6 +84,26 @@ typedef struct {
   int full_name;
 } test_conf_t;
 
+/**
+ * One opened knowledgebase file.
+ *
+ * -m is repeatable so a query can be tested against an entire store in a
+ * single pass, one -m per knowledgebase file. That matters because
+ * reading the query is the expensive part: testing against 30 knowledgebases
+ * one process at a time decompresses the query 30 times, and pooling them here
+ * decompresses it once. It also puts every result in one table, which is what
+ * FDR wants, since the correction runs per (query, knowledgebase) stratum and
+ * the ordering is global.
+ */
+typedef struct {
+  char       *fname;      /* path as given                                  */
+  const char *disp;       /* what appears in the db_file column             */
+  cfile_t     cf;
+  snames_t    snames;
+  cdata_t    *mem;        /* records held in memory, or NULL if seekable    */
+  uint64_t    n_mem;
+} mask_src_t;
+
 static int usage(void) {
   fprintf(stderr, "\n");
   fprintf(stderr, "Usage: kycg test [options] -m <knowledgebase.cm> <query.cg> [...]\n");
@@ -93,7 +112,8 @@ static int usage(void) {
   fprintf(stderr, "knowledgebase, using a one-sided hypergeometric tail test.\n");
   fprintf(stderr, "\n");
   fprintf(stderr, "Options:\n");
-  fprintf(stderr, "    -m FILE   knowledgebase (.cm) to test against [required]\n");
+  fprintf(stderr, "    -m FILE   knowledgebase (.cm) to test against [required];\n");
+  fprintf(stderr, "              repeatable -- pass a whole store to test them all\n");
   fprintf(stderr, "    -a STR    alternative: greater|less|two.sided [greater]\n");
   fprintf(stderr, "    -G        correct FDR globally instead of within knowledgebase\n");
   fprintf(stderr, "    -s FILE   sample names for the query\n");
@@ -151,7 +171,7 @@ static void run_pair(results_t *v, cdata_t *c_qry, cdata_t *c_mask,
 
   /* summarize1 takes non-const char* but does not modify the names. */
   config_t ycfg = {0};
-  ycfg.fname_mask = (char *)fname_mask;
+  ycfg.fname_mask = (char *)fname_mask;   /* non-NULL selects the masked path */
 
   uint64_t n_st = 0;
   stats_t *st = summarize1(c_qry, c_mask, &n_st, (char *)sm, (char *)sq, &ycfg);
@@ -202,10 +222,18 @@ int main_test(int argc, char *argv[]) {
   conf.alt = KYCG_ALT_GREATER;
   conf.by_group = 1;
 
+  /* -m is repeatable; collect the paths as they arrive. */
+  char **mask_names = NULL;
+  size_t n_masks = 0;
+
   int c;
   while ((c = getopt(argc, argv, "m:a:Gs:MFHo:h")) >= 0) {
     switch (c) {
-    case 'm': conf.fname_mask = strdup(optarg); break;
+    case 'm':
+      mask_names = realloc(mask_names, (n_masks + 1) * sizeof(char *));
+      if (!mask_names) wzfatal("[%s:%d] Cannot allocate.\n", __func__, __LINE__);
+      mask_names[n_masks++] = strdup(optarg);
+      break;
     case 'o': conf.fname_out = strdup(optarg); break;
     case 's': conf.fname_snames = strdup(optarg); break;
     case 'G': conf.by_group = 0; break;
@@ -227,32 +255,38 @@ int main_test(int argc, char *argv[]) {
     usage();
     wzfatal("Please supply a query file.\n");
   }
-  if (!conf.fname_mask) {
+  if (!n_masks) {
     usage();
-    wzfatal("Please supply a knowledgebase with -m.\n");
+    wzfatal("Please supply at least one knowledgebase with -m.\n");
   }
 
-  const char *mask_disp = conf.full_name
-    ? conf.fname_mask : get_basename(conf.fname_mask);
+  mask_src_t *masks = calloc(n_masks, sizeof(mask_src_t));
+  if (!masks) wzfatal("[%s:%d] Cannot allocate.\n", __func__, __LINE__);
 
-  cfile_t cf_mask = open_cfile(conf.fname_mask);
-  int unseekable = bgzf_seek(cf_mask.fh, 0, SEEK_SET);
-  snames_t snames_mask = loadSampleNamesFromIndex(conf.fname_mask);
+  for (size_t i = 0; i < n_masks; ++i) {
+    masks[i].fname  = mask_names[i];
+    masks[i].disp   = conf.full_name ? mask_names[i]
+                                     : get_basename(mask_names[i]);
+    masks[i].cf     = open_cfile(mask_names[i]);
+    masks[i].snames = loadSampleNamesFromIndex(mask_names[i]);
 
-  /* An unseekable mask (a pipe) must be slurped, since we re-read it once per
-   * query record. This mirrors main_summary()'s handling. */
-  cdata_t *c_masks = NULL;
-  uint64_t c_masks_n = 0;
-  if (conf.in_memory || unseekable) {
-    for (;;) {
-      cdata_t m = read_cdata1(&cf_mask);
-      if (m.n == 0) break;
-      prepare_mask(&m);
-      c_masks = realloc(c_masks, (c_masks_n + 1) * sizeof(cdata_t));
-      if (!c_masks) wzfatal("[%s:%d] Cannot allocate mask table.\n", __func__, __LINE__);
-      c_masks[c_masks_n++] = m;
+    /* An unseekable knowledgebase (a pipe) must be slurped, since it is
+     * re-read once per query record. Mirrors main_summary()'s handling. */
+    int unseekable = bgzf_seek(masks[i].cf.fh, 0, SEEK_SET);
+    if (conf.in_memory || unseekable) {
+      for (;;) {
+        cdata_t m = read_cdata1(&masks[i].cf);
+        if (m.n == 0) break;
+        prepare_mask(&m);
+        masks[i].mem = realloc(masks[i].mem,
+                               (masks[i].n_mem + 1) * sizeof(cdata_t));
+        if (!masks[i].mem)
+          wzfatal("[%s:%d] Cannot allocate mask table.\n", __func__, __LINE__);
+        masks[i].mem[masks[i].n_mem++] = m;
+      }
     }
   }
+  free(mask_names);
 
   results_t v = {0};
 
@@ -282,36 +316,41 @@ int main_test(int argc, char *argv[]) {
 
       prepare_mask(&c_qry);
 
-      if (c_masks_n) {                    /* masks already in memory */
-        for (uint64_t km = 0; km < c_masks_n; ++km) {
-          kstring_t sm = {0};
-          if (snames_mask.n && km < (unsigned)snames_mask.n)
-            kputs(snames_mask.s[km], &sm);
-          else ksprintf(&sm, "%" PRIu64, km + 1);
+      /* Every knowledgebase, against this one decompressed query record. */
+      for (size_t mi = 0; mi < n_masks; ++mi) {
+        mask_src_t *ms = &masks[mi];
 
-          run_pair(&v, &c_qry, &c_masks[km], sq.s, sm.s,
-                   qry_disp, mask_disp, &conf);
-          free(sm.s);
-        }
-      } else {                            /* re-scan the seekable mask file */
-        if (bgzf_seek(cf_mask.fh, 0, SEEK_SET) != 0) {
-          wzfatal("[%s:%d] Cannot seek knowledgebase '%s'.\n",
-                  __func__, __LINE__, conf.fname_mask);
-        }
-        for (uint64_t km = 0;; ++km) {
-          cdata_t c_mask = read_cdata1(&cf_mask);
-          if (c_mask.n == 0) break;
-          prepare_mask(&c_mask);
+        if (ms->n_mem) {                  /* records already in memory */
+          for (uint64_t km = 0; km < ms->n_mem; ++km) {
+            kstring_t sm = {0};
+            if (ms->snames.n && km < (unsigned)ms->snames.n)
+              kputs(ms->snames.s[km], &sm);
+            else ksprintf(&sm, "%" PRIu64, km + 1);
 
-          kstring_t sm = {0};
-          if (snames_mask.n && km < (unsigned)snames_mask.n)
-            kputs(snames_mask.s[km], &sm);
-          else ksprintf(&sm, "%" PRIu64, km + 1);
+            run_pair(&v, &c_qry, &ms->mem[km], sq.s, sm.s,
+                     qry_disp, ms->disp, &conf);
+            free(sm.s);
+          }
+        } else {                          /* re-scan the seekable file */
+          if (bgzf_seek(ms->cf.fh, 0, SEEK_SET) != 0) {
+            wzfatal("[%s:%d] Cannot seek knowledgebase '%s'.\n",
+                    __func__, __LINE__, ms->fname);
+          }
+          for (uint64_t km = 0;; ++km) {
+            cdata_t c_mask = read_cdata1(&ms->cf);
+            if (c_mask.n == 0) break;
+            prepare_mask(&c_mask);
 
-          run_pair(&v, &c_qry, &c_mask, sq.s, sm.s,
-                   qry_disp, mask_disp, &conf);
-          free(sm.s);
-          free_cdata(&c_mask);
+            kstring_t sm = {0};
+            if (ms->snames.n && km < (unsigned)ms->snames.n)
+              kputs(ms->snames.s[km], &sm);
+            else ksprintf(&sm, "%" PRIu64, km + 1);
+
+            run_pair(&v, &c_qry, &c_mask, sq.s, sm.s,
+                     qry_disp, ms->disp, &conf);
+            free(sm.s);
+            free_cdata(&c_mask);
+          }
         }
       }
 
@@ -342,13 +381,14 @@ int main_test(int argc, char *argv[]) {
   if (conf.fname_out) fclose(out);
 
   kycg_results_free(v.a, v.n);
-  if (c_masks_n) {
-    for (uint64_t i = 0; i < c_masks_n; ++i) free_cdata(&c_masks[i]);
-    free(c_masks);
+  for (size_t i = 0; i < n_masks; ++i) {
+    for (uint64_t k = 0; k < masks[i].n_mem; ++k) free_cdata(&masks[i].mem[k]);
+    free(masks[i].mem);
+    bgzf_close(masks[i].cf.fh);
+    cleanSampleNames2(masks[i].snames);
+    free(masks[i].fname);
   }
-  bgzf_close(cf_mask.fh);
-  cleanSampleNames2(snames_mask);
-  free(conf.fname_mask);
+  free(masks);
   free(conf.fname_out);
   free(conf.fname_snames);
 
