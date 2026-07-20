@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kycg — CpG set enrichment in one C binary</title>
+<meta name="description" content="kycg: know Your CpG. Functional analysis of DNA methylation at CpG resolution — one C binary, one verified knowledgebase store. No R.">
+<style>
+  :root{
+    --bg:#fbfdfd;--fg:#16232a;--muted:#55666f;--line:#e2e9ea;--soft:#eff4f5;--card:#ffffff;
+    --accent:#0f766e;--accent-2:#14b8a6;--accent-soft:#e0f5f2;--code-bg:#0b1620;--code-fg:#e4eef2;--cm:#74899a;--ok:#22c55e;--warn:#b45309;
+    --shadow:0 1px 2px rgba(15,35,45,.04),0 6px 20px rgba(15,35,45,.05);
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#08131a;--fg:#e4eef2;--muted:#8ea3ae;--line:#1d2f3a;--soft:#0f1e27;--card:#0f1c25;
+    --accent:#5eead4;--accent-2:#99f6e4;--accent-soft:#123b38;--code-bg:#050f16;--code-fg:#dbe9ef;--cm:#647c8c;--ok:#4ade80;--warn:#fbbf24;
+    --shadow:0 1px 2px rgba(0,0,0,.25),0 8px 26px rgba(0,0,0,.30);}}
+  :root[data-theme=light]{--bg:#fbfdfd;--fg:#16232a;--muted:#55666f;--line:#e2e9ea;--soft:#eff4f5;--card:#fff;--accent:#0f766e;--accent-2:#14b8a6;--accent-soft:#e0f5f2;--code-bg:#0b1620;--code-fg:#e4eef2;--cm:#74899a;--ok:#22c55e;--warn:#b45309;--shadow:0 1px 2px rgba(15,35,45,.04),0 6px 20px rgba(15,35,45,.05);}
+  :root[data-theme=dark]{--bg:#08131a;--fg:#e4eef2;--muted:#8ea3ae;--line:#1d2f3a;--soft:#0f1e27;--card:#0f1c25;--accent:#5eead4;--accent-2:#99f6e4;--accent-soft:#123b38;--code-bg:#050f16;--code-fg:#dbe9ef;--cm:#647c8c;--ok:#4ade80;--warn:#fbbf24;--shadow:0 1px 2px rgba(0,0,0,.25),0 8px 26px rgba(0,0,0,.30);}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1520px;margin:0 auto;padding:0 22px 44px}
+  a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+  header{padding:32px 0 4px;margin-bottom:2px}
+  h1{font-size:1.55rem;margin:0;letter-spacing:-.01em;font-weight:400;line-height:1.2;
+     background:linear-gradient(92deg,var(--accent),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent;display:inline}
+  h1 b{font-weight:800}
+  .badge{margin-left:9px;font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+     color:var(--accent);background:var(--accent-soft);border:1px solid var(--line);padding:2px 8px;border-radius:20px;vertical-align:middle}
+  .expand{color:var(--muted);margin:8px 0 12px;font-size:.9rem;max-width:82ch}
+  .links{font-size:.85rem;color:var(--muted)}
+  .links a{font-weight:600}.links span{opacity:.4;margin:0 8px}
+  .grid{column-count:1;column-gap:16px}
+  @media(min-width:640px){.grid{column-count:2}}
+  @media(min-width:980px){.grid{column-count:3}}
+  @media(min-width:1440px){.grid{column-count:4}}
+  .card{break-inside:avoid;margin:0 0 16px;border:1px solid var(--line);border-radius:13px;background:var(--card);
+     padding:13px 15px 15px;box-shadow:var(--shadow);transition:border-color .16s,box-shadow .16s,transform .16s}
+  .card:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));transform:translateY(-2px)}
+  .card h2{font-size:.98rem;margin:0 0 5px;letter-spacing:-.01em}
+  .card h2 .m{color:var(--muted);font-weight:400;font-size:.8rem}
+  .card p{margin:0 0 8px;color:var(--muted);font-size:.82rem}
+  .card p+pre{margin-top:2px}
+  pre{position:relative;background:var(--code-bg);color:var(--code-fg);border-radius:9px;padding:11px 12px;
+     overflow-x:auto;font-size:.75rem;line-height:1.55;margin:0}
+  pre code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .cm{color:var(--cm)}
+  .sub{color:#5eead4;font-weight:700}
+  .hl{color:#fca5a5}
+  code.inl{background:var(--accent-soft);color:var(--accent);padding:1px 5px;border-radius:5px;
+     font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.84em}
+  .copy{position:absolute;top:6px;right:6px;font:600 .63rem ui-monospace,SFMono-Regular,Menlo,monospace;
+     color:var(--code-fg);background:rgba(20,45,58,.95);border:1px solid rgba(255,255,255,.18);border-radius:6px;
+     padding:2px 8px;cursor:pointer;opacity:0;transition:opacity .14s,background .14s;box-shadow:0 1px 6px rgba(0,0,0,.3)}
+  pre:hover .copy,.copy:focus{opacity:1}
+  .copy:hover{background:rgba(30,70,88,.98)}
+  .copy.ok{color:var(--ok);opacity:1}
+  .note{margin:11px 0 0;padding:9px 11px;border-left:3px solid var(--accent);background:var(--soft);
+     border-radius:0 8px 8px 0;font-size:.79rem;color:var(--muted)}
+  .note b{color:var(--fg)}
+  .note.warn{border-left-color:var(--warn)}
+  .full{border:1px solid var(--line);border-radius:13px;background:var(--card);padding:16px 18px;margin-top:22px;box-shadow:var(--shadow)}
+  .full>h2{font-size:1.1rem;margin:0 0 4px;letter-spacing:-.01em}
+  .full>h2 .m{color:var(--muted);font-weight:400;font-size:.85rem}
+  .full>p{color:var(--muted);font-size:.88rem;margin:0 0 14px;max-width:98ch}
+  .full h3{font-size:.8rem;margin:12px 0 6px;color:var(--fg);font-weight:700}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px}
+  .cols3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px}
+  @media(max-width:900px){.cols3{grid-template-columns:1fr 1fr}}
+  @media(max-width:720px){.cols,.cols3{grid-template-columns:1fr}}
+  table.t{width:100%;border-collapse:collapse;font-size:.79rem;margin:2px 0 0}
+  table.t th{text-align:left;font-weight:700;color:var(--fg);border-bottom:1px solid var(--line);padding:5px 8px 5px 0;white-space:nowrap}
+  table.t td{padding:4px 8px 4px 0;border-bottom:1px solid var(--line);color:var(--muted);vertical-align:top}
+  table.t td code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--fg);font-size:.95em}
+  .scroll{overflow-x:auto}
+  footer{margin-top:28px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:.82rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1><b>k</b>now <b>y</b>our <b>C</b>p<b>G</b></h1> <span class="badge">cli</span>
+  <p class="expand">Functional analysis of DNA methylation at CpG resolution.
+    One C binary, one verified knowledgebase store, one implementation of every statistic.</p>
+  <p class="links">
+    <a href="https://github.com/zhou-lab/kycg">GitHub</a><span>·</span>
+    <a href="https://bioconductor.org/packages/knowYourCG/">R / Bioconductor</a><span>·</span>
+    <a href="https://github.com/zhou-lab/YAME">YAME</a><span>·</span>
+    <a href="https://github.com/zhou-lab/cinderplot">cinderplot</a><span>·</span>
+    <a href="https://github.com/zwdzwd/sesame-cli">sesame-cli</a><span>·</span>
+    hg38 · mm10 · MSA · EPICv2 · EPIC · HM450 · HM27 · MM285 · Mammal40
+  </p>
+</header>
+
+<div class="grid">
+
+  <section class="card">
+    <h2>Install <span class="m">— then fetch once</span></h2>
+    <pre><code><span class="cm"># build from source (YAME is a submodule)</span>
+git clone --recurse-submodules \
+  https://github.com/zhou-lab/kycg
+cd kycg &amp;&amp; make</code></pre>
+    <p style="margin-top:11px">Dependencies are YAME's: vendored htslib, zlib, libm.
+      <b>libcurl is optional</b> and used by <code class="inl">fetch</code> alone — a box
+      without it still builds a fully working analysis tool.</p>
+    <pre><code><span class="cm"># one-time: build the knowledgebase store</span>
+kycg <span class="sub">fetch</span> mm10
+kycg <span class="sub">fetch</span> MSA
+
+<span class="cm"># see what you have</span>
+kycg <span class="sub">list</span></code></pre>
+    <div class="note"><b>Never implicitly, never interactively.</b> Network access happens
+      in <code class="inl">fetch</code> and nowhere else, and it never prompts — a prompt
+      would hang a Nextflow job or a Docker build with no indication of why.</div>
+  </section>
+
+  <section class="card">
+    <h2>The store <span class="m">— fetch, verified</span></h2>
+    <p>Knowledgebases lived in three places with three access patterns and no verification.
+      <code class="inl">fetch</code> is the tie.</p>
+    <pre><code>$ kycg <span class="sub">fetch</span> mm10
+mm10 knowledgebases (Zenodo 18175656)
+  -&gt; ~/.cache/kycg/mm10
+  + CGI.20220904.cm            120 KB
+  + ChromHMM.20220414.cm       857 KB
+  + PMD.20220911.cm           16.3 KB
+  + TFBS.20220922.cm          54.0 MB
+  + rmsk1.20220321.cm          3.2 MB
+
+8 fetched (59.0 MB), 0 already current.</code></pre>
+    <p style="margin-top:11px">…into a flat, boring layout. A <code class="inl">.cm</code>
+      in the store is an ordinary file that <code class="inl">kycg test -m</code> takes by path.
+      No database, no lockfile, no bookkeeping.</p>
+    <pre><code>~/.cache/kycg/
+├ mm10/            <span class="cm"># sequencing (Zenodo)</span>
+│ ├ ChromHMM.20220414.cm
+│ ├ cpg_nocontig.cr   <span class="cm"># the row list</span>
+│ └ SHA256SUMS
+└ MSA/KYCG/        <span class="cm"># array (InfiniumAnnotation)</span>
+  ├ CGI.20220904.cm(+.idx)
+  └ SHA256SUMS      <span class="cm"># as published</span></code></pre>
+    <div class="note">Re-runs are cheap: a file already present with the right digest is
+      not re-downloaded. Set the root with <code class="inl">$KYCG_DATA_DIR</code>.</div>
+  </section>
+
+  <section class="card">
+    <h2>Pick what you need <span class="m">— list, -o, -n</span></h2>
+    <p>The full hg38 collection is 363&nbsp;MB. You rarely want all of it.</p>
+    <pre><code><span class="cm"># what's in there? (works offline)</span>
+$ kycg <span class="sub">list</span> hg38
+set          file                      size   cached
+ABCompartment ABCompartment...cm       9.5 KB no
+CGI          CGI.20220904.cm           202 KB no
+ChromHMM     ChromHMM.20220303.cm      517 KB no
+…
+
+<span class="cm"># cost it out before committing</span>
+$ kycg <span class="sub">fetch</span> -n -o CGI,ChromHMM hg38
+3 file(s), 29.6 MB total.
+
+<span class="cm"># fetch just those</span>
+$ kycg <span class="sub">fetch</span> -o CGI,ChromHMM hg38</code></pre>
+    <div class="note"><code class="inl">-o</code> takes <b>set names</b>, not file names —
+      <code class="inl">ChromHMM</code>, not <code class="inl">ChromHMM.20220303.cm</code>.
+      The dates are how sets are versioned and nobody remembers them.</div>
+  </section>
+
+  <section class="card">
+    <h2>Test <span class="m">— the core</span></h2>
+    <p>Hypergeometric tail, six effect sizes, stratified FDR. 21.8M rows in
+      <b>0.12&nbsp;s</b>.</p>
+    <pre><code>kycg <span class="sub">test</span> -m ~/.cache/kycg/mm10/ChromHMM.20220414.cm \
+  query.cg &gt; res.tsv</code></pre>
+    <p style="margin-top:11px"><code class="inl">-m</code> is <b>repeatable</b> — this is what
+      makes a store worth having. One pass, one table, one FDR correction:</p>
+    <pre><code>kycg <span class="sub">test</span> $(for f in ~/.cache/kycg/mm10/*.cm; do
+        printf -- '-m %s ' $f; done) \
+  query.cg &gt; res.tsv</code></pre>
+    <div class="note">Testing against 30 knowledgebases in 30 processes decompresses the
+      query 30 times. Pooling them decompresses it <b>once</b>.</div>
+  </section>
+
+  <section class="card">
+    <h2>Read the result <span class="m">— top hits</span></h2>
+    <p>One row per (query&nbsp;sample, knowledgebase&nbsp;record), sorted by significance.</p>
+    <pre><code>$ kycg <span class="sub">test</span> -m ChromHMM.cm -m CGI.cm -m PMD.cm \
+    onecell.cg | cut -f3,4,10,13
+
+db_file          db         estimate  fdr
+PMD…cm           commonHMD  0.275     0
+ChromHMM…cm      Quies      0.199     0
+ChromHMM…cm      QuiesG     0.253     0
+ChromHMM…cm      Tx         0.307     0
+CGI…cm           Shore      0.196     9.17e-266</code></pre>
+    <div class="note warn"><b>Those zeros are real, and they are why this tool is log-space.</b>
+      <code class="inl">p_value</code> and <code class="inl">fdr</code> are conveniences,
+      recovered as <code class="inl">10^log10_p</code>; they underflow around
+      <code class="inl">-308</code> while real enrichments run past
+      <code class="inl">-1500</code>. Sort and threshold on
+      <code class="inl">log10_p</code> and <code class="inl">neglog10_fdr</code>.</div>
+  </section>
+
+  <section class="card">
+    <h2>Check the row space <span class="m">— info</span></h2>
+    <p>Everything is <b>positional</b>: row <i>i</i> must mean the same CpG in the query and
+      in the knowledgebase. Confirm before you test.</p>
+    <pre><code>$ kycg <span class="sub">info</span> onecell.cg ChromHMM.20220414.cm
+file          record format        n_rows    n_set
+onecell.cg    1      3:mu          21867837  NA
+ChromHMM…cm   1      2:categorical 21867837  NA</code></pre>
+    <p style="margin-top:11px">Mismatches fail loudly, naming both files and both counts:</p>
+    <pre><code><span class="hl">Row count mismatch: query 'small.cg' record '1'
+has 5 rows but knowledgebase 'chromhmm.cm'
+record '1' has 21867837 rows.
+These files index different reference row
+lists and cannot be compared.</span></code></pre>
+    <div class="note">kycg checks lengths and stops there. It cannot detect two files that
+      share a row count but come from different row spaces — sequencing indexes a
+      whole-genome <code class="inl">.cr</code>, arrays a per-platform ordering. Matching
+      them is yours to get right.</div>
+  </section>
+
+  <section class="card">
+    <h2>Plot <span class="m">— cinderplot, separately</span></h2>
+    <p>kycg emits TSV; <a href="https://github.com/zhou-lab/cinderplot">cinderplot</a> renders
+      it as its own process. No linking, so Cairo never enters kycg's dependency surface.</p>
+    <pre><code><span class="cm"># volcano</span>
+cinderplot 'res.tsv
+  + aes(estimate, neglog10_fdr)
+  + geom_point() + theme_minimal()' -o v.pdf</code></pre>
+    <div class="note"><code class="inl">neglog10_fdr</code> is precomputed because cinderplot
+      has no <code class="inl">-log10()</code> transform in aesthetics, and it is the y-axis
+      of three separate plots. Any arithmetic a plot needs is done in C.</div>
+  </section>
+
+  <section class="card">
+    <h2>Why not R <span class="m">— what this replaces</span></h2>
+    <p>The knowYourCG sequencing workflow was already a shell pipeline around
+      <code class="inl">yame</code>. R contributed three things on top:</p>
+    <pre><code><span class="cm"># the old way</span>
+yame unpack cpg_nocontig.cr \
+| bedtools intersect -a - -b in.bed -c -sorted \
+| cut -f4 | yame pack -fb - &gt; in.cg
+yame summary -m feature.cm in.cg &gt; out.txt
+<span class="cm"># …then R, for the test, the FDR, and the plot</span></code></pre>
+    <div class="note">Worse, <code class="inl">knowYourCG/src/</code> was a <b>vendored copy of
+      YAME</b> returning results as one TSV string that R re-parsed. Two copies of YAME, two
+      independent log2-odds-ratio implementations. kycg collapses that: YAME as a submodule,
+      one implementation of each statistic.</div>
+  </section>
+
+</div>
+
+<section class="full">
+  <h2>What the store holds <span class="m">— the comprehensive list</span></h2>
+  <p>Nine collections behind one command. Sequencing sets index a whole-genome CpG reference
+    and ship with the <code class="inl">cpg_nocontig.cr</code> that defines it; array sets index
+    a platform's probe ordering. The two are byte-compatible and semantically incompatible —
+    that is exactly why <code class="inl">kycg test</code> checks row counts.</p>
+  <div class="cols">
+    <div>
+      <h3>Sequencing — Zenodo, per genome</h3>
+      <div class="scroll"><table class="t">
+        <tr><th>Target</th><th>Sets</th><th>Size</th><th>Source</th></tr>
+        <tr><td><code>hg38</code></td><td>33</td><td>363 MB</td><td>zenodo:18175838</td></tr>
+        <tr><td><code>mm10</code></td><td>29</td><td>266 MB</td><td>zenodo:18175656</td></tr>
+      </table></div>
+      <p style="font-size:.79rem;color:var(--muted);margin:8px 0 0">
+        ChromHMM · CGI · TFBS · PMD · rmsk · HM (histone marks) · ABCompartment ·
+        Blacklist · CTCFbind · ImprintingDMR · MetagenePC · Tetranuc · TissueSignature
+        (BLUEPRINT / Brain / Loyfer) · nFlankCG · Centromere · Chromosome · and more.</p>
+    </div>
+    <div>
+      <h3>Arrays — InfiniumAnnotation, per platform</h3>
+      <div class="scroll"><table class="t">
+        <tr><th>Target</th><th>Sets</th><th>Probes</th></tr>
+        <tr><td><code>MSA</code></td><td>32</td><td>284,309</td></tr>
+        <tr><td><code>HM450</code></td><td>18</td><td>486,427</td></tr>
+        <tr><td><code>EPIC</code></td><td>17</td><td>866,553</td></tr>
+        <tr><td><code>MM285</code></td><td>17</td><td>287,692</td></tr>
+        <tr><td><code>EPICv2</code></td><td>16</td><td>937,690</td></tr>
+        <tr><td><code>HM27</code> / <code>Mammal40</code></td><td>15</td><td>27,722 / 38,607</td></tr>
+      </table></div>
+    </div>
+  </div>
+</section>
+
+<section class="full">
+  <h2>Integrity <span class="m">— two channels, two publishers, two digests</span></h2>
+  <p>kycg verifies against the digest each publisher actually signs, rather than inventing
+    its own. Both are compiled into the binary by <code class="inl">tools/make_registry.sh</code>,
+    so in neither case is kycg trusting a digest it fetched at run time.</p>
+  <div class="cols3">
+    <div>
+      <h3>Arrays — a sha256 chain</h3>
+      <p style="font-size:.79rem;color:var(--muted);margin:0 0 8px">InfiniumAnnotation ships a
+        <code class="inl">SHA256SUMS</code> per directory. The pin is
+        <code class="inl">sha256(SHA256SUMS)</code>; every file chains from it. Anchoring on the
+        manifest rather than each file means upstream can add a set without a kycg rebuild.</p>
+      <pre><code>{ "MSA", "cc63264354f71f43…" }</code></pre>
+    </div>
+    <div>
+      <h3>Sequencing — a pinned md5 list</h3>
+      <p style="font-size:.79rem;color:var(--muted);margin:0 0 8px">Zenodo has no manifest to
+        chain from and publishes only md5, so each file's size and md5 are pinned individually.
+        md5's collision weakness would matter if the digest travelled <i>with</i> the file —
+        it is compiled in, so it is a pin, not a claim the download makes about itself.</p>
+      <pre><code>{ "CGI.20220904.cm", 206746,
+  "741817a0082a3ced…" }</code></pre>
+    </div>
+    <div>
+      <h3>Verify it yourself</h3>
+      <p style="font-size:.79rem;color:var(--muted);margin:0 0 8px">Downloads land on a
+        <code class="inl">.part</code> sibling and are renamed only after the digest matches, so
+        an interrupted fetch cannot leave a file that later reads as valid. The store is
+        re-checkable with no kycg code at all:</p>
+      <pre><code>cd ~/.cache/kycg/MSA/KYCG
+shasum -a 256 -c SHA256SUMS</code></pre>
+    </div>
+  </div>
+</section>
+
+<section class="full">
+  <h2>Output schema <span class="m">— tidy TSV, one row per test</span></h2>
+  <p>The first columns are <code class="inl">yame summary</code>'s, renamed. Everything from
+    <code class="inl">estimate</code> onward is what kycg adds — <code class="inl">yame</code>
+    gives counts and a rounded effect size; kycg tells you which results survive multiple
+    testing.</p>
+  <div class="cols">
+    <div>
+      <h3>Identity &amp; counts</h3>
+      <div class="scroll"><table class="t">
+        <tr><th>Column</th><th>Meaning</th></tr>
+        <tr><td><code>query_file</code>, <code>query</code></td><td>the .cg and the sample in it</td></tr>
+        <tr><td><code>db_file</code>, <code>db</code></td><td>the .cm and the record in it</td></tr>
+        <tr><td><code>group</code></td><td>FDR stratum (the knowledgebase)</td></tr>
+        <tr><td><code>nU nQ nD overlap</code></td><td>the 2×2 table: universe, query, database, overlap</td></tr>
+        <tr><td><code>beta</code>, <code>depth</code></td><td>mean over the record — knowYourCG's <code>dbStats</code>, free</td></tr>
+      </table></div>
+    </div>
+    <div>
+      <h3>Inference &amp; effect size</h3>
+      <div class="scroll"><table class="t">
+        <tr><th>Column</th><th>Meaning</th></tr>
+        <tr><td><code>estimate</code></td><td>log2 odds ratio, full precision</td></tr>
+        <tr><td><code>log10_p</code></td><td><b>the p-value.</b> One-sided hypergeometric tail</td></tr>
+        <tr><td><code>neglog10_fdr</code></td><td><b>the FDR.</b> BH within stratum</td></tr>
+        <tr><td><code>p_value</code>, <code>fdr</code></td><td>convenience only — these underflow to 0</td></tr>
+        <tr><td><code>cf_jaccard</code> <code>cf_mcc</code> <code>cf_overlap</code> <code>cf_npmi</code> <code>cf_dice</code></td><td>five alternative coefficients</td></tr>
+      </table></div>
+    </div>
+  </div>
+  <div class="note" style="margin-top:14px"><b>FDR is corrected within one query sample and one
+    knowledgebase</b> — the family knowYourCG corrects over, since
+    <code class="inl">testEnrichment()</code> takes a single query and calls
+    <code class="inl">p.adjust()</code> on that query's frame. Adding more samples or more
+    knowledgebases to an invocation therefore never changes an FDR already reported.
+    <code class="inl">-G</code> widens the stratum to all knowledgebases for a sample.</div>
+</section>
+
+<section class="full">
+  <h2>Correctness <span class="m">— against R, not against intuition</span></h2>
+  <p>The whole point of collapsing two codebases into one is that the numbers stop drifting.
+    Both layers are checked against R directly.</p>
+  <div class="cols3">
+    <div>
+      <h3>Unit — vs phyper / p.adjust</h3>
+      <pre><code>$ make test
+all checks passed
+(worst relative error: <span class="sub">2.6e-16</span>)</code></pre>
+      <p style="font-size:.79rem;color:var(--muted);margin:8px 0 0">Across four regimes: small,
+        array-scale (486K), whole-genome (29M), and the deep tail at
+        <code class="inl">log10 p ≈ -584141</code>.</p>
+    </div>
+    <div>
+      <h3>End to end — every column</h3>
+      <pre><code>$ Rscript tests/validate_vs_R.R res.tsv
+log10_p     OK   worst 4.09e-12
+estimate    OK   worst 4.75e-10
+log10 fdr   OK   worst 2.96e-12
+<span class="sub">PASS</span>: agrees with R on every column.</code></pre>
+      <p style="font-size:.79rem;color:var(--muted);margin:8px 0 0">Residual is output text
+        precision, not computation. Counts are byte-identical to
+        <code class="inl">yame summary</code>.</p>
+    </div>
+    <div>
+      <h3>Two things that had to be right</h3>
+      <p style="font-size:.79rem;color:var(--muted);margin:0 0 6px"><b>Log space or bust.</b>
+        A linear-space BH assigns FDR&nbsp;0 to every underflowed row — which is every row
+        anyone cares about.</p>
+      <p style="font-size:.79rem;color:var(--muted);margin:0"><b>Loader's saddle-point
+        expansion</b> for the point mass, as R's <code class="inl">dhyper()</code> does. A
+        difference of <code class="inl">lgamma</code> calls loses ~7 digits to cancellation over
+        a 29M-row universe. htslib's <code class="inl">kt_fisher_exact()</code> is unusable for a
+        separate reason: <code class="inl">int</code> counts, and it loops "until underflow" by
+        construction.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  kycg reimplements <a href="https://bioconductor.org/packages/knowYourCG/">knowYourCG</a> in C,
+  over <a href="https://github.com/zhou-lab/YAME">YAME</a>. Architecture, statistical formulas, and
+  open questions are in
+  <a href="https://github.com/zhou-lab/kycg/blob/main/DESIGN.md">DESIGN.md</a>.
+  AGPL-3.0-or-later. · <a href="https://github.com/zhou-lab/kycg">github.com/zhou-lab/kycg</a>
+</footer>
+
+</div>
+<script>
+(function(){
+  document.querySelectorAll('pre').forEach(function(pre){
+    var b=document.createElement('button');
+    b.className='copy';b.type='button';b.textContent='copy';
+    var code=pre.querySelector('code');
+    b.addEventListener('click',function(ev){
+      ev.stopPropagation();
+      navigator.clipboard.writeText(code?code.innerText:pre.innerText).then(function(){
+        b.textContent='copied';b.classList.add('ok');
+        setTimeout(function(){b.textContent='copy';b.classList.remove('ok');},1200);
+      });
+    });
+    pre.appendChild(b);
+  });
+})();
+</script>
+</body>
+</html>

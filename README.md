@@ -5,8 +5,10 @@ reimplementation of the [knowYourCG](https://bioconductor.org/packages/knowYourC
 R/Bioconductor package, with [YAME](https://github.com/zhou-lab/YAME) as its
 computational backend.
 
-See [DESIGN.md](DESIGN.md) for the architecture, the statistical formulas, and
-the phasing. This README covers what is implemented and how to run it.
+**Docs site:** [`docs/index.html`](docs/index.html) — a single self-contained
+page covering the whole workflow. See [DESIGN.md](DESIGN.md) for the
+architecture, the statistical formulas, and the phasing. This README covers
+what is implemented and how to run it.
 
 ## Status
 
@@ -17,7 +19,7 @@ Phase 0 (foundation) and Phase 1 (`kycg test`) are implemented and validated.
 |---|---|---|
 | 0 | Submodule, build, dispatch, `kycg info`, row-count assertion | done |
 | 1 | `kycg test` — hypergeometric, group-stratified BH, effect sizes | done |
-| 2 | `kycg fetch` + registry | not started |
+| 2 | `kycg fetch` + registry, `kycg list` | done |
 | 3 | Plot recipes (with cinderplot) | not started |
 | 4 | `proximity`, `sea`, `anno`, `bed2cg` | not started |
 
@@ -41,6 +43,40 @@ Dependencies are YAME's: vendored htslib, zlib, libm, pthreads. Nothing else.
 
 ## Usage
 
+### `kycg fetch` — build the knowledgebase store
+
+```bash
+kycg fetch mm10          # sequencing knowledgebases + cpg_nocontig.cr
+kycg fetch MSA           # array knowledgebases for a platform
+kycg list                # what exists, what is cached
+kycg list hg38           # the individual sets (works offline)
+```
+
+```
+    -d DIR    store directory [$KYCG_DATA_DIR, else ~/.cache/kycg]
+    -o SETS   comma-separated subset, by set name (CGI,ChromHMM,TFBS)
+    -n        dry run: list what would be fetched, download nothing
+    -f        re-download even if present and verified
+    -t TAG    InfiniumAnnotation tag, arrays only [v8]
+```
+
+Nine collections: `hg38` (33 sets) and `mm10` (29) from Zenodo, plus
+`MSA` `EPICv2` `EPIC` `HM450` `HM27` `MM285` `Mammal40` from
+InfiniumAnnotation. Fetched sets are ordinary files — pass one to
+`kycg test -m`.
+
+Both channels verify against a digest compiled into the binary by
+`tools/make_registry.sh`. InfiniumAnnotation publishes `SHA256SUMS` per
+directory, so that channel is a sha256 chain anchored on `sha256(SHA256SUMS)`;
+Zenodo publishes only md5 and has no manifest to chain from, so each file's
+size and md5 are pinned individually. Downloads land on a `.part` sibling and
+are renamed only after the digest matches. Afterwards the store is
+re-verifiable with `shasum -a 256 -c SHA256SUMS` and no kycg code at all.
+
+**libcurl is optional.** `test`, `info`, and `list` build and run without it;
+only `fetch` needs it, and it says so plainly if the build lacks it. `CURL=0`
+forces it off.
+
 ### `kycg test` — set enrichment
 
 ```bash
@@ -52,8 +88,17 @@ contingency counts, a one-sided hypergeometric tail probability in log10, six
 effect-size coefficients, and a false discovery rate corrected within
 knowledgebase.
 
+`-m` is repeatable, which is what makes a store worth having — testing one
+query against 30 knowledgebases in 30 processes decompresses the query 30
+times, and pooling them decompresses it once:
+
+```bash
+kycg test $(for f in ~/.cache/kycg/mm10/*.cm; do printf -- '-m %s ' $f; done) \
+  query.cg > res.tsv
 ```
-    -m FILE   knowledgebase (.cm) to test against [required]
+
+```
+    -m FILE   knowledgebase (.cm) [required]; repeatable
     -a STR    alternative: greater|less|two.sided [greater]
     -G        correct FDR globally instead of within knowledgebase
     -s FILE   sample names for the query
