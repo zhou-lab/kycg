@@ -534,7 +534,7 @@ static long select_widget(const char *title, const char **items,
     frame_line(&f, "%s%s%s", kycg_ui_bold(), title, kycg_ui_reset());
 
     if (filtering || filter[0])
-      frame_line(&f, "  %sfilter:%s %s%s%s%s", kycg_ui_dim(), kycg_ui_reset(),
+      frame_line(&f, "  %ssearch:%s %s%s%s%s", kycg_ui_dim(), kycg_ui_reset(),
                  kycg_ui_cyan(), filter, kycg_ui_reset(),
                  filtering ? "_" : "");
     else
@@ -566,12 +566,12 @@ static long select_widget(const char *title, const char **items,
     /* Footer: what the keys do, and how much is selected. */
     if (multi)
       frame_line(&f, "%s  %zu/%zu shown  %s  %zu selected  %s  "
-                     "arrows move  space toggles  a/n all/none  / filter  "
+                     "arrows move  space toggles  a/n all/none  / search  "
                      "enter accept  esc cancel%s",
                  kycg_ui_dim(), nview, n, kycg_ui_bullet(), chosen,
                  kycg_ui_bullet(), kycg_ui_reset());
     else
-      frame_line(&f, "%s  %zu/%zu shown  %s  arrows move  / filter  "
+      frame_line(&f, "%s  %zu/%zu shown  %s  arrows move  / search  "
                      "enter select  esc cancel%s",
                  kycg_ui_dim(), nview, n, kycg_ui_bullet(), kycg_ui_reset());
 
@@ -917,13 +917,13 @@ int kycg_ui_browse(const char *title, const char *header,
     const char *motion = ((size_t)avail < nview) ? "arrows scroll" : "arrows move";
 
     if (filtering || filter[0])
-      frame_line(&f, "%s  filter: %s%s%s%s   %zu/%zu   %s  "
+      frame_line(&f, "%s  search: %s%s%s%s   %zu/%zu   %s  "
                      "esc clear  q quit%s",
                  kycg_ui_dim(), kycg_ui_cyan(), filter,
                  filtering ? "_" : "", kycg_ui_dim(), nview, n, motion,
                  kycg_ui_reset());
     else
-      frame_line(&f, "%s  row %zu of %zu   %s  / filter  q quit%s",
+      frame_line(&f, "%s  row %zu of %zu   %s  / search  q quit%s",
                  kycg_ui_dim(), nview ? cur + 1 : 0, nview, motion,
                  kycg_ui_reset());
 
@@ -967,6 +967,232 @@ int kycg_ui_browse(const char *title, const char *header,
   frame_rewind(&f);
   fflush(stderr);
   free(view);
+  raw_leave();
+  return 0;
+}
+
+/* ------------------------------------------------------------- the tree */
+
+typedef struct {
+  kycg_ui_kids_t kids;
+  int expanded;
+  int loaded;
+} treenode_t;
+
+/* One line of the flattened view: a root, or a child of one. */
+typedef struct {
+  size_t root;
+  long   child;      /* -1 for the root row itself */
+} flatrow_t;
+
+int kycg_ui_tree(const char *title, const char *header,
+                 const char **roots, size_t n_roots,
+                 kycg_ui_expand_fn expand, void *ctx) {
+  if (!n_roots || !kycg_ui_fancy()) return -1;
+  if (raw_enter() != 0) return -1;
+
+  /* Column widths over the root rows only; children arrive preformatted. */
+  enum { MAXCOL = 8 };
+  int w[MAXCOL] = {0};
+  int ncol = 0;
+  for (const char *p = header ? header : roots[0]; ; ) {
+    const char *tab = strchr(p, '\t');
+    if (ncol < MAXCOL) ++ncol;
+    if (!tab) break;
+    p = tab + 1;
+  }
+  for (size_t r = 0; r < n_roots + (header ? 1u : 0u); ++r) {
+    const char *line = (header && r == 0) ? header
+                                          : roots[header ? r - 1 : r];
+    int c = 0;
+    for (const char *p = line; c < ncol; ++c) {
+      const char *tab = strchr(p, '\t');
+      int len = (int)(tab ? (size_t)(tab - p) : strlen(p));
+      if (len > w[c]) w[c] = len;
+      if (!tab) break;
+      p = tab + 1;
+    }
+  }
+  for (int c = 0; c < ncol; ++c) { if (w[c] > 34) w[c] = 34; w[c] += 2; }
+
+  treenode_t *node = calloc(n_roots, sizeof(treenode_t));
+  flatrow_t *flat = NULL;
+  size_t flat_m = 0;
+  if (!node) { raw_leave(); return -1; }
+
+  size_t cur = 0, top = 0;
+  frame_t f = {0};
+
+  for (;;) {
+    /* Flatten: every root, plus the children of the open ones. */
+    size_t nflat = 0;
+    for (size_t i = 0; i < n_roots; ++i)
+      nflat += 1 + (node[i].expanded ? node[i].kids.n : 0);
+
+    if (nflat > flat_m) {
+      flatrow_t *nf = realloc(flat, nflat * sizeof(flatrow_t));
+      if (!nf) break;
+      flat = nf; flat_m = nflat;
+    }
+
+    size_t k = 0;
+    for (size_t i = 0; i < n_roots; ++i) {
+      flat[k].root = i; flat[k].child = -1; ++k;
+      if (!node[i].expanded) continue;
+      for (size_t j = 0; j < node[i].kids.n; ++j) {
+        flat[k].root = i; flat[k].child = (long)j; ++k;
+      }
+    }
+
+    if (cur >= nflat) cur = nflat ? nflat - 1 : 0;
+
+    int rowsz = term_rows();
+    int cols = term_cols();
+    int avail = rowsz - 5;
+    if (avail < 3) avail = 3;
+    if ((size_t)avail > nflat) avail = (int)nflat;
+
+    if (avail > 0) {
+      if (cur < top) top = cur;
+      if (cur >= top + (size_t)avail) top = cur - (size_t)avail + 1;
+      if (top + (size_t)avail > nflat)
+        top = nflat > (size_t)avail ? nflat - (size_t)avail : 0;
+    }
+
+    frame_rewind(&f);
+    frame_line(&f, "%s%s%s", kycg_ui_bold(), title, kycg_ui_reset());
+
+    if (header) {
+      char buf[1024]; size_t o = 0;
+      int c = 0;
+      for (const char *p = header; c < ncol && o + 40 < sizeof(buf); ++c) {
+        const char *tab = strchr(p, '\t');
+        int len = (int)(tab ? (size_t)(tab - p) : strlen(p));
+        if (len > w[c] - 2) len = w[c] - 2;
+        o += (size_t)snprintf(buf + o, sizeof(buf) - o, "%-*.*s", w[c], len, p);
+        if (!tab) break;
+        p = tab + 1;
+      }
+      char cut[1024];
+      fit(buf, cols - 6, cut, sizeof(cut));
+      /* Indent matches the cursor marker plus the fold arrow. */
+      frame_line(&f, "    %s%s%s", kycg_ui_dim(), cut, kycg_ui_reset());
+    } else {
+      frame_line(&f, "");
+    }
+
+    for (int r = 0; r < avail; ++r) {
+      size_t fi = top + (size_t)r;
+      if (fi >= nflat) { frame_line(&f, ""); continue; }
+
+      const flatrow_t *fr = &flat[fi];
+      int is_cur = (fi == cur);
+      const char *arrow = is_cur ? (kycg_ui_unicode() ? "❯" : ">") : " ";
+
+      if (fr->child < 0) {
+        /* A root: fold marker, then aligned columns. */
+        treenode_t *nd = &node[fr->root];
+        const char *fold = nd->expanded ? (kycg_ui_unicode() ? "▾" : "-")
+                                        : (kycg_ui_unicode() ? "▸" : "+");
+        char buf[1024]; size_t o = 0;
+        int c = 0;
+        for (const char *p = roots[fr->root]; c < ncol && o + 40 < sizeof(buf); ++c) {
+          const char *tab = strchr(p, '\t');
+          int len = (int)(tab ? (size_t)(tab - p) : strlen(p));
+          if (len > w[c] - 2) len = w[c] - 2;
+          o += (size_t)snprintf(buf + o, sizeof(buf) - o, "%-*.*s", w[c], len, p);
+          if (!tab) break;
+          p = tab + 1;
+        }
+        char cut[1024];
+        fit(buf, cols - 6, cut, sizeof(cut));
+
+        frame_line(&f, "%s%s%s %s%s%s %s%s%s",
+                   kycg_ui_cyan(), arrow, kycg_ui_reset(),
+                   kycg_ui_cyan(), fold, kycg_ui_reset(),
+                   is_cur ? kycg_ui_bold() : "", cut, kycg_ui_reset());
+      } else {
+        /* A child: preformatted, indented under its parent. */
+        const treenode_t *nd = &node[fr->root];
+        int last = ((size_t)fr->child + 1 == nd->kids.n);
+        const char *stem = kycg_ui_unicode() ? (last ? "└" : "├") : "|";
+        char cut[1024];
+        fit(nd->kids.rows[fr->child], cols - 10, cut, sizeof(cut));
+        frame_line(&f, "%s%s%s   %s%s%s %s%s%s",
+                   kycg_ui_cyan(), arrow, kycg_ui_reset(),
+                   kycg_ui_dim(), stem, kycg_ui_reset(),
+                   is_cur ? kycg_ui_bold() : "", cut, kycg_ui_reset());
+      }
+    }
+
+    const char *motion = ((size_t)avail < nflat) ? "arrows scroll"
+                                                 : "arrows move";
+    frame_line(&f, "%s  row %zu of %zu   %s  %s open  %s close  q quit%s",
+               kycg_ui_dim(), nflat ? cur + 1 : 0, nflat, motion,
+               kycg_ui_unicode() ? "→" : "right",
+               kycg_ui_unicode() ? "←" : "left",
+               kycg_ui_reset());
+
+    fflush(stderr);
+
+    char ch = 0;
+    keycode_t key = read_key(&ch);
+    if (interrupted) break;
+
+    /* Opening is lazy: children are asked for the first time a row unfolds. */
+    size_t ri = nflat ? flat[cur].root : 0;
+    long   ci = nflat ? flat[cur].child : -1;
+
+    int want_open = (key == K_RIGHT || key == K_ENTER ||
+                     (key == K_CHAR && ch == 'l'));
+    int want_close = (key == K_LEFT || (key == K_CHAR && ch == 'h'));
+
+    if (want_open && nflat && ci < 0) {
+      treenode_t *nd = &node[ri];
+      if (!nd->loaded) {
+        if (expand) expand(ctx, roots[ri], &nd->kids);
+        nd->loaded = 1;
+      }
+      nd->expanded = nd->kids.n ? 1 : 0;
+    } else if (want_close && nflat) {
+      if (ci >= 0) {
+        /* Closing from inside jumps back to the parent, the way a file tree
+         * behaves -- otherwise the cursor lands on whatever replaced it. */
+        node[ri].expanded = 0;
+        size_t back = 0;
+        for (size_t i = 0; i < n_roots; ++i) {
+          if (i == ri) break;
+          back += 1 + (node[i].expanded ? node[i].kids.n : 0);
+        }
+        cur = back;
+      } else {
+        node[ri].expanded = 0;
+      }
+    }
+    else if (key == K_DOWN) { if (cur + 1 < nflat) ++cur; }
+    else if (key == K_UP)   { if (cur) --cur; }
+    else if (key == K_PGDN) { cur += (size_t)avail; if (cur >= nflat) cur = nflat ? nflat-1 : 0; }
+    else if (key == K_PGUP) { cur = (cur > (size_t)avail) ? cur - (size_t)avail : 0; }
+    else if (key == K_HOME) cur = 0;
+    else if (key == K_END)  cur = nflat ? nflat - 1 : 0;
+    else if (key == K_ESC)  break;
+    else if (key == K_NONE) break;
+    else if (key == K_CHAR) {
+      if (ch == 'q') break;
+      else if (ch == 'j') { if (cur + 1 < nflat) ++cur; }
+      else if (ch == 'k') { if (cur) --cur; }
+    }
+  }
+
+  frame_rewind(&f);
+  fflush(stderr);
+
+  for (size_t i = 0; i < n_roots; ++i) {
+    for (size_t j = 0; j < node[i].kids.n; ++j) free(node[i].kids.rows[j]);
+    free(node[i].kids.rows);
+  }
+  free(node);
+  free(flat);
   raw_leave();
   return 0;
 }

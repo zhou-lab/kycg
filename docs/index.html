@@ -156,20 +156,21 @@ mm10 knowledgebases (Zenodo 18175656)
   <section class="card">
     <h2>Pick what you need <span class="m">— list, -o, -n</span></h2>
     <p>The full hg38 collection is 363&nbsp;MB. You rarely want all of it.</p>
-    <pre><code><span class="cm"># what's in there? (works offline)</span>
-$ kycg <span class="sub">list</span> hg38
-set          file                      size   cached
-ABCompartment ABCompartment...cm       9.5 KB no
-CGI          CGI.20220904.cm           202 KB no
-ChromHMM     ChromHMM.20220303.cm      517 KB no
-…
+    <pre><code><span class="cm"># a tree — → unfolds a target in place</span>
+$ kycg <span class="sub">list</span>
+    target  kind          cached_sets
+  <span class="sub">▸</span> hg38    whole genome  3/33
+<span class="sub">❯ ▾</span> mm10    whole genome  29/29
+    ├ CGI       CGI…cm       120 KB  cached
+    ├ ChromHMM  ChromHMM…cm  857 KB  cached
+    ├ PMD       PMD…cm      16.3 KB  cached
 
 <span class="cm"># cost it out before committing</span>
-$ kycg <span class="sub">fetch</span> -n -o CGI,ChromHMM hg38
+$ kycg <span class="sub">fetch</span> -n hg38:CGI,ChromHMM
 3 file(s), 29.6 MB total.
 
 <span class="cm"># fetch just those</span>
-$ kycg <span class="sub">fetch</span> -o CGI,ChromHMM hg38</code></pre>
+$ kycg <span class="sub">fetch</span> hg38:CGI,ChromHMM</code></pre>
     <div class="note"><code class="inl">-o</code> takes <b>set names</b>, not file names —
       <code class="inl">ChromHMM</code>, not <code class="inl">ChromHMM.20220303.cm</code>.
       The dates are how sets are versioned and nobody remembers them.</div>

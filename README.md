@@ -126,9 +126,29 @@ Knowledgebases matching 21,867,837 rows (29 of 35 in the store)
 ```
 
 The picker and `kycg list` both render in place: arrows or `j`/`k` to move,
-`/` to filter, `q` to quit. On a terminal that cannot support it — `NO_COLOR`,
-`TERM=dumb`, a non-UTF-8 locale — they degrade to a numbered prompt and plain
-text with the same information. `kycg list` writes plain TSV whenever stdout is
+`/` to search, `q` to quit.
+
+`kycg list` is a tree — `→` unfolds a target to show the sets it holds, `←`
+folds it back, so the `cached_sets` count and the sets it counts are one
+keystroke apart:
+
+```
+    target    kind          source                 cached_sets
+  ▸ hg38      whole genome  zenodo:18175838        3/33
+❯ ▾ mm10      whole genome  zenodo:18175656        29/29
+    ├ CGI                CGI.20220904.cm            120 KB  cached
+    ├ ChromHMM           ChromHMM.20220414.cm       857 KB  cached
+    ├ PMD                PMD.20220911.cm           16.3 KB  cached
+```
+
+Whole-genome targets unfold offline, since their file list is compiled in.
+Array platforms only list once fetched — anchoring on `SHA256SUMS` is what lets
+upstream add a set without a kycg rebuild, so there is no local list until
+there is a manifest.
+
+On a terminal that cannot support any of this — `NO_COLOR`, `TERM=dumb`, a
+non-UTF-8 locale — everything degrades to a numbered prompt and plain text with
+the same information. `kycg list` writes plain TSV whenever stdout is
 redirected, so piping into `cut` or `awk` is unaffected.
 
 ```

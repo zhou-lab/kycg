@@ -971,6 +971,90 @@ static void rows_emit(rows_t *r, const char *comment, const char *header) {
   rows_free(r);
 }
 
+/* Append one preformatted child line to an expansion. */
+static void kid_push(kycg_ui_kids_t *k, const char *fmt, ...) {
+  char **v = realloc(k->rows, (k->n + 1) * sizeof(char *));
+  if (!v) return;
+  k->rows = v;
+
+  char buf[1024];
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, ap);
+  va_end(ap);
+
+  k->rows[k->n] = strdup(buf);
+  if (k->rows[k->n]) ++k->n;
+}
+
+/**
+ * Children of one row of the `kycg list` overview: the sets that target holds.
+ *
+ * Widths are fixed rather than measured, because the tree renders children one
+ * parent at a time — columns that re-measured on each expansion would shift
+ * under rows already on screen.
+ *
+ * Whole-genome targets can be listed offline, since the file list is compiled
+ * in. Array platforms cannot: anchoring on SHA256SUMS is what lets upstream
+ * add a set without a kycg rebuild, so the set list only exists once fetched.
+ */
+static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
+  const char *root = ctx;
+
+  char target[128];
+  const char *tab = strchr(row, '\t');
+  size_t len = tab ? (size_t)(tab - row) : strlen(row);
+  if (len >= sizeof(target)) len = sizeof(target) - 1;
+  memcpy(target, row, len);
+  target[len] = '\0';
+
+  const kycg_seq_reg_t *sr = find_seq(target);
+  const kycg_array_reg_t *ar = find_array(target);
+
+  if (sr) {
+    char dir[4096];
+    snprintf(dir, sizeof(dir), "%s/%s", root, sr->genome);
+    for (const kycg_zfile_t *fl = sr->files; fl->name; ++fl) {
+      size_t l = strlen(fl->name);
+      if (l <= 3 || strcmp(fl->name + l - 3, ".cm") != 0) continue;
+      char setn[256], path[4400], hb[24];
+      set_name_of(fl->name, setn, sizeof(setn));
+      snprintf(path, sizeof(path), "%s/%s", dir, fl->name);
+      kid_push(out, "%-22.22s %-32.32s %9s  %s", setn, fl->name,
+               kycg_ui_human(fl->size, hb, sizeof(hb)),
+               kycg_store_is_file(path) ? "cached" : "-");
+    }
+    return;
+  }
+
+  if (ar) {
+    char dir[4096], sums[4400];
+    snprintf(dir, sizeof(dir), "%s/%s/KYCG", root, ar->platform);
+    snprintf(sums, sizeof(sums), "%s/%s", dir, KYCG_IA_SUMS_FILE);
+
+    FILE *fp = fopen(sums, "rb");
+    if (!fp) {
+      kid_push(out, "not fetched yet - run: kycg fetch %s", ar->platform);
+      return;
+    }
+    char line[1024];
+    while (fgets(line, sizeof(line), fp)) {
+      char *nm = strstr(line, "  ");
+      if (!nm) continue;
+      nm += 2;
+      size_t l = strlen(nm);
+      while (l && (nm[l-1] == '\n' || nm[l-1] == '\r')) nm[--l] = '\0';
+      if (l < 4 || strcmp(nm + l - 3, ".cm") != 0) continue;
+      char setn[256], path[4400];
+      set_name_of(nm, setn, sizeof(setn));
+      snprintf(path, sizeof(path), "%s/%s", dir, nm);
+      kid_push(out, "%-22.22s %-32.32s %9s  %s", setn, nm, "",
+               kycg_store_is_file(path) ? "cached" : "-");
+    }
+    fclose(fp);
+  }
+}
+
 static uint64_t count_cached(const char *dir) {
   char sums[4600];
   snprintf(sums, sizeof(sums), "%s/%s", dir, KYCG_IA_SUMS_FILE);
@@ -1072,6 +1156,7 @@ int main_list(int argc, char *argv[]) {
   }
 
   rows_t rows = {0};
+  const char *ctx_root = root;
 
   for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome; ++r) {
     char dir[4096];
@@ -1099,6 +1184,18 @@ int main_list(int argc, char *argv[]) {
 
   char title[4200];
   snprintf(title, sizeof(title), "store: %s", root);
+
+  /* On a terminal the overview unfolds: the cached_sets column says how many
+   * a target holds, and the obvious next question is which ones. Answering it
+   * in place beats making the user re-run with the target named. */
+  if (isatty(STDOUT_FILENO) &&
+      kycg_ui_tree(title, "target\tkind\tsource\tcached_sets",
+                   (const char **)rows.a, rows.n,
+                   expand_target, (void *)ctx_root) == 0) {
+    rows_free(&rows);
+    return 0;
+  }
+
   rows_emit(&rows, title, "target\tkind\tsource\tcached_sets");
 
   return 0;

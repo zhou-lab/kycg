@@ -132,4 +132,37 @@ int *kycg_ui_multiselect(const char *title, const char **items,
 int kycg_ui_browse(const char *title, const char *header,
                    const char **rows, size_t n);
 
+/** Child rows of one expanded node, owned by the caller of the expand fn. */
+typedef struct {
+  char **rows;   /* preformatted lines; the tree indents but does not align */
+  size_t n;
+} kycg_ui_kids_t;
+
+/**
+ * Fill `out` with the children of the node whose row is `row`. Called at most
+ * once per node, the first time it is opened. Leaving out->n at 0 marks the
+ * node as having nothing to show.
+ */
+typedef void (*kycg_ui_expand_fn)(void *ctx, const char *row,
+                                  kycg_ui_kids_t *out);
+
+/**
+ * Two-level tree viewer: a table whose rows unfold in place.
+ *
+ * Right arrow (or l, or enter) opens the row under the cursor and splices its
+ * children in beneath it; left (or h) closes it. Children are requested lazily
+ * and kept, so opening a row twice costs one call.
+ *
+ * Children are rendered as given, only indented — the tree cannot align them,
+ * because it sees them one parent at a time and column widths that shifted
+ * with each expansion would be worse than none. Pre-format them to a common
+ * width if they should line up.
+ *
+ * Same contract as kycg_ui_browse: returns -1 when the terminal cannot support
+ * it, and must not be used when stdout is redirected.
+ */
+int kycg_ui_tree(const char *title, const char *header,
+                 const char **roots, size_t n_roots,
+                 kycg_ui_expand_fn expand, void *ctx);
+
 #endif /* _KYCG_UI_H */
