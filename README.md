@@ -146,10 +146,12 @@ Array platforms only list once fetched — anchoring on `SHA256SUMS` is what let
 upstream add a set without a kycg rebuild, so there is no local list until
 there is a manifest.
 
-On a terminal that cannot support any of this — `NO_COLOR`, `TERM=dumb`, a
-non-UTF-8 locale — everything degrades to a numbered prompt and plain text with
-the same information. `kycg list` writes plain TSV whenever stdout is
-redirected, so piping into `cut` or `awk` is unaffected.
+The picker, the browser and the tree are full-screen: they take the alternate
+screen buffer, scroll a fixed-height viewport, and hand the terminal back
+exactly as they found it. On a terminal that cannot support that — `NO_COLOR`,
+`TERM=dumb` — they are skipped entirely in favour of a numbered prompt and
+plain text carrying the same information. `kycg list` writes plain TSV whenever
+stdout is redirected, so piping into `cut` or `awk` is unaffected.
 
 ```
     -m FILE   knowledgebase (.cm) [required]; repeatable

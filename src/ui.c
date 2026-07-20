@@ -44,8 +44,22 @@
  * DEGRADATION
  *   Off a TTY: no escape sequences, no spinner, one plain line per event.
  *   Without a UTF-8 locale: ASCII glyphs ([ok], [xx], -) and an ASCII spinner.
- *   With NO_COLOR set or TERM=dumb: no color, everything else unchanged.
+ *   With NO_COLOR set or TERM=dumb: the full-screen widgets are skipped
+ *   entirely and callers print plainly instead.
  *   The information content is identical in every mode -- only the ink differs.
+ *
+ * TWO KINDS OF DRAWING
+ *   The progress bar is inline: it owns one line of the normal buffer and
+ *   rewrites it, because a download is something you watch alongside whatever
+ *   else is on screen.
+ *
+ *   The selector, browser and tree are full-screen: raw_enter() switches to
+ *   the alternate screen buffer, so each frame is absolutely positioned from
+ *   the home cell and the terminal restores the user's screen untouched on
+ *   exit. That is what makes a fixed-height viewport reasonable -- a
+ *   full-height widget drawn inline would shove the user's scrollback away --
+ *   and it removes a whole class of redraw bug, since a frame that shrinks
+ *   cannot leave the tail of a taller predecessor behind it.
  */
 
 #include "ui.h"
@@ -181,8 +195,10 @@ static volatile sig_atomic_t interrupted = 0;
 
 static void raw_leave(void) {
   if (!raw_active) return;
+  /* Leave the alternate screen first, so the terminal restores whatever the
+   * user had before kycg drew over it, then hand back cooked mode. */
+  fputs("\033[?1049l\033[?25h", stderr);
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &saved_tio);
-  fputs("\033[?25h", stderr);          /* cursor back on */
   fflush(stderr);
   raw_active = 0;
 }
@@ -215,7 +231,10 @@ static int raw_enter(void) {
     hooked = 1;
   }
 
-  fputs("\033[?25l", stderr);          /* hide the cursor while we draw */
+  /* Alternate screen: the widget gets the whole terminal and gives it back
+   * untouched on exit, which is what makes a fixed-height viewport reasonable
+   * rather than something that shoves the user's scrollback off the top. */
+  fputs("\033[?1049h\033[H\033[2J\033[?25l", stderr);
   fflush(stderr);
   return 0;
 }
@@ -290,9 +309,25 @@ static keycode_t read_key(char *out) {
  */
 typedef struct { int lines; } frame_t;
 
-static void frame_rewind(frame_t *f) {
-  if (f->lines > 0) fprintf(stderr, "\033[%dA", f->lines);
+/*
+ * Widgets draw on the alternate screen buffer, so a frame is absolutely
+ * positioned: home the cursor, write the frame, erase whatever is below it.
+ *
+ * The earlier approach redrew in the normal buffer by counting lines back up.
+ * That only works while frames stay the same height, and these frames do not:
+ * folding a tree node or narrowing a search makes the next frame shorter, and
+ * the tail of the taller one stayed on screen underneath it. Absolute
+ * positioning plus erase-to-end removes the whole class of bug rather than
+ * patching the arithmetic, and it is what a full-screen viewer wants anyway.
+ */
+static void frame_begin(frame_t *f) {
+  fputs("\033[H", stderr);
   f->lines = 0;
+}
+
+static void frame_finish(frame_t *f) {
+  (void)f;
+  fputs("\033[J", stderr);   /* clear from the cursor to the end of screen */
 }
 
 static void frame_line(frame_t *f, const char *fmt, ...) {
@@ -517,16 +552,18 @@ static long select_widget(const char *title, const char **items,
 
     int rows = term_rows();
     int cols = term_cols();
-    int avail = rows - 5;                       /* title, filter, footer, air */
+    /* Fixed height: the viewport is the screen, not the content. A window
+     * that resized itself as the list grew and shrank was the source of the
+     * leftover-line bug, and it makes scrolling feel unanchored. */
+    int avail = rows - 4;                       /* title, filter, footer */
     if (avail < 3) avail = 3;
-    if ((size_t)avail > nview) avail = (int)nview;
 
     if (cur < top) top = cur;
     if (avail > 0 && cur >= top + (size_t)avail) top = cur - (size_t)avail + 1;
     if (top + (size_t)avail > nview) top = nview > (size_t)avail
                                           ? nview - (size_t)avail : 0;
 
-    frame_rewind(&f);
+    frame_begin(&f);
 
     size_t chosen = 0;
     if (multi) for (size_t i = 0; i < n; ++i) chosen += (size_t)(flags[i] != 0);
@@ -575,6 +612,7 @@ static long select_widget(const char *title, const char **items,
                      "enter select  esc cancel%s",
                  kycg_ui_dim(), nview, n, kycg_ui_bullet(), kycg_ui_reset());
 
+    frame_finish(&f);
     fflush(stderr);
 
     char ch = 0;
@@ -645,9 +683,8 @@ static long select_widget(const char *title, const char **items,
     }
   }
 
-  /* Erase the widget; the caller prints whatever summary is worth keeping. */
-  frame_rewind(&f);
-  fflush(stderr);
+  /* raw_leave() drops the alternate screen, so the widget vanishes and the
+   * caller's summary lands on the user's original prompt line. */
   free(view);
   raw_leave();
   return result;
@@ -851,11 +888,8 @@ int kycg_ui_browse(const char *title, const char *header,
 
     int rowsz = term_rows();
     int cols = term_cols();
-    int avail = rowsz - 5;
+    int avail = rowsz - 4;
     if (avail < 3) avail = 3;
-    /* Never taller than the table: padding a nine-row listing out to a full
-     * screen of blanks looks broken. */
-    if ((size_t)avail > nview) avail = (int)nview;
 
     /* Keep the cursor in view, scrolling only as far as needed. */
     if (avail > 0) {
@@ -865,7 +899,7 @@ int kycg_ui_browse(const char *title, const char *header,
         top = nview > (size_t)avail ? nview - (size_t)avail : 0;
     }
 
-    frame_rewind(&f);
+    frame_begin(&f);
     frame_line(&f, "%s%s%s", kycg_ui_bold(), title, kycg_ui_reset());
 
     if (header) {
@@ -927,6 +961,7 @@ int kycg_ui_browse(const char *title, const char *header,
                  kycg_ui_dim(), nview ? cur + 1 : 0, nview, motion,
                  kycg_ui_reset());
 
+    frame_finish(&f);
     fflush(stderr);
 
     char ch = 0;
@@ -964,8 +999,6 @@ int kycg_ui_browse(const char *title, const char *header,
     }
   }
 
-  frame_rewind(&f);
-  fflush(stderr);
   free(view);
   raw_leave();
   return 0;
@@ -1048,9 +1081,8 @@ int kycg_ui_tree(const char *title, const char *header,
 
     int rowsz = term_rows();
     int cols = term_cols();
-    int avail = rowsz - 5;
+    int avail = rowsz - 4;
     if (avail < 3) avail = 3;
-    if ((size_t)avail > nflat) avail = (int)nflat;
 
     if (avail > 0) {
       if (cur < top) top = cur;
@@ -1059,7 +1091,7 @@ int kycg_ui_tree(const char *title, const char *header,
         top = nflat > (size_t)avail ? nflat - (size_t)avail : 0;
     }
 
-    frame_rewind(&f);
+    frame_begin(&f);
     frame_line(&f, "%s%s%s", kycg_ui_bold(), title, kycg_ui_reset());
 
     if (header) {
@@ -1133,6 +1165,7 @@ int kycg_ui_tree(const char *title, const char *header,
                kycg_ui_unicode() ? "←" : "left",
                kycg_ui_reset());
 
+    frame_finish(&f);
     fflush(stderr);
 
     char ch = 0;
@@ -1183,9 +1216,6 @@ int kycg_ui_tree(const char *title, const char *header,
       else if (ch == 'k') { if (cur) --cur; }
     }
   }
-
-  frame_rewind(&f);
-  fflush(stderr);
 
   for (size_t i = 0; i < n_roots; ++i) {
     for (size_t j = 0; j < node[i].kids.n; ++j) free(node[i].kids.rows[j]);
