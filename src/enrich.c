@@ -97,6 +97,25 @@ void kycg_result_pvalue(kycg_result_t *r, kycg_alt_t alt) {
 
 /* -------------------------------------------------------------------- FDR */
 
+static const char *nz(const char *s) { return s ? s : ""; }
+
+/**
+ * Do two rows share an FDR stratum?
+ *
+ * Always split by query sample: knowYourCG corrects one testEnrichment()
+ * result frame at a time, and that frame covers a single query. Rows from
+ * different samples — or from same-named samples in different .cg files —
+ * are separate families of tests. Then split by knowledgebase too, unless
+ * the caller asked for a single correction across knowledgebases.
+ */
+static int same_stratum(const kycg_result_t *a, const kycg_result_t *b,
+                        int by_group) {
+  if (strcmp(nz(a->query_file), nz(b->query_file)) != 0) return 0;
+  if (strcmp(nz(a->query), nz(b->query)) != 0) return 0;
+  if (by_group && strcmp(nz(a->group), nz(b->group)) != 0) return 0;
+  return 1;
+}
+
 void kycg_apply_fdr(kycg_result_t *res, size_t n, int by_group) {
   if (!n) return;
 
@@ -110,32 +129,23 @@ void kycg_apply_fdr(kycg_result_t *res, size_t n, int by_group) {
     fdr[i] = NAN;
   }
 
-  if (!by_group) {
-    for (size_t i = 0; i < n; ++i) idx[i] = i;
-    kycg_bh_log10(log10p, idx, n, fdr);
-  } else {
-    /* One pass per distinct group. Groups are few (one per knowledgebase
-     * file), so the quadratic scan is cheaper than building a hash. */
-    char **seen = malloc(n * sizeof(char *));
-    size_t n_seen = 0;
-    for (size_t i = 0; i < n; ++i) {
-      const char *g = res[i].group ? res[i].group : "";
-      int already = 0;
-      for (size_t s = 0; s < n_seen; ++s) {
-        if (strcmp(seen[s], g) == 0) { already = 1; break; }
-      }
-      if (already) continue;
-      seen[n_seen++] = (char *)g;
+  /* One pass per distinct stratum. Strata are few — the product of query
+   * samples and knowledgebases, not of rows — so a quadratic scan over rows
+   * costs less than building and tearing down a hash table. */
+  char *done = calloc(n, 1);
+  if (!done) { free(log10p); free(fdr); free(idx); return; }
 
-      size_t n_idx = 0;
-      for (size_t j = 0; j < n; ++j) {
-        const char *gj = res[j].group ? res[j].group : "";
-        if (strcmp(gj, g) == 0) idx[n_idx++] = j;
-      }
-      kycg_bh_log10(log10p, idx, n_idx, fdr);
+  for (size_t i = 0; i < n; ++i) {
+    if (done[i]) continue;
+    size_t n_idx = 0;
+    for (size_t j = i; j < n; ++j) {
+      if (done[j] || !same_stratum(&res[i], &res[j], by_group)) continue;
+      done[j] = 1;
+      idx[n_idx++] = j;
     }
-    free(seen);
+    kycg_bh_log10(log10p, idx, n_idx, fdr);
   }
+  free(done);
 
   for (size_t i = 0; i < n; ++i) res[i].log10_fdr = fdr[i];
 
@@ -146,6 +156,15 @@ void kycg_apply_fdr(kycg_result_t *res, size_t n, int by_group) {
 
 static int result_cmp(const void *a, const void *b) {
   const kycg_result_t *x = a, *y = b;
+
+  /* Keep each query's rows contiguous. R hands back one result frame per
+   * query and orders within it; interleaving samples by p-value would mix
+   * families of tests that were corrected separately, so that the FDR column
+   * no longer reads down the page as one coherent correction. */
+  int c = strcmp(nz(x->query_file), nz(y->query_file));
+  if (c) return c;
+  c = strcmp(nz(x->query), nz(y->query));
+  if (c) return c;
 
   /* Ascending log10 p-value; NaN last. */
   int xn = isnan(x->log10_p), yn = isnan(y->log10_p);
@@ -201,7 +220,7 @@ char *kycg_display_group(const char *db_file) {
 /* ------------------------------------------------------------------ output */
 
 void kycg_write_header(FILE *out) {
-  fputs("query\tdb_file\tdb\tgroup\t"
+  fputs("query_file\tquery\tdb_file\tdb\tgroup\t"
         "nU\tnQ\tnD\toverlap\t"
         "estimate\tlog10_p\tp_value\tfdr\tneglog10_fdr\t"
         "cf_jaccard\tcf_mcc\tcf_overlap\tcf_npmi\tcf_dice\t"
@@ -224,12 +243,13 @@ void kycg_write_results(FILE *out, const kycg_result_t *res, size_t n) {
   for (size_t i = 0; i < n; ++i) {
     const kycg_result_t *r = &res[i];
 
-    fprintf(out, "%s\t%s\t%s\t%s\t%" PRIu64 "\t%" PRIu64
+    fprintf(out, "%s\t%s\t%s\t%s\t%s\t%" PRIu64 "\t%" PRIu64
                  "\t%" PRIu64 "\t%" PRIu64,
-            r->query   ? r->query   : "NA",
-            r->db_file ? r->db_file : "NA",
-            r->db      ? r->db      : "NA",
-            r->group   ? r->group   : "NA",
+            r->query_file ? r->query_file : "NA",
+            r->query      ? r->query      : "NA",
+            r->db_file    ? r->db_file    : "NA",
+            r->db         ? r->db         : "NA",
+            r->group      ? r->group      : "NA",
             r->nU, r->nQ, r->nD, r->nDQ);
 
     put_d(out, r->estimate, "%.10g");
@@ -270,6 +290,7 @@ void kycg_write_results(FILE *out, const kycg_result_t *res, size_t n) {
 void kycg_results_free(kycg_result_t *res, size_t n) {
   if (!res) return;
   for (size_t i = 0; i < n; ++i) {
+    free(res[i].query_file);
     free(res[i].query);
     free(res[i].db_file);
     free(res[i].db);

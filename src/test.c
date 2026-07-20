@@ -159,9 +159,10 @@ static void run_pair(results_t *v, cdata_t *c_qry, cdata_t *c_mask,
   for (uint64_t i = 0; i < n_st; ++i) {
     kycg_result_t r = {0};
 
-    r.query   = strdup(st[i].sq ? st[i].sq : sq);
-    r.db_file = strdup(fname_mask);
-    r.db      = strdup(st[i].sm ? st[i].sm : sm);
+    r.query_file = strdup(fname_qry);
+    r.query      = strdup(st[i].sq ? st[i].sq : sq);
+    r.db_file    = strdup(fname_mask);
+    r.db         = strdup(st[i].sm ? st[i].sm : sm);
 
     /* The FDR stratum is the knowledgebase file. knowYourCG reaches the same
      * grouping from either direction: attr(db,"group") is set to the

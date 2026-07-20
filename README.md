@@ -66,11 +66,23 @@ knowledgebase.
 Output columns:
 
 ```
-query  db_file  db  group  nU  nQ  nD  overlap
+query_file  query  db_file  db  group  nU  nQ  nD  overlap
 estimate  log10_p  p_value  fdr  neglog10_fdr
 cf_jaccard  cf_mcc  cf_overlap  cf_npmi  cf_dice
 beta  depth
 ```
+
+The first eight are `yame summary`'s own columns, renamed; everything from
+`estimate` onward is what kycg adds. `Log2OddsRatio` becomes `estimate` and
+gains full precision — `yame` prints it at `%1.2f`, which is fine for eyeballing
+and too coarse to sort or plot by.
+
+**FDR is corrected within one query sample and one knowledgebase.** That is the
+family knowYourCG corrects over: `testEnrichment()` takes a single query and
+calls `p.adjust()` on that query's result frame, within `group`. Passing more
+samples or more knowledgebases in one invocation therefore does not change any
+FDR already reported. `-G` widens the stratum to all knowledgebases for a
+sample, matching `mtc_by_group=FALSE`.
 
 `neglog10_fdr` is precomputed because cinderplot has no `-log10()` transform in
 aesthetics and it is the y-axis of three separate plots.
@@ -131,6 +143,9 @@ The statistics are validated at two levels.
 against values produced by R's own `phyper()` and `p.adjust()`, across small,
 array-scale (~486K rows), whole-genome-scale (29M rows), and deep-tail
 (`log10 p ≈ -584141`) regimes. Worst observed relative error: **2.6e-16**.
+
+**Unit** — `tests/test_enrich.c` covers FDR stratification and the effect-size
+clamping edge cases (empty overlap, perfect containment, empty knowledgebase).
 
 **End to end** — `tests/validate_vs_R.R` re-derives every column of a real
 `kycg test` run using the same R calls knowYourCG makes, and compares:

@@ -35,10 +35,11 @@
  * struct and released by kycg_results_free().
  */
 typedef struct {
+  char *query_file; /* the .cg the sample came from, as displayed           */
   char *query;      /* sample name within the .cg                          */
   char *db_file;    /* knowledgebase file, as displayed                     */
   char *db;         /* record name within the knowledgebase                 */
-  char *group;      /* FDR stratum; see kycg_result_group()                 */
+  char *group;      /* knowledgebase grouping; part of the FDR stratum      */
 
   uint64_t nU;      /* universe                                             */
   uint64_t nQ;      /* query                                                */
@@ -73,16 +74,22 @@ void kycg_result_pvalue(kycg_result_t *r, kycg_alt_t alt);
 /**
  * Benjamini-Hochberg across `n` results, writing log10_fdr.
  *
- * When by_group is nonzero the correction is applied independently within
- * each distinct `group` string, which is what knowYourCG does by default
- * (mtc_by_group=TRUE). This is not cosmetic: correcting globally changes
- * every reported FDR.
+ * The correction is always applied within one query sample, because that is
+ * the unit knowYourCG corrects over: testEnrichment() takes a single query
+ * and calls p.adjust() on the result frame for that query alone. Pooling
+ * several samples into one correction would change every reported FDR.
+ *
+ * When by_group is nonzero the stratum is narrowed further to one
+ * knowledgebase, which is knowYourCG's default (mtc_by_group=TRUE). So the
+ * stratum is (query_file, query, group), or (query_file, query) when
+ * by_group is zero.
  */
 void kycg_apply_fdr(kycg_result_t *res, size_t n, int by_group);
 
 /**
- * Sort in knowYourCG's reporting order: ascending log10 p-value, ties broken
- * by descending |estimate|. Matches order(log10.p.value, -abs(estimate)).
+ * Sort in knowYourCG's reporting order — ascending log10 p-value, ties broken
+ * by descending |estimate|, matching order(log10.p.value, -abs(estimate)) —
+ * applied within each query sample, whose rows are kept contiguous.
  */
 void kycg_sort_results(kycg_result_t *res, size_t n);
 

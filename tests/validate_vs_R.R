@@ -59,9 +59,13 @@ bh_log10 <- function(lp) {
     q[o] <- out
     q
 }
+## The stratum is (query_file, query, group): knowYourCG corrects one
+## testEnrichment() frame at a time and that frame covers a single query, then
+## p.adjust runs within group inside it.
+stratum <- paste(res$query_file, res$query, res$group, sep = "\r")
 r_fdr <- rep(NA_real_, nrow(res))
-for (g in unique(res$group)) {
-    i <- which(res$group == g)
+for (g in unique(stratum)) {
+    i <- which(stratum == g)
     r_fdr[i] <- bh_log10(r_log10p[i])
 }
 
