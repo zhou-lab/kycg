@@ -52,12 +52,17 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/select.h>
 #include <unistd.h>
 #include <ctype.h>
 #include <time.h>
+#include <signal.h>
+#include <termios.h>
 #include <sys/time.h>
+#include <sys/ioctl.h>
 
 /* ------------------------------------------------------- capability probes */
 
@@ -149,6 +154,171 @@ static int term_cols(void) {
 /* Erase the current line, leaving the cursor at column 0. */
 static void clear_line(void) {
   fputs("\r\033[2K", stderr);
+}
+
+/* Terminal height, clamped. */
+static int term_rows(void) {
+  struct winsize ws;
+  if (ioctl(STDERR_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_row > 0)
+    return ws.ws_row;
+  const char *l = getenv("LINES");
+  int r = l ? atoi(l) : 0;
+  return r > 0 ? r : 24;
+}
+
+/* --------------------------------------------------------------- raw mode */
+
+/*
+ * The in-place widgets need keys as they are pressed, so the terminal goes
+ * into raw mode: no line buffering, no echo. That is a global change to
+ * something the user owns, and leaving it applied would hand back a shell
+ * with no echo and no working Ctrl-C -- so restoration is wired to atexit and
+ * to the fatal signals as well as to the normal return path.
+ */
+static struct termios saved_tio;
+static int raw_active = 0;
+static volatile sig_atomic_t interrupted = 0;
+
+static void raw_leave(void) {
+  if (!raw_active) return;
+  tcsetattr(STDIN_FILENO, TCSAFLUSH, &saved_tio);
+  fputs("\033[?25h", stderr);          /* cursor back on */
+  fflush(stderr);
+  raw_active = 0;
+}
+
+static void on_signal(int sig) {
+  interrupted = 1;
+  raw_leave();
+  signal(sig, SIG_DFL);
+  raise(sig);
+}
+
+static int raw_enter(void) {
+  if (!kycg_ui_interactive()) return -1;
+  if (tcgetattr(STDIN_FILENO, &saved_tio) != 0) return -1;
+
+  struct termios t = saved_tio;
+  t.c_lflag &= (tcflag_t)~(ICANON | ECHO);
+  t.c_cc[VMIN] = 1;
+  t.c_cc[VTIME] = 0;
+  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &t) != 0) return -1;
+
+  raw_active = 1;
+  interrupted = 0;
+
+  static int hooked = 0;
+  if (!hooked) {
+    atexit(raw_leave);
+    signal(SIGINT, on_signal);
+    signal(SIGTERM, on_signal);
+    hooked = 1;
+  }
+
+  fputs("\033[?25l", stderr);          /* hide the cursor while we draw */
+  fflush(stderr);
+  return 0;
+}
+
+/* ------------------------------------------------------------ key decoding */
+
+typedef enum {
+  K_NONE = 0, K_UP, K_DOWN, K_LEFT, K_RIGHT, K_PGUP, K_PGDN,
+  K_HOME, K_END, K_ENTER, K_SPACE, K_ESC, K_BACKSPACE, K_CHAR
+} keycode_t;
+
+/**
+ * One keypress. Arrow and navigation keys arrive as escape sequences
+ * (ESC [ A and friends); a bare ESC is distinguished from the start of a
+ * sequence by a short poll rather than by blocking, so pressing Escape does
+ * not hang waiting for a second byte that never comes.
+ */
+static keycode_t read_key(char *out) {
+  unsigned char c;
+  if (read(STDIN_FILENO, &c, 1) != 1) return K_NONE;
+
+  if (c == '\r' || c == '\n') return K_ENTER;
+  if (c == ' ')  return K_SPACE;
+  if (c == 127 || c == 8) return K_BACKSPACE;
+
+  if (c == 27) {
+    struct timeval tv = {0, 40000};    /* 40 ms is well above key repeat */
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+    if (select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv) <= 0) return K_ESC;
+
+    unsigned char a, b;
+    if (read(STDIN_FILENO, &a, 1) != 1) return K_ESC;
+    if (a != '[' && a != 'O') return K_ESC;
+    if (read(STDIN_FILENO, &b, 1) != 1) return K_ESC;
+
+    switch (b) {
+    case 'A': return K_UP;
+    case 'B': return K_DOWN;
+    case 'C': return K_RIGHT;
+    case 'D': return K_LEFT;
+    case 'H': return K_HOME;
+    case 'F': return K_END;
+    default: break;
+    }
+    if (b >= '0' && b <= '9') {        /* ESC [ n ~ */
+      unsigned char t;
+      if (read(STDIN_FILENO, &t, 1) != 1) return K_NONE;
+      switch (b) {
+      case '5': return K_PGUP;
+      case '6': return K_PGDN;
+      case '1': case '7': return K_HOME;
+      case '4': case '8': return K_END;
+      default: return K_NONE;
+      }
+    }
+    return K_NONE;
+  }
+
+  if (out) *out = (char)c;
+  return K_CHAR;
+}
+
+/* ----------------------------------------------------- in-place rendering */
+
+/*
+ * A frame is drawn as N lines and erased by moving the cursor back up N lines
+ * and clearing each one. Tracking the count we actually wrote -- rather than
+ * assuming it -- is what keeps the widget stable when the list is shorter than
+ * the viewport or the terminal is resized mid-run.
+ */
+typedef struct { int lines; } frame_t;
+
+static void frame_rewind(frame_t *f) {
+  if (f->lines > 0) fprintf(stderr, "\033[%dA", f->lines);
+  f->lines = 0;
+}
+
+static void frame_line(frame_t *f, const char *fmt, ...) {
+  va_list ap;
+  fputs("\r\033[2K", stderr);
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+  fputc('\n', stderr);
+  ++f->lines;
+}
+
+/* Truncate to `cols` display cells, ASCII-safe and multi-byte tolerant. */
+static void fit(const char *s, int cols, char *out, size_t outsz) {
+  int cells = 0;
+  size_t i = 0, o = 0;
+  while (s[i] && cells < cols && o + 4 < outsz) {
+    unsigned char c = (unsigned char)s[i];
+    size_t len = 1;
+    if      ((c & 0xE0) == 0xC0) len = 2;
+    else if ((c & 0xF0) == 0xE0) len = 3;
+    else if ((c & 0xF8) == 0xF0) len = 4;
+    for (size_t k = 0; k < len && s[i]; ++k) out[o++] = s[i++];
+    ++cells;
+  }
+  out[o] = '\0';
 }
 
 /* ------------------------------------------------------------- progress */
@@ -307,10 +477,195 @@ static void print_items(const char **items, const char **notes, size_t n) {
   }
 }
 
+/* ------------------------------------------------- the in-place selector */
+
+/**
+ * Shared engine for single- and multi-select.
+ *
+ * Draws a scrolling viewport with a cursor, redrawn in place on every
+ * keypress. `flags` carries the selection in and out for multi-select mode and
+ * is ignored for single-select. Returns the cursor index on accept, -1 on
+ * cancel, or -2 when the terminal cannot do this and the caller should fall
+ * back to the numbered prompt.
+ *
+ * The filter (/) matters more than it looks: a populated store lists dozens of
+ * sets, and scrolling to "TFBSrm" past thirty neighbours is worse than typing
+ * three characters.
+ */
+static long select_widget(const char *title, const char **items,
+                          const char **notes, size_t n, int *flags, int multi) {
+  if (!n) return -1;
+  if (!kycg_ui_fancy() || raw_enter() != 0) return -2;
+
+  size_t *view = malloc(n * sizeof(size_t));   /* indices passing the filter */
+  if (!view) { raw_leave(); return -2; }
+
+  char filter[128] = {0};
+  int filtering = 0;
+  size_t cur = 0, top = 0, nview = 0;
+  frame_t f = {0};
+  long result = -1;
+  int done = 0;
+
+  while (!done) {
+    /* Rebuild the visible subset. */
+    nview = 0;
+    for (size_t i = 0; i < n; ++i)
+      if (!filter[0] || strcasestr(items[i], filter)) view[nview++] = i;
+
+    if (cur >= nview) cur = nview ? nview - 1 : 0;
+
+    int rows = term_rows();
+    int cols = term_cols();
+    int avail = rows - 5;                       /* title, filter, footer, air */
+    if (avail < 3) avail = 3;
+    if ((size_t)avail > nview) avail = (int)nview;
+
+    if (cur < top) top = cur;
+    if (avail > 0 && cur >= top + (size_t)avail) top = cur - (size_t)avail + 1;
+    if (top + (size_t)avail > nview) top = nview > (size_t)avail
+                                          ? nview - (size_t)avail : 0;
+
+    frame_rewind(&f);
+
+    size_t chosen = 0;
+    if (multi) for (size_t i = 0; i < n; ++i) chosen += (size_t)(flags[i] != 0);
+
+    frame_line(&f, "%s%s%s", kycg_ui_bold(), title, kycg_ui_reset());
+
+    if (filtering || filter[0])
+      frame_line(&f, "  %sfilter:%s %s%s%s%s", kycg_ui_dim(), kycg_ui_reset(),
+                 kycg_ui_cyan(), filter, kycg_ui_reset(),
+                 filtering ? "_" : "");
+    else
+      frame_line(&f, "");
+
+    for (size_t k = 0; k < (size_t)avail; ++k) {
+      size_t vi = top + k;
+      if (vi >= nview) { frame_line(&f, ""); continue; }
+      size_t i = view[vi];
+
+      const char *mark = "  ";
+      if (multi) mark = flags[i] ? "[x]" : "[ ]";
+
+      char label[512];
+      int budget = cols - 10 - (notes && notes[i] ? (int)strlen(notes[i]) + 2 : 0);
+      if (budget < 12) budget = 12;
+      fit(items[i], budget, label, sizeof(label));
+
+      if (vi == cur)
+        frame_line(&f, "%s%s %s %s%s%s%s",
+                   kycg_ui_cyan(), kycg_ui_unicode() ? "❯" : ">",
+                   mark, kycg_ui_bold(), label, kycg_ui_reset(),
+                   notes && notes[i] ? "" : "");
+      else
+        frame_line(&f, "  %s %s%s%s", mark,
+                   kycg_ui_reset(), label, kycg_ui_reset());
+    }
+
+    /* Footer: what the keys do, and how much is selected. */
+    if (multi)
+      frame_line(&f, "%s  %zu/%zu shown  %s  %zu selected  %s  "
+                     "arrows move  space toggles  a/n all/none  / filter  "
+                     "enter accept  esc cancel%s",
+                 kycg_ui_dim(), nview, n, kycg_ui_bullet(), chosen,
+                 kycg_ui_bullet(), kycg_ui_reset());
+    else
+      frame_line(&f, "%s  %zu/%zu shown  %s  arrows move  / filter  "
+                     "enter select  esc cancel%s",
+                 kycg_ui_dim(), nview, n, kycg_ui_bullet(), kycg_ui_reset());
+
+    fflush(stderr);
+
+    char ch = 0;
+    keycode_t k = read_key(&ch);
+    if (interrupted) { result = -1; break; }
+
+    if (filtering) {
+      /* While filtering, printable keys extend the pattern. */
+      switch (k) {
+      case K_CHAR: {
+        size_t l = strlen(filter);
+        if (l + 1 < sizeof(filter)) { filter[l] = ch; filter[l+1] = '\0'; }
+        cur = top = 0;
+        continue;
+      }
+      case K_BACKSPACE: {
+        size_t l = strlen(filter);
+        if (l) filter[l-1] = '\0';
+        cur = top = 0;
+        continue;
+      }
+      case K_ESC:   filter[0] = '\0'; filtering = 0; cur = top = 0; continue;
+      case K_ENTER: filtering = 0; continue;
+      default: break;      /* arrows still navigate while filtering */
+      }
+    }
+
+    switch (k) {
+    case K_UP:   if (cur) --cur; break;
+    case K_DOWN: if (cur + 1 < nview) ++cur; break;
+    case K_PGUP: cur = (cur > (size_t)avail) ? cur - (size_t)avail : 0; break;
+    case K_PGDN: cur += (size_t)avail; if (cur >= nview) cur = nview ? nview-1 : 0; break;
+    case K_HOME: cur = 0; break;
+    case K_END:  cur = nview ? nview - 1 : 0; break;
+
+    case K_SPACE:
+      if (multi && nview) { size_t i = view[cur]; flags[i] = !flags[i]; }
+      if (cur + 1 < nview) ++cur;
+      break;
+
+    case K_ENTER:
+      if (!nview) break;
+      result = (long)view[cur];
+      done = 1;
+      break;
+
+    case K_ESC:
+      result = -1;
+      done = 1;
+      break;
+
+    case K_CHAR:
+      if (ch == 'j') { if (cur + 1 < nview) ++cur; }
+      else if (ch == 'k') { if (cur) --cur; }
+      else if (ch == '/') { filtering = 1; }
+      else if (ch == 'q') { result = -1; done = 1; }
+      else if (multi && ch == 'a') { for (size_t i = 0; i < n; ++i) flags[i] = 1; }
+      else if (multi && ch == 'n') { for (size_t i = 0; i < n; ++i) flags[i] = 0; }
+      else if (multi && ch == ' ') { /* handled above */ }
+      break;
+
+    case K_NONE:
+      result = -1;
+      done = 1;
+      break;
+
+    default: break;
+    }
+  }
+
+  /* Erase the widget; the caller prints whatever summary is worth keeping. */
+  frame_rewind(&f);
+  fflush(stderr);
+  free(view);
+  raw_leave();
+  return result;
+}
+
 long kycg_ui_choose(const char *title, const char **items, const char **notes,
                     size_t n) {
   if (!n) return -1;
 
+  long r = select_widget(title, items, notes, n, NULL, 0);
+  if (r != -2) {
+    if (r >= 0)
+      fprintf(stderr, "%s%s%s %s%s%s\n", kycg_ui_green(), kycg_ui_check(),
+              kycg_ui_reset(), kycg_ui_bold(), items[r], kycg_ui_reset());
+    return r;
+  }
+
+  /* Fallback: no usable terminal, so ask in one line. */
   fprintf(stderr, "\n%s%s%s\n", kycg_ui_bold(), title, kycg_ui_reset());
   print_items(items, notes, n);
 
@@ -382,7 +737,22 @@ int *kycg_ui_multiselect(const char *title, const char **items,
 
   int *flags = calloc(n, sizeof(int));
   if (!flags) return NULL;
+  if (default_all) for (size_t i = 0; i < n; ++i) flags[i] = 1;
 
+  long r = select_widget(title, items, notes, n, flags, 1);
+  if (r != -2) {
+    if (r < 0) { free(flags); return NULL; }
+    size_t chosen = 0;
+    for (size_t i = 0; i < n; ++i) chosen += (size_t)(flags[i] != 0);
+    if (!chosen) { free(flags); return NULL; }
+    fprintf(stderr, "%s%s%s %s%zu selected%s\n", kycg_ui_green(),
+            kycg_ui_check(), kycg_ui_reset(), kycg_ui_bold(), chosen,
+            kycg_ui_reset());
+    return flags;
+  }
+
+  /* Fallback: no usable terminal, so ask in one line. */
+  for (size_t i = 0; i < n; ++i) flags[i] = 0;
   fprintf(stderr, "\n%s%s%s\n", kycg_ui_bold(), title, kycg_ui_reset());
   print_items(items, notes, n);
 
@@ -411,4 +781,164 @@ int *kycg_ui_multiselect(const char *title, const char **items,
                     "numbers between 1 and %zu.%s\n",
             kycg_ui_yellow(), n, kycg_ui_reset());
   }
+}
+
+/* ---------------------------------------------------------- the browser */
+
+/**
+ * Scrolling viewer for tab-separated rows, with the header pinned.
+ *
+ * Column widths are measured over the whole table once, so columns do not
+ * jitter as the viewport scrolls -- the thing that makes a naive pager
+ * unreadable for tabular data.
+ */
+int kycg_ui_browse(const char *title, const char *header,
+                   const char **rows, size_t n) {
+  if (!n || !kycg_ui_fancy()) return -1;
+  if (raw_enter() != 0) return -1;
+
+  /* Measure: at most 8 columns, width = widest cell, capped. */
+  enum { MAXCOL = 8 };
+  int w[MAXCOL] = {0};
+  int ncol = 0;
+
+  const char *all_first = header ? header : rows[0];
+  for (const char *p = all_first; ; ) {
+    const char *tab = strchr(p, '\t');
+    if (ncol < MAXCOL) ++ncol;
+    if (!tab) break;
+    p = tab + 1;
+  }
+
+  for (size_t r = 0; r <= n; ++r) {
+    const char *line = (r == 0) ? (header ? header : rows[0])
+                                : rows[r - 1];
+    if (r == 0 && !header) continue;
+    int c = 0;
+    for (const char *p = line; c < ncol; ++c) {
+      const char *tab = strchr(p, '\t');
+      int len = (int)(tab ? (size_t)(tab - p) : strlen(p));
+      if (len > w[c]) w[c] = len;
+      if (!tab) break;
+      p = tab + 1;
+    }
+  }
+  for (int c = 0; c < ncol; ++c) { if (w[c] > 34) w[c] = 34; w[c] += 2; }
+
+  size_t top = 0;
+  frame_t f = {0};
+  char filter[128] = {0};
+  int filtering = 0;
+
+  size_t *view = malloc(n * sizeof(size_t));
+  if (!view) { raw_leave(); return -1; }
+
+  for (;;) {
+    size_t nview = 0;
+    for (size_t i = 0; i < n; ++i)
+      if (!filter[0] || strcasestr(rows[i], filter)) view[nview++] = i;
+
+    int rowsz = term_rows();
+    int cols = term_cols();
+    int avail = rowsz - 5;
+    if (avail < 3) avail = 3;
+    /* Never taller than the table: padding a nine-row listing out to a full
+     * screen of blanks looks broken. */
+    if ((size_t)avail > nview) avail = (int)nview;
+
+    if (avail > 0 && top + (size_t)avail > nview)
+      top = nview > (size_t)avail ? nview - (size_t)avail : 0;
+
+    frame_rewind(&f);
+    frame_line(&f, "%s%s%s", kycg_ui_bold(), title, kycg_ui_reset());
+
+    if (header) {
+      char buf[1024]; size_t o = 0;
+      int c = 0;
+      for (const char *p = header; c < ncol && o + 40 < sizeof(buf); ++c) {
+        const char *tab = strchr(p, '\t');
+        int len = (int)(tab ? (size_t)(tab - p) : strlen(p));
+        if (len > w[c] - 2) len = w[c] - 2;
+        o += (size_t)snprintf(buf + o, sizeof(buf) - o, "%-*.*s", w[c], len, p);
+        if (!tab) break;
+        p = tab + 1;
+      }
+      char cut[1024];
+      fit(buf, cols - 2, cut, sizeof(cut));
+      frame_line(&f, "%s%s%s", kycg_ui_dim(), cut, kycg_ui_reset());
+    } else {
+      frame_line(&f, "");
+    }
+
+    for (int k = 0; k < avail; ++k) {
+      size_t vi = top + (size_t)k;
+      if (vi >= nview) { frame_line(&f, ""); continue; }
+
+      char buf[1024]; size_t o = 0;
+      int c = 0;
+      for (const char *p = rows[view[vi]]; c < ncol && o + 40 < sizeof(buf); ++c) {
+        const char *tab = strchr(p, '\t');
+        int len = (int)(tab ? (size_t)(tab - p) : strlen(p));
+        if (len > w[c] - 2) len = w[c] - 2;
+        o += (size_t)snprintf(buf + o, sizeof(buf) - o, "%-*.*s", w[c], len, p);
+        if (!tab) break;
+        p = tab + 1;
+      }
+      char cut[1024];
+      fit(buf, cols - 2, cut, sizeof(cut));
+      frame_line(&f, "  %s", cut);
+    }
+
+    if (filtering || filter[0])
+      frame_line(&f, "%s  filter: %s%s%s%s   %zu/%zu   arrows scroll  "
+                     "esc clear  q quit%s",
+                 kycg_ui_dim(), kycg_ui_cyan(), filter,
+                 filtering ? "_" : "", kycg_ui_dim(), nview, n,
+                 kycg_ui_reset());
+    else
+      frame_line(&f, "%s  %zu rows   arrows scroll  / filter  q quit%s",
+                 kycg_ui_dim(), n, kycg_ui_reset());
+
+    fflush(stderr);
+
+    char ch = 0;
+    keycode_t k = read_key(&ch);
+    if (interrupted) break;
+
+    if (filtering) {
+      if (k == K_CHAR) {
+        size_t l = strlen(filter);
+        if (l + 1 < sizeof(filter)) { filter[l] = ch; filter[l+1] = '\0'; }
+        top = 0; continue;
+      }
+      if (k == K_BACKSPACE) {
+        size_t l = strlen(filter);
+        if (l) filter[l-1] = '\0';
+        top = 0; continue;
+      }
+      if (k == K_ENTER) { filtering = 0; continue; }
+      if (k == K_ESC)   { filter[0] = '\0'; filtering = 0; top = 0; continue; }
+    }
+
+    if (k == K_DOWN) { if (top + 1 < nview) ++top; }
+    else if (k == K_UP) { if (top) --top; }
+    else if (k == K_PGDN) { top += (size_t)avail; }
+    else if (k == K_PGUP) { top = (top > (size_t)avail) ? top - (size_t)avail : 0; }
+    else if (k == K_HOME) top = 0;
+    else if (k == K_END)  top = nview > (size_t)avail ? nview - (size_t)avail : 0;
+    else if (k == K_ESC) { if (filter[0]) { filter[0] = '\0'; top = 0; } else break; }
+    else if (k == K_NONE) break;
+    else if (k == K_CHAR) {
+      if (ch == 'q') break;
+      else if (ch == 'j') { if (top + 1 < nview) ++top; }
+      else if (ch == 'k') { if (top) --top; }
+      else if (ch == '/') filtering = 1;
+    }
+  }
+
+  frame_rewind(&f);
+  fflush(stderr);
+  free(view);
+  raw_leave();
+  return 0;
 }

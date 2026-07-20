@@ -114,12 +114,22 @@ row-count check anyway — so the picker turns that late error into a list you
 cannot pick wrong from:
 
 ```
-Knowledgebases matching 21,867,837 rows (29 of 34 in the store)
-   1  mm10/Blacklist.20220304.cm
-   2  mm10/CGI.20220904.cm
-   ...
-  select: 'all', 'none', or a list like 1-5,8  [all]
+Knowledgebases matching 21,867,837 rows (29 of 35 in the store)
+
+  [ ] mm10/Blacklist.20220304.cm
+  [x] mm10/CGI.20220904.cm
+❯ [x] mm10/ChromHMM.20220414.cm
+  [ ] mm10/ChromHMMfullStack.20231222.cm
+  ...
+  29/29 shown · 2 selected · arrows move  space toggles  a/n all/none
+  / filter  enter accept  esc cancel
 ```
+
+The picker and `kycg list` both render in place: arrows or `j`/`k` to move,
+`/` to filter, `q` to quit. On a terminal that cannot support it — `NO_COLOR`,
+`TERM=dumb`, a non-UTF-8 locale — they degrade to a numbered prompt and plain
+text with the same information. `kycg list` writes plain TSV whenever stdout is
+redirected, so piping into `cut` or `awk` is unaffected.
 
 ```
     -m FILE   knowledgebase (.cm) [required]; repeatable

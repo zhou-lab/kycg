@@ -192,12 +192,19 @@ $ kycg <span class="sub">fetch</span> -o CGI,ChromHMM hg38</code></pre>
     <pre><code>$ kycg <span class="sub">test</span> onecell.cg
 
 Knowledgebases matching 21,867,837 rows
-  (29 of 34 in the store)
-   1  mm10/Blacklist.20220304.cm
-   2  mm10/CGI.20220904.cm
-   3  mm10/ChromHMM.20220414.cm
-   …
-  select: 'all', 'none', or a list like 1-5,8  [all]</code></pre>
+  (29 of 35 in the store)
+
+  [ ] mm10/Blacklist.20220304.cm
+  [x] mm10/CGI.20220904.cm
+<span class="sub">❯</span> [x] mm10/ChromHMM.20220414.cm
+  [ ] mm10/ChromHMMfullStack…cm
+  <span class="cm">…</span>
+  <span class="cm">arrows move · space toggles · / filter</span></code></pre>
+    <p style="margin-top:11px">The picker and <code class="inl">kycg list</code> render in
+      place — arrows or <code class="inl">j</code>/<code class="inl">k</code>,
+      <code class="inl">/</code> to filter. Both fall back to plain numbered text under
+      <code class="inl">NO_COLOR</code> or <code class="inl">TERM=dumb</code>, and
+      <code class="inl">list</code> writes TSV whenever stdout is redirected.</p>
     <div class="note">Testing against 30 knowledgebases in 30 processes decompresses the
       query 30 times. Pooling them decompresses it <b>once</b>.</div>
   </section>

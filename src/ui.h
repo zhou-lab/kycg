@@ -101,18 +101,35 @@ int kycg_ui_confirm(const char *question, int default_yes);
 char *kycg_ui_ask(const char *question, const char *def);
 
 /**
- * Numbered single-choice menu. Returns the chosen index, or -1 on EOF.
+ * Single-choice menu. Returns the chosen index, or -1 if cancelled.
  * `notes` may be NULL; when given, notes[i] is shown dimmed after items[i].
+ *
+ * On a capable terminal this is an in-place cursor list navigated with the
+ * arrow keys; otherwise it degrades to a numbered prompt.
  */
 long kycg_ui_choose(const char *title, const char **items, const char **notes,
                     size_t n);
 
 /**
- * Numbered multi-select accepting "all", "none", and comma/range lists such
- * as "1-5,8,12". Returns a malloc'd array of n flags, or NULL on EOF.
- * `preselected` may be NULL (meaning all).
+ * Multi-select. Returns a malloc'd array of n flags, or NULL if cancelled.
+ *
+ * In-place on a capable terminal: arrows or j/k to move, space to toggle,
+ * a/n for all/none, / to filter, enter to accept. Otherwise a numbered prompt
+ * accepting "all", "none", and comma/range lists such as "1-5,8,12".
  */
 int *kycg_ui_multiselect(const char *title, const char **items,
                          const char **notes, size_t n, int default_all);
+
+/**
+ * Scrollable in-place viewer for tabular output.
+ *
+ * `header` is a column header held fixed above the rows; it and `rows` are
+ * tab-separated and rendered into aligned columns. Returns 0 when the viewer
+ * ran, -1 when the terminal cannot support it and the caller should print
+ * plainly instead. Never call this when stdout is redirected: piped output
+ * must stay machine-readable.
+ */
+int kycg_ui_browse(const char *title, const char *header,
+                   const char **rows, size_t n);
 
 #endif /* _KYCG_UI_H */

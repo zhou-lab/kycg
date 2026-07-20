@@ -68,6 +68,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
@@ -925,6 +926,51 @@ static int list_usage(void) {
   return 1;
 }
 
+/*
+ * `kycg list` output is buffered rather than printed directly, so it can be
+ * handed to the in-place browser when someone is watching and written as plain
+ * TSV when it is not. The distinction is stdout: a redirected stdout means the
+ * caller wants data, and turning that into a full-screen widget would break
+ * every script that pipes this into cut or awk.
+ */
+typedef struct { char **a; size_t n, m; } rows_t;
+
+static void rows_push(rows_t *r, const char *fmt, ...) {
+  if (r->n == r->m) {
+    size_t want = r->m ? r->m * 2 : 64;
+    char **v = realloc(r->a, want * sizeof(char *));
+    if (!v) return;
+    r->a = v; r->m = want;
+  }
+  char buf[2048];
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, ap);
+  va_end(ap);
+  r->a[r->n++] = strdup(buf);
+}
+
+static void rows_free(rows_t *r) {
+  for (size_t i = 0; i < r->n; ++i) free(r->a[i]);
+  free(r->a);
+  memset(r, 0, sizeof(*r));
+}
+
+/** Browse if stdout is a terminal, else write TSV. `comment` is a leading
+ *  '#' line preserved in plain mode and folded into the title when browsing. */
+static void rows_emit(rows_t *r, const char *comment, const char *header) {
+  if (isatty(STDOUT_FILENO) &&
+      kycg_ui_browse(comment ? comment : "kycg list", header,
+                     (const char **)r->a, r->n) == 0) {
+    rows_free(r);
+    return;
+  }
+  if (comment) printf("# %s\n", comment);
+  if (header) printf("%s\n", header);
+  for (size_t i = 0; i < r->n; ++i) printf("%s\n", r->a[i]);
+  rows_free(r);
+}
+
 static uint64_t count_cached(const char *dir) {
   char sums[4600];
   snprintf(sums, sizeof(sums), "%s/%s", dir, KYCG_IA_SUMS_FILE);
@@ -970,31 +1016,36 @@ int main_list(int argc, char *argv[]) {
       const kycg_array_reg_t *ar = find_array(target);
 
       if (sr) {
-        char dir[4096];
+        char dir[4096], title[256];
         snprintf(dir, sizeof(dir), "%s/%s", root, sr->genome);
-        printf("# %s -- Zenodo %s (doi %s)\n", sr->genome, sr->record, sr->doi);
-        printf("set\tfile\tsize\tcached\n");
+        snprintf(title, sizeof(title), "%s -- Zenodo %s (doi %s)",
+                 sr->genome, sr->record, sr->doi);
+
+        rows_t rows = {0};
         for (const kycg_zfile_t *f = sr->files; f->name; ++f) {
           char setn[256], path[4400], hb[24];
           set_name_of(f->name, setn, sizeof(setn));
           snprintf(path, sizeof(path), "%s/%s", dir, f->name);
-          printf("%s\t%s\t%s\t%s\n", setn, f->name,
-                 kycg_ui_human(f->size, hb, sizeof(hb)),
-                 kycg_store_is_file(path) ? "yes" : "no");
+          rows_push(&rows, "%s\t%s\t%s\t%s", setn, f->name,
+                    kycg_ui_human(f->size, hb, sizeof(hb)),
+                    kycg_store_is_file(path) ? "yes" : "no");
         }
+        rows_emit(&rows, title, "set\tfile\tsize\tcached");
       } else if (ar) {
-        char dir[4096];
+        char dir[4096], title[256];
         snprintf(dir, sizeof(dir), "%s/%s/KYCG", root, ar->platform);
         char sums[4400];
         snprintf(sums, sizeof(sums), "%s/%s", dir, KYCG_IA_SUMS_FILE);
+        snprintf(title, sizeof(title), "%s -- InfiniumAnnotation tag %s",
+                 ar->platform, KYCG_IA_TAG);
 
-        printf("# %s -- InfiniumAnnotation tag %s\n", ar->platform, KYCG_IA_TAG);
         FILE *fp = fopen(sums, "rb");
         if (!fp) {
-          printf("# not fetched yet; run: kycg fetch %s\n", ar->platform);
+          printf("# %s\n# not fetched yet; run: kycg fetch %s\n",
+                 title, ar->platform);
           continue;
         }
-        printf("set\tfile\tcached\n");
+        rows_t rows = {0};
         char line[1024];
         while (fgets(line, sizeof(line), fp)) {
           char *nm = strstr(line, "  ");
@@ -1006,10 +1057,11 @@ int main_list(int argc, char *argv[]) {
           char setn[256], path[4400];
           set_name_of(nm, setn, sizeof(setn));
           snprintf(path, sizeof(path), "%s/%s", dir, nm);
-          printf("%s\t%s\t%s\n", setn, nm,
-                 kycg_store_is_file(path) ? "yes" : "no");
+          rows_push(&rows, "%s\t%s\t%s", setn, nm,
+                    kycg_store_is_file(path) ? "yes" : "no");
         }
         fclose(fp);
+        rows_emit(&rows, title, "set\tfile\tcached");
       } else {
         fprintf(stderr, "kycg list: '%s' is not a known platform or genome.\n",
                 target);
@@ -1019,15 +1071,7 @@ int main_list(int argc, char *argv[]) {
     return 0;
   }
 
-  printf("# store: %s\n", root);
-  printf("target\tkind\tsource\tcached_sets\n");
-
-  for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform; ++r) {
-    char dir[4096];
-    snprintf(dir, sizeof(dir), "%s/%s/KYCG", root, r->platform);
-    printf("%s\tarray\tInfiniumAnnotation@%s\t%" PRIu64 "\n",
-           r->platform, KYCG_IA_TAG, count_cached(dir));
-  }
+  rows_t rows = {0};
 
   for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome; ++r) {
     char dir[4096];
@@ -1042,9 +1086,20 @@ int main_list(int argc, char *argv[]) {
       snprintf(path, sizeof(path), "%s/%s", dir, f->name);
       if (kycg_store_is_file(path)) ++have;
     }
-    printf("%s\tsequencing\tzenodo:%s\t%" PRIu64 "/%" PRIu64 "\n",
-           r->genome, r->record, have, avail);
+    rows_push(&rows, "%s\tsequencing\tzenodo:%s\t%" PRIu64 "/%" PRIu64,
+              r->genome, r->record, have, avail);
   }
+
+  for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform; ++r) {
+    char dir[4096];
+    snprintf(dir, sizeof(dir), "%s/%s/KYCG", root, r->platform);
+    rows_push(&rows, "%s\tarray\tInfiniumAnnotation@%s\t%" PRIu64,
+              r->platform, KYCG_IA_TAG, count_cached(dir));
+  }
+
+  char title[4200];
+  snprintf(title, sizeof(title), "store: %s", root);
+  rows_emit(&rows, title, "target\tkind\tsource\tcached_sets");
 
   return 0;
 }
