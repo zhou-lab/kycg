@@ -305,7 +305,7 @@ kycg <span class="sub">test</span> -m $D/ChromHMM.20220414.cm -m $D/CGI.20220904
     that is exactly why <code class="inl">kycg test</code> checks row counts.</p>
   <div class="cols">
     <div>
-      <h3>Sequencing — Zenodo, per genome</h3>
+      <h3>Whole genome — Zenodo, one record each</h3>
       <div class="scroll"><table class="t">
         <tr><th>Target</th><th>Sets</th><th>Size</th><th>Source</th></tr>
         <tr><td><code>hg38</code></td><td>33</td><td>363 MB</td><td>zenodo:18175838</td></tr>
@@ -346,7 +346,7 @@ kycg <span class="sub">test</span> -m $D/ChromHMM.20220414.cm -m $D/CGI.20220904
       <pre><code>{ "MSA", "cc63264354f71f43…" }</code></pre>
     </div>
     <div>
-      <h3>Sequencing — a pinned md5 list</h3>
+      <h3>Whole genome — a pinned md5 list</h3>
       <p style="font-size:.79rem;color:var(--muted);margin:0 0 8px">Zenodo has no manifest to
         chain from and publishes only md5, so each file's size and md5 are pinned individually.
         md5's collision weakness would matter if the digest travelled <i>with</i> the file —

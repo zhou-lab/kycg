@@ -650,7 +650,7 @@ static int wizard(fetch_conf_t *conf, char *target_out, size_t target_sz,
       bytes += f->size;
     }
     char hb[24];
-    snprintf(notebuf[n], sizeof(notebuf[n]), "sequencing  %zu sets, %s",
+    snprintf(notebuf[n], sizeof(notebuf[n]), "whole genome  %zu sets, %s",
              sets, kycg_ui_human(bytes, hb, sizeof(hb)));
     items[n] = r->genome;
     notes[n] = notebuf[n];
@@ -1086,7 +1086,7 @@ int main_list(int argc, char *argv[]) {
       snprintf(path, sizeof(path), "%s/%s", dir, f->name);
       if (kycg_store_is_file(path)) ++have;
     }
-    rows_push(&rows, "%s\tsequencing\tzenodo:%s\t%" PRIu64 "/%" PRIu64,
+    rows_push(&rows, "%s\twhole genome\tzenodo:%s\t%" PRIu64 "/%" PRIu64,
               r->genome, r->record, have, avail);
   }
 

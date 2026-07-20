@@ -825,7 +825,16 @@ int kycg_ui_browse(const char *title, const char *header,
   }
   for (int c = 0; c < ncol; ++c) { if (w[c] > 34) w[c] = 34; w[c] += 2; }
 
-  size_t top = 0;
+  /*
+   * The viewport tracks a cursor rather than a scroll offset.
+   *
+   * Scrolling alone is not enough: whenever the table fits on screen -- nine
+   * targets in `kycg list`, or a 44-row listing in a tall terminal -- there is
+   * nothing to scroll, so every arrow key becomes a no-op while the footer
+   * still advertises them. A cursor always moves, and the view follows it only
+   * when it has to.
+   */
+  size_t top = 0, cur = 0;
   frame_t f = {0};
   char filter[128] = {0};
   int filtering = 0;
@@ -838,6 +847,8 @@ int kycg_ui_browse(const char *title, const char *header,
     for (size_t i = 0; i < n; ++i)
       if (!filter[0] || strcasestr(rows[i], filter)) view[nview++] = i;
 
+    if (cur >= nview) cur = nview ? nview - 1 : 0;
+
     int rowsz = term_rows();
     int cols = term_cols();
     int avail = rowsz - 5;
@@ -846,8 +857,13 @@ int kycg_ui_browse(const char *title, const char *header,
      * screen of blanks looks broken. */
     if ((size_t)avail > nview) avail = (int)nview;
 
-    if (avail > 0 && top + (size_t)avail > nview)
-      top = nview > (size_t)avail ? nview - (size_t)avail : 0;
+    /* Keep the cursor in view, scrolling only as far as needed. */
+    if (avail > 0) {
+      if (cur < top) top = cur;
+      if (cur >= top + (size_t)avail) top = cur - (size_t)avail + 1;
+      if (top + (size_t)avail > nview)
+        top = nview > (size_t)avail ? nview - (size_t)avail : 0;
+    }
 
     frame_rewind(&f);
     frame_line(&f, "%s%s%s", kycg_ui_bold(), title, kycg_ui_reset());
@@ -864,8 +880,10 @@ int kycg_ui_browse(const char *title, const char *header,
         p = tab + 1;
       }
       char cut[1024];
-      fit(buf, cols - 2, cut, sizeof(cut));
-      frame_line(&f, "%s%s%s", kycg_ui_dim(), cut, kycg_ui_reset());
+      fit(buf, cols - 4, cut, sizeof(cut));
+      /* Indented by the width of the cursor marker, so the header sits over
+       * the columns it names rather than two cells to their left. */
+      frame_line(&f, "  %s%s%s", kycg_ui_dim(), cut, kycg_ui_reset());
     } else {
       frame_line(&f, "");
     }
@@ -885,19 +903,29 @@ int kycg_ui_browse(const char *title, const char *header,
         p = tab + 1;
       }
       char cut[1024];
-      fit(buf, cols - 2, cut, sizeof(cut));
-      frame_line(&f, "  %s", cut);
+      fit(buf, cols - 4, cut, sizeof(cut));
+
+      if (vi == cur)
+        frame_line(&f, "%s%s%s %s%s%s", kycg_ui_cyan(),
+                   kycg_ui_unicode() ? "❯" : ">", kycg_ui_reset(),
+                   kycg_ui_bold(), cut, kycg_ui_reset());
+      else
+        frame_line(&f, "  %s", cut);
     }
 
+    /* Say "scroll" only when there is something off screen to scroll to. */
+    const char *motion = ((size_t)avail < nview) ? "arrows scroll" : "arrows move";
+
     if (filtering || filter[0])
-      frame_line(&f, "%s  filter: %s%s%s%s   %zu/%zu   arrows scroll  "
+      frame_line(&f, "%s  filter: %s%s%s%s   %zu/%zu   %s  "
                      "esc clear  q quit%s",
                  kycg_ui_dim(), kycg_ui_cyan(), filter,
-                 filtering ? "_" : "", kycg_ui_dim(), nview, n,
+                 filtering ? "_" : "", kycg_ui_dim(), nview, n, motion,
                  kycg_ui_reset());
     else
-      frame_line(&f, "%s  %zu rows   arrows scroll  / filter  q quit%s",
-                 kycg_ui_dim(), n, kycg_ui_reset());
+      frame_line(&f, "%s  row %zu of %zu   %s  / filter  q quit%s",
+                 kycg_ui_dim(), nview ? cur + 1 : 0, nview, motion,
+                 kycg_ui_reset());
 
     fflush(stderr);
 
@@ -909,29 +937,29 @@ int kycg_ui_browse(const char *title, const char *header,
       if (k == K_CHAR) {
         size_t l = strlen(filter);
         if (l + 1 < sizeof(filter)) { filter[l] = ch; filter[l+1] = '\0'; }
-        top = 0; continue;
+        cur = top = 0; continue;
       }
       if (k == K_BACKSPACE) {
         size_t l = strlen(filter);
         if (l) filter[l-1] = '\0';
-        top = 0; continue;
+        cur = top = 0; continue;
       }
       if (k == K_ENTER) { filtering = 0; continue; }
-      if (k == K_ESC)   { filter[0] = '\0'; filtering = 0; top = 0; continue; }
+      if (k == K_ESC)   { filter[0] = '\0'; filtering = 0; cur = top = 0; continue; }
     }
 
-    if (k == K_DOWN) { if (top + 1 < nview) ++top; }
-    else if (k == K_UP) { if (top) --top; }
-    else if (k == K_PGDN) { top += (size_t)avail; }
-    else if (k == K_PGUP) { top = (top > (size_t)avail) ? top - (size_t)avail : 0; }
-    else if (k == K_HOME) top = 0;
-    else if (k == K_END)  top = nview > (size_t)avail ? nview - (size_t)avail : 0;
-    else if (k == K_ESC) { if (filter[0]) { filter[0] = '\0'; top = 0; } else break; }
+    if (k == K_DOWN) { if (cur + 1 < nview) ++cur; }
+    else if (k == K_UP) { if (cur) --cur; }
+    else if (k == K_PGDN) { cur += (size_t)avail; if (cur >= nview) cur = nview ? nview - 1 : 0; }
+    else if (k == K_PGUP) { cur = (cur > (size_t)avail) ? cur - (size_t)avail : 0; }
+    else if (k == K_HOME) cur = 0;
+    else if (k == K_END)  cur = nview ? nview - 1 : 0;
+    else if (k == K_ESC) { if (filter[0]) { filter[0] = '\0'; cur = top = 0; } else break; }
     else if (k == K_NONE) break;
     else if (k == K_CHAR) {
       if (ch == 'q') break;
-      else if (ch == 'j') { if (top + 1 < nview) ++top; }
-      else if (ch == 'k') { if (top) --top; }
+      else if (ch == 'j') { if (cur + 1 < nview) ++cur; }
+      else if (ch == 'k') { if (cur) --cur; }
       else if (ch == '/') filtering = 1;
     }
   }
