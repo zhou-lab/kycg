@@ -1,0 +1,3 @@
+[submodule "external/YAME"]
+	path = external/YAME
+	url = https://github.com/zhou-lab/YAME.git

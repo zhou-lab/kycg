@@ -1,0 +1,13 @@
+# build products
+*.o
+*.a
+/kycg
+
+# test binaries (tests/*.c compile to extensionless binaries beside them)
+/tests/test_hypergeo
+
+# editor / OS
+.DS_Store
+*~
+compile_commands.json
+.cache/
