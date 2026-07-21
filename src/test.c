@@ -114,8 +114,16 @@ static int usage(void) {
           KYCG_H_TITLE, KYCG_H_OFF, KYCG_H_NOTE, KYCG_H_OFF);
 
   fprintf(o, "%sUsage%s\n", KYCG_H_TITLE, KYCG_H_OFF);
-  fprintf(o, "    kycg test [options] -m %s<knowledgebase.cm>%s %s<query.cg>%s [...]\n\n",
+  fprintf(o, "    kycg test [options] -m %s<knowledgebase>%s %s<query.cg>%s [...]\n\n",
           KYCG_H_KEY, KYCG_H_OFF, KYCG_H_KEY, KYCG_H_OFF);
+  fprintf(o, "    %sA knowledgebase is a path, or a set named the way fetch names it:%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "      %s-m mm10:CGI%s          one set from the store\n",
+          KYCG_H_KEY, KYCG_H_OFF);
+  fprintf(o, "      %s-m mm10:CGI,ChromHMM%s two of them\n",
+          KYCG_H_KEY, KYCG_H_OFF);
+  fprintf(o, "      %s-m mm10%s              everything cached for that target\n\n",
+          KYCG_H_KEY, KYCG_H_OFF);
   fprintf(o, "    %sOne row per (query sample, knowledgebase record): the 2x2 counts,%s\n",
           KYCG_H_NOTE, KYCG_H_OFF);
   fprintf(o, "    %sa one-sided hypergeometric tail in log10, six effect sizes, and a%s\n",
@@ -125,7 +133,7 @@ static int usage(void) {
 
   fprintf(o, "%sOptions%s\n", KYCG_H_TITLE, KYCG_H_OFF);
   struct { const char *f, *d; } opt[] = {
-    {"-m FILE", "knowledgebase (.cm) [required]; repeatable"},
+    {"-m SPEC", "path or target[:sets]; repeatable [required]"},
     {"-a STR",  "alternative: greater|less|two.sided [greater]"},
     {"-G",      "correct FDR globally instead of within knowledgebase"},
     {"-s FILE", "sample names for the query"},
@@ -302,11 +310,24 @@ int main_test(int argc, char *argv[]) {
   int c;
   while ((c = getopt(argc, argv, "m:a:Gs:MFHo:h")) >= 0) {
     switch (c) {
-    case 'm':
-      mask_names = realloc(mask_names, (n_masks + 1) * sizeof(char *));
+    case 'm': {
+      /* A spec, not just a path: "mm10:CGI" names a set the same way fetch
+       * does, and resolves against the store. An existing file is taken
+       * literally, so plain paths are unaffected. */
+      char **paths = NULL;
+      size_t n = kycg_resolve_spec(optarg, NULL, &paths);
+      if (!n) {
+        usage();
+        wzfatal("No knowledgebase matches '%s'.\n"
+                "Give a path, or a target like mm10:CGI -- and fetch it first "
+                "if it is not in the store.\n", optarg);
+      }
+      mask_names = realloc(mask_names, (n_masks + n) * sizeof(char *));
       if (!mask_names) wzfatal("[%s:%d] Cannot allocate.\n", __func__, __LINE__);
-      mask_names[n_masks++] = strdup(optarg);
+      for (size_t i = 0; i < n; ++i) mask_names[n_masks++] = paths[i];
+      free(paths);   /* the strings are now owned by mask_names */
       break;
+    }
     case 'o': conf.fname_out = strdup(optarg); break;
     case 's': conf.fname_snames = strdup(optarg); break;
     case 'G': conf.by_group = 0; break;

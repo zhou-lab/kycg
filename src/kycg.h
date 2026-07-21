@@ -35,6 +35,21 @@
 #define KYCG_H_WARN  kycg_ui_yellow()
 #define KYCG_H_OFF   kycg_ui_reset()
 
+/**
+ * Resolve a knowledgebase spec to file paths in the store.
+ *
+ * Accepts what `kycg fetch` accepts -- "mm10", "mm10:CGI", "MSA:CGI,ChromHMM"
+ * -- so a set is named the same way whether it is being downloaded or tested
+ * against. A spec that is an existing file is returned as-is, which keeps
+ * plain paths working and leaves no ambiguity to resolve.
+ *
+ * Returns the number of paths and fills *out with a malloc'd vector of
+ * malloc'd strings (free with kycg_free_specs). Zero means nothing matched;
+ * the caller reports that, since only it knows what to say.
+ */
+size_t kycg_resolve_spec(const char *spec, const char *store, char ***out);
+void kycg_free_specs(char **v, size_t n);
+
 /* Subcommand entry points, dispatched from main() on argv[1]. */
 int main_test(int argc, char *argv[]);
 int main_info(int argc, char *argv[]);

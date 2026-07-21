@@ -142,22 +142,32 @@ exact, known set of knowledgebases, and data updates ride software releases.
 ### `kycg test` — set enrichment
 
 ```bash
-kycg test -m knowledgebase.cm query.cg > results.tsv
+kycg test -m mm10:CGI query.cg > results.tsv
 ```
+
+`-m` takes a path, or a set named the way `kycg fetch` names it — so a
+knowledgebase is written the same way whether you are downloading it or
+testing against it:
+
+```bash
+kycg test -m mm10:CGI           query.cg    # one set from the store
+kycg test -m mm10:CGI,ChromHMM  query.cg    # two of them
+kycg test -m mm10               query.cg    # everything cached for mm10
+kycg test -m path/to/some.cm    query.cg    # a path still works
+```
+
+A spec that is an existing file is taken literally, so plain paths are
+unaffected and nothing is ambiguous.
 
 For every (query sample, knowledgebase record) pair this emits the four
 contingency counts, a one-sided hypergeometric tail probability in log10, six
 effect-size coefficients, and a false discovery rate corrected within
 knowledgebase.
 
-`-m` is repeatable, which is what makes a store worth having — testing one
-query against 30 knowledgebases in 30 processes decompresses the query 30
-times, and pooling them decompresses it once:
-
-```bash
-kycg test $(for f in ~/.cache/kycg/mm10/*.cm; do printf -- '-m %s ' $f; done) \
-  query.cg > res.tsv
-```
+`-m` is repeatable, and `-m mm10` expands to everything cached for that
+target — which is what makes a store worth having. Testing one query against
+30 knowledgebases in 30 processes decompresses the query 30 times; pooling
+them decompresses it once.
 
 Omitting `-m` on a terminal offers the store instead, **filtered to the sets
 whose row count matches the query**. A `.cm` from another row space is not a
@@ -219,7 +229,7 @@ plain text carrying the same information. `kycg fetch` writes plain TSV whenever
 stdout is redirected, so piping into `cut` or `awk` is unaffected.
 
 ```
-    -m FILE   knowledgebase (.cm) [required]; repeatable
+    -m SPEC   path or target[:sets]; repeatable [required]
     -a STR    alternative: greater|less|two.sided [greater]
     -G        correct FDR globally instead of within knowledgebase
     -s FILE   sample names for the query

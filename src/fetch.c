@@ -279,6 +279,78 @@ static uint64_t coll_size_of(const coll_t *c, const char *name) {
   return 0;
 }
 
+/* --------------------------------------------------- spec -> store paths */
+
+static int cmp_path(const void *a, const void *b) {
+  return strcmp(*(char *const *)a, *(char *const *)b);
+}
+
+void kycg_free_specs(char **v, size_t n) {
+  if (!v) return;
+  for (size_t i = 0; i < n; ++i) free(v[i]);
+  free(v);
+}
+
+size_t kycg_resolve_spec(const char *spec, const char *store, char ***out) {
+  *out = NULL;
+  if (!spec || !*spec) return 0;
+
+  /* An existing path wins outright. Nothing else can then be ambiguous, and a
+   * file whose name happens to contain a colon still works. */
+  if (kycg_store_is_file(spec)) {
+    char **v = malloc(sizeof(char *));
+    if (!v) return 0;
+    v[0] = strdup(spec);
+    *out = v;
+    return 1;
+  }
+
+  char target[128];
+  const char *only = NULL;
+  const char *colon = strchr(spec, ':');
+  size_t len = colon ? (size_t)(colon - spec) : strlen(spec);
+  if (len >= sizeof(target)) len = sizeof(target) - 1;
+  memcpy(target, spec, len);
+  target[len] = '\0';
+  if (colon && colon[1]) only = colon + 1;
+
+  coll_t c;
+  if (coll_for(target, kycg_store_root(store), NULL, &c) != 0) return 0;
+
+  /* Read the directory rather than the manifest: what is testable is what is
+   * actually here, and a manifest lists what upstream publishes. */
+  DIR *d = opendir(c.dir);
+  if (!d) return 0;
+
+  char **v = NULL;
+  size_t n = 0, m = 0;
+  struct dirent *e;
+  while ((e = readdir(d))) {
+    size_t l = strlen(e->d_name);
+    if (e->d_name[0] == '.') continue;
+    if (l <= 3 || strcmp(e->d_name + l - 3, ".cm") != 0) continue;
+    if (!passes_filter(e->d_name, only)) continue;
+
+    if (n == m) {
+      size_t want = m ? m * 2 : 16;
+      char **nv = realloc(v, want * sizeof(char *));
+      if (!nv) break;
+      v = nv; m = want;
+    }
+    char path[4600];
+    snprintf(path, sizeof(path), "%s/%s", c.dir, e->d_name);
+    v[n] = strdup(path);
+    if (v[n]) ++n;
+  }
+  closedir(d);
+
+  /* Stable order, so a run is reproducible and its output diffable. */
+  if (n > 1) qsort(v, n, sizeof(char *), cmp_path);
+
+  *out = v;
+  return n;
+}
+
 /* --------------------------------------------------------------- the plan */
 
 typedef struct {
