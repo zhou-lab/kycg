@@ -356,6 +356,93 @@ static void fit(const char *s, int cols, char *out, size_t outsz) {
   out[o] = '\0';
 }
 
+/* ----------------------------------------------- panel inside a widget */
+
+/*
+ * The panel is absolutely positioned at the foot of the alternate screen, so
+ * a download can render over the bottom few rows while the catalogue stays
+ * visible above it. Without this, fetching would mean dropping the widget,
+ * printing, and coming back -- losing the user's place every time.
+ */
+static int panel_top = 0;   /* 1-based screen row of the panel's first line */
+static int panel_h = 0;
+
+int kycg_ui_panel_active(void) { return panel_h > 0; }
+
+void kycg_ui_panel_open(int height) {
+  if (!kycg_ui_fancy()) return;
+  int rows = term_rows();
+  if (height < 1) height = 1;
+  if (height > rows - 2) height = rows - 2;
+  panel_h = height;
+  panel_top = rows - height + 1;
+  for (int i = 0; i < panel_h; ++i)
+    fprintf(stderr, "\033[%d;1H\033[2K", panel_top + i);
+  fflush(stderr);
+}
+
+void kycg_ui_panel_line(int i, const char *fmt, ...) {
+  if (panel_h <= 0 || i < 0 || i >= panel_h) return;
+  fprintf(stderr, "\033[%d;1H\033[2K", panel_top + i);
+  va_list ap;
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+  fflush(stderr);
+}
+
+void kycg_ui_panel_close(void) { panel_h = 0; panel_top = 0; }
+
+int kycg_ui_panel_confirm(int line, const char *question, int default_yes) {
+  for (;;) {
+    kycg_ui_panel_line(line, "  %s%s%s %s[%s]%s ",
+                       kycg_ui_bold(), question, kycg_ui_reset(),
+                       kycg_ui_dim(), default_yes ? "Y/n" : "y/N",
+                       kycg_ui_reset());
+    char ch = 0;
+    keycode_t k = read_key(&ch);
+    if (k == K_ENTER) return default_yes;
+    if (k == K_ESC || k == K_NONE) return 0;
+    if (k == K_CHAR) {
+      if (ch == 'y' || ch == 'Y') return 1;
+      if (ch == 'n' || ch == 'N' || ch == 'q') return 0;
+    }
+  }
+}
+
+void kycg_ui_panel_pause(int line, const char *msg) {
+  if (panel_h <= 0) return;
+  kycg_ui_panel_line(line, "  %s%s%s", kycg_ui_dim(), msg, kycg_ui_reset());
+  char ch = 0;
+  read_key(&ch);
+}
+
+int kycg_ui_panel_ask(int line, const char *prompt, char *buf, size_t n) {
+  size_t len = strlen(buf);
+  for (;;) {
+    int cols = term_cols();
+    /* Show the tail when the value is longer than the room for it, so the
+     * part being edited stays visible. */
+    int room = cols - (int)strlen(prompt) - 6;
+    if (room < 10) room = 10;
+    const char *shown = (int)len > room ? buf + len - room : buf;
+
+    kycg_ui_panel_line(line, "  %s%s%s %s%s%s_",
+                       kycg_ui_bold(), prompt, kycg_ui_reset(),
+                       kycg_ui_cyan(), shown, kycg_ui_reset());
+
+    char ch = 0;
+    keycode_t k = read_key(&ch);
+    if (k == K_ENTER) return 1;
+    if (k == K_ESC || k == K_NONE) return 0;
+    if (k == K_BACKSPACE) { if (len) buf[--len] = '\0'; continue; }
+    if (k == K_CHAR && (unsigned char)ch >= 32 && len + 1 < n) {
+      buf[len++] = ch;
+      buf[len] = '\0';
+    }
+  }
+}
+
 /* ------------------------------------------------------------- progress */
 
 #define LABEL_W 34
@@ -370,6 +457,11 @@ void kycg_prog_begin(kycg_prog_t *p, const char *label, uint64_t total) {
   p->last_draw = 0.0;
   p->active = kycg_ui_fancy();
 }
+
+/* Where a progress line goes: its own panel row inside a widget, or the
+ * current line of the normal screen. */
+#define PANEL_ROW_DONE 1
+#define PANEL_ROW_BAR  2
 
 void kycg_prog_update(kycg_prog_t *p, uint64_t now, uint64_t total) {
   if (!p->active) return;
@@ -390,7 +482,10 @@ void kycg_prog_update(kycg_prog_t *p, uint64_t now, uint64_t total) {
   kycg_ui_human((uint64_t)rate, hb_rate, sizeof(hb_rate));
 
   int cols = term_cols();
-  clear_line();
+  if (kycg_ui_panel_active())
+    fprintf(stderr, "\033[%d;1H\033[2K", panel_top + PANEL_ROW_BAR);
+  else
+    clear_line();
 
   if (p->total) {
     double frac = (double)p->now / (double)p->total;
@@ -427,6 +522,18 @@ void kycg_prog_update(kycg_prog_t *p, uint64_t now, uint64_t total) {
 }
 
 void kycg_prog_done(kycg_prog_t *p, const char *detail, int ok) {
+  if (kycg_ui_panel_active()) {
+    /* Inside a widget the settled line replaces the bar rather than scrolling
+     * past it: there is no scrollback to keep it in. */
+    kycg_ui_panel_line(PANEL_ROW_BAR, " ");
+    kycg_ui_panel_line(PANEL_ROW_DONE, "  %s%s%s %-40.40s %s%s%s",
+                       ok ? kycg_ui_green() : kycg_ui_red(),
+                       ok ? kycg_ui_check() : kycg_ui_cross(),
+                       kycg_ui_reset(), p->label,
+                       kycg_ui_dim(), detail ? detail : "", kycg_ui_reset());
+    p->active = 0;
+    return;
+  }
   if (p->active) clear_line();
   kycg_ui_line(ok ? kycg_ui_green() : kycg_ui_red(),
                ok ? kycg_ui_check() : kycg_ui_cross(),
@@ -1031,10 +1138,18 @@ typedef struct {
   long   child;      /* -1 for the root row itself */
 } flatrow_t;
 
-int kycg_ui_tree(const char *title, const char *header,
-                 const char **roots, const unsigned char *root_styles,
-                 size_t n_roots, kycg_ui_expand_fn expand,
-                 kycg_ui_accept_fn accept, void *ctx) {
+int kycg_ui_tree(const kycg_ui_tree_t *spec) {
+  const char *title = spec->title;
+  const char *header = spec->header;
+  char **roots = spec->roots;
+  const unsigned char *root_styles = spec->root_styles;
+  size_t n_roots = spec->n_roots;
+  kycg_ui_expand_fn expand = spec->expand;
+  kycg_ui_accept_fn accept = spec->accept;
+  kycg_ui_commit_fn commit = spec->commit;
+  kycg_ui_key_fn on_key = spec->on_key;
+  void *ctx = spec->ctx;
+
   if (!n_roots || !kycg_ui_fancy()) return -1;
   if (raw_enter() != 0) return -1;
 
@@ -1200,11 +1315,13 @@ int kycg_ui_tree(const char *title, const char *header,
         for (size_t j = 0; j < node[i].kids.n; ++j)
           if (node[i].checked && node[i].checked[j]) ++nsel;
       frame_line(&f, "%s  row %zu of %zu  %s  %zu selected  %s  %s open  "
-                     "%s close  space select  f fetch  q quit%s",
+                     "%s close  space select  f fetch%s%s  q quit%s",
                  kycg_ui_dim(), nflat ? cur + 1 : 0, nflat,
                  kycg_ui_bullet(), nsel, kycg_ui_bullet(),
                  kycg_ui_unicode() ? "→" : "right",
-                 kycg_ui_unicode() ? "←" : "left", kycg_ui_reset());
+                 kycg_ui_unicode() ? "←" : "left",
+                 spec->hint ? "  " : "", spec->hint ? spec->hint : "",
+                 kycg_ui_reset());
     } else {
       frame_line(&f, "%s  row %zu of %zu   %s  %s open  %s close  q quit%s",
                  kycg_ui_dim(), nflat ? cur + 1 : 0, nflat, motion,
@@ -1287,7 +1404,38 @@ int kycg_ui_tree(const char *title, const char *header,
             if (node[i].checked && node[i].checked[j] && node[i].kids.keys)
               accept(ctx, roots[i], node[i].kids.keys[j]);
         accepted = 1;
-        break;
+
+        if (!commit) break;    /* caller wants the selection, not the work */
+
+        /* Do the work without leaving: the panel covers the bottom rows and
+         * the catalogue stays visible above it. */
+        commit(ctx);
+        kycg_ui_panel_close();
+
+        /* What was fetched is now present, so every loaded expansion is
+         * stale. Reload the open ones in place, keeping folds and cursor. */
+        for (size_t i = 0; i < n_roots; ++i) {
+          if (!node[i].loaded) continue;
+          for (size_t j = 0; j < node[i].kids.n; ++j) {
+            free(node[i].kids.rows[j]);
+            if (node[i].kids.keys) free(node[i].kids.keys[j]);
+          }
+          free(node[i].kids.rows);
+          free(node[i].kids.keys);
+          free(node[i].kids.styles);
+          free(node[i].checked);
+          memset(&node[i].kids, 0, sizeof(node[i].kids));
+          node[i].checked = NULL;
+          node[i].loaded = 0;
+
+          if (node[i].expanded && expand) {
+            expand(ctx, roots[i], &node[i].kids);
+            if (node[i].kids.n) node[i].checked = calloc(node[i].kids.n, 1);
+            node[i].loaded = 1;
+            if (!node[i].kids.n) node[i].expanded = 0;
+          }
+        }
+        continue;
       }
     }
     else if (key == K_DOWN) { if (cur + 1 < nflat) ++cur; }
@@ -1302,6 +1450,27 @@ int kycg_ui_tree(const char *title, const char *header,
       if (ch == 'q') break;
       else if (ch == 'j') { if (cur + 1 < nflat) ++cur; }
       else if (ch == 'k') { if (cur) --cur; }
+      else if (on_key && on_key(ctx, ch)) {
+        /* The caller changed what the roots describe -- a different store,
+         * say -- so every expansion is about something else now. */
+        kycg_ui_panel_close();
+        for (size_t i = 0; i < n_roots; ++i) {
+          if (!node[i].loaded) continue;
+          for (size_t j = 0; j < node[i].kids.n; ++j) {
+            free(node[i].kids.rows[j]);
+            if (node[i].kids.keys) free(node[i].kids.keys[j]);
+          }
+          free(node[i].kids.rows);
+          free(node[i].kids.keys);
+          free(node[i].kids.styles);
+          free(node[i].checked);
+          memset(&node[i].kids, 0, sizeof(node[i].kids));
+          node[i].checked = NULL;
+          node[i].loaded = 0;
+          node[i].expanded = 0;
+        }
+        cur = top = 0;
+      }
     }
   }
 

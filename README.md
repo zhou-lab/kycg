@@ -52,11 +52,16 @@ kycg fetch hg38:CGI,ChromHMM  # just those sets
 kycg list hg38                # the individual sets (works offline)
 ```
 
-`kycg list` is the interactive surface: browsing the catalogue and choosing
-from it are the same activity, so they happen on one screen. `→` unfolds a
-target, `space` checks a set, `f` fetches everything checked. Sets already in
-the store show a green ✓ and cannot be checked — there is nothing to ask for.
-`kycg fetch` with no target simply opens it.
+`kycg list` is the interactive surface: browsing the catalogue, choosing from
+it, and fetching are one activity on one screen. `→` unfolds a target, `space`
+checks a set, `f` fetches everything checked, `d` points the browser at a
+different store. Sets already present show a green ✓ and cannot be checked —
+there is nothing to ask for. `kycg fetch` with no target simply opens it.
+
+Fetching does not leave the browser. The plan, the confirmation and the
+progress bar render in a panel across the bottom rows while the catalogue
+stays visible above; when it finishes, the counts and check marks refresh in
+place with your folds and cursor where you left them. Only `q` exits.
 
 ```
     target    kind          source                 cached_sets

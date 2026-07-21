@@ -857,8 +857,11 @@ typedef struct {
 } picks_t;
 
 typedef struct {
-  const char *root;
+  char root[4096];   /* the store being browsed; 'd' can change it */
   picks_t picks;
+  rows_t *rows;      /* the overview, rewritten in place after any change */
+  char  *title;      /* the widget's title buffer, rewritten with the root */
+  size_t title_sz;
 } listctx_t;
 
 static void picks_add(picks_t *p, const char *target, const char *file) {
@@ -1009,6 +1012,12 @@ static int fetch_picked(const picks_t *picks, const char *store) {
 #else
   curl_global_init(CURL_GLOBAL_DEFAULT);
 
+  /* Four lines at the foot of the browser: what is happening, the last file
+   * finished, the one in flight, and the prompt or tally. The catalogue stays
+   * visible above, so fetching reads as part of browsing rather than an
+   * errand it sent you on. */
+  kycg_ui_panel_open(4);
+
   tally_t t = {0};
   int rc = 0;
   char **done = calloc(picks->n, sizeof(char *));
@@ -1054,18 +1063,28 @@ static int fetch_picked(const picks_t *picks, const char *store) {
     if (prc != 0 || !plan.n) { plan_free(&plan); rc = 1; continue; }
 
     plan_check_present(&plan, 0);
-    plan_show(&plan);
 
     size_t n_todo = 0;
-    for (size_t k = 0; k < plan.n; ++k) if (!plan.a[k].have) ++n_todo;
+    uint64_t bytes = 0;
+    for (size_t k = 0; k < plan.n; ++k)
+      if (!plan.a[k].have) { ++n_todo; bytes += plan.a[k].size; }
     if (!n_todo) { t.n_skip += plan.n; plan_free(&plan); continue; }
 
-    if (kycg_ui_interactive() && !kycg_ui_confirm("Proceed?", 1)) {
-      fprintf(stderr, "Cancelled.\n");
+    char hb[24];
+    kycg_ui_panel_line(0, "  %s%s%s  %s  %zu file(s)%s%s%s  %s  %s%s%s",
+                       kycg_ui_bold(), plan.target, kycg_ui_reset(),
+                       kycg_ui_bullet(), n_todo,
+                       plan.sizes_known ? ", " : "",
+                       plan.sizes_known ? kycg_ui_human(bytes, hb, sizeof(hb)) : "",
+                       "", kycg_ui_bullet(),
+                       kycg_ui_dim(), plan.dir, kycg_ui_reset());
+
+    if (!kycg_ui_panel_confirm(3, "Proceed?", 1)) {
+      kycg_ui_panel_line(3, "  %scancelled%s", kycg_ui_dim(), kycg_ui_reset());
       plan_free(&plan);
       continue;
     }
-    fputc('\n', stderr);
+    kycg_ui_panel_line(3, " ");
 
     if (execute_plan(&plan, &t) != 0) rc = 1;
     plan_free(&plan);
@@ -1074,20 +1093,123 @@ static int fetch_picked(const picks_t *picks, const char *store) {
   free(done);
 
   if (t.n_got || t.n_skip || t.n_fail) {
-    char hb[24];
-    fprintf(stderr, "\n%s%s%s %" PRIu64 " fetched (%s)",
-            kycg_ui_green(), kycg_ui_check(), kycg_ui_reset(),
-            t.n_got, kycg_ui_human(t.bytes_got, hb, sizeof(hb)));
-    if (t.n_skip) fprintf(stderr, ", %" PRIu64 " already current", t.n_skip);
+    char hb[24], line[512];
+    int o = snprintf(line, sizeof(line), "%" PRIu64 " fetched (%s)",
+                     t.n_got, kycg_ui_human(t.bytes_got, hb, sizeof(hb)));
+    if (t.n_skip)
+      o += snprintf(line + o, sizeof(line) - (size_t)o,
+                    ", %" PRIu64 " already current", t.n_skip);
     if (t.n_fail)
-      fprintf(stderr, ", %s%" PRIu64 " FAILED%s",
-              kycg_ui_red(), t.n_fail, kycg_ui_reset());
-    fprintf(stderr, ".\n");
+      snprintf(line + o, sizeof(line) - (size_t)o,
+               ", %" PRIu64 " FAILED", t.n_fail);
+
+    kycg_ui_panel_line(0, "  %s%s%s %s%s",
+                       t.n_fail ? kycg_ui_red() : kycg_ui_green(),
+                       t.n_fail ? kycg_ui_cross() : kycg_ui_check(),
+                       kycg_ui_reset(), line, kycg_ui_reset());
+    kycg_ui_panel_pause(3, "press any key to return to the browser");
   }
 
+  kycg_ui_panel_close();
   curl_global_cleanup();
   return (rc || t.n_fail) ? 1 : 0;
 #endif
+}
+
+static uint64_t count_cached(const char *dir);
+
+/**
+ * Fill `rows` with one line per target, counting what the store holds.
+ *
+ * Called for the initial view and again after anything changes it -- a fetch,
+ * or a different store directory. Rebuilding is cheap: it stats files, and
+ * the target list is fixed and short.
+ */
+static void build_overview(const char *root, rows_t *rows) {
+  for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome; ++r) {
+    char dir[4096];
+    snprintf(dir, sizeof(dir), "%s/%s", root, r->genome);
+
+    uint64_t avail = 0, have = 0;
+    for (const kycg_zfile_t *f = r->files; f->name; ++f) {
+      size_t len = strlen(f->name);
+      if (len <= 3 || strcmp(f->name + len - 3, ".cm") != 0) continue;
+      ++avail;
+      char path[4400];
+      snprintf(path, sizeof(path), "%s/%s", dir, f->name);
+      if (kycg_store_is_file(path)) ++have;
+    }
+    /* Green means "something here is usable", dim means "nothing yet". How
+     * much is in the count. Distinguishing complete from partial by colour
+     * would read as a different meaning on the array rows below, where the
+     * total is unknowable by design -- anchoring on SHA256SUMS is what keeps
+     * the file list out of the binary -- so the rule stays the same for both. */
+    rows_push(rows, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
+              "%s\twhole genome\tzenodo:%s\t%" PRIu64 "/%" PRIu64,
+              r->genome, r->record, have, avail);
+  }
+
+  for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform; ++r) {
+    char dir[4096];
+    snprintf(dir, sizeof(dir), "%s/%s/KYCG", root, r->platform);
+    uint64_t nc = count_cached(dir);
+    rows_push(rows, nc ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
+              "%s\tarray\tInfiniumAnnotation@%s\t%" PRIu64,
+              r->platform, KYCG_IA_TAG, nc);
+  }
+}
+
+/**
+ * Rewrite the overview in place.
+ *
+ * The tree holds the addresses of the row and style arrays, so this refills
+ * them rather than replacing them. The target list is fixed, so the counts
+ * change but the row count never does.
+ */
+static void refresh_overview(listctx_t *lc) {
+  for (size_t i = 0; i < lc->rows->n; ++i) free(lc->rows->a[i]);
+  lc->rows->n = 0;
+  build_overview(lc->root, lc->rows);
+}
+
+/**
+ * `f` in the browser: fetch everything checked, drawing into the panel so the
+ * catalogue stays on screen, then refresh the counts.
+ */
+static void on_commit(void *ctx) {
+  listctx_t *lc = ctx;
+  if (lc->picks.n) fetch_picked(&lc->picks, lc->root);
+  picks_free(&lc->picks);
+  refresh_overview(lc);
+}
+
+/**
+ * `d` in the browser: point it at a different store.
+ *
+ * The store location is the one thing that cannot be changed from inside
+ * otherwise -- every other question the browser answers is about its contents.
+ */
+static int on_list_key(void *ctx, char key) {
+  listctx_t *lc = ctx;
+  if (key != 'd') return 0;
+
+  char buf[4096];
+  snprintf(buf, sizeof(buf), "%s", lc->root);
+
+  kycg_ui_panel_open(3);
+  kycg_ui_panel_line(0, "  %s%s%s", kycg_ui_dim(),
+                     "store directory (enter to accept, esc to cancel)",
+                     kycg_ui_reset());
+  int ok = kycg_ui_panel_ask(1, "store:", buf, sizeof(buf));
+  kycg_ui_panel_close();
+
+  if (!ok || !buf[0] || strcmp(buf, lc->root) == 0) return 0;
+
+  snprintf(lc->root, sizeof(lc->root), "%s", buf);
+  /* The title names the store, so it goes stale with it. */
+  if (lc->title) snprintf(lc->title, lc->title_sz, "store: %s", lc->root);
+  refresh_overview(lc);
+  return 1;
 }
 
 static uint64_t count_cached(const char *dir) {
@@ -1194,39 +1316,7 @@ int main_list(int argc, char *argv[]) {
   }
 
   rows_t rows = {0};
-  const char *ctx_root = root;
-
-  for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome; ++r) {
-    char dir[4096];
-    snprintf(dir, sizeof(dir), "%s/%s", root, r->genome);
-
-    uint64_t avail = 0, have = 0;
-    for (const kycg_zfile_t *f = r->files; f->name; ++f) {
-      size_t len = strlen(f->name);
-      if (len <= 3 || strcmp(f->name + len - 3, ".cm") != 0) continue;
-      ++avail;
-      char path[4400];
-      snprintf(path, sizeof(path), "%s/%s", dir, f->name);
-      if (kycg_store_is_file(path)) ++have;
-    }
-    /* Green means "something here is usable", dim means "nothing yet". How
-     * much is in the count. Distinguishing complete from partial by colour
-     * would read as a different meaning on the array rows below, where the
-     * total is unknowable by design -- anchoring on SHA256SUMS is what keeps
-     * the file list out of the binary -- so the rule stays the same for both. */
-    rows_push(&rows, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
-              "%s\twhole genome\tzenodo:%s\t%" PRIu64 "/%" PRIu64,
-              r->genome, r->record, have, avail);
-  }
-
-  for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform; ++r) {
-    char dir[4096];
-    snprintf(dir, sizeof(dir), "%s/%s/KYCG", root, r->platform);
-    uint64_t nc = count_cached(dir);
-    rows_push(&rows, nc ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
-              "%s\tarray\tInfiniumAnnotation@%s\t%" PRIu64,
-              r->platform, KYCG_IA_TAG, nc);
-  }
+  build_overview(root, &rows);
 
   char title[4200];
   snprintf(title, sizeof(title), "store: %s", root);
@@ -1238,17 +1328,30 @@ int main_list(int argc, char *argv[]) {
    * typed from memory. */
   if (isatty(STDOUT_FILENO)) {
     listctx_t lc = {0};
-    lc.root = ctx_root;
+    snprintf(lc.root, sizeof(lc.root), "%s", root);
+    lc.rows = &rows;
+    lc.title = title;
+    lc.title_sz = sizeof(title);
 
-    int rc = kycg_ui_tree(title, "target\tkind\tsource\tcached_sets",
-                          (const char **)rows.a, rows.st, rows.n,
-                          expand_target, on_pick, &lc);
+    kycg_ui_tree_t spec = {0};
+    spec.title = title;
+    spec.header = "target\tkind\tsource\tcached_sets";
+    spec.roots = rows.a;
+    spec.root_styles = rows.st;
+    spec.n_roots = rows.n;
+    spec.expand = expand_target;
+    spec.accept = on_pick;
+    spec.commit = on_commit;
+    spec.on_key = on_list_key;
+    spec.hint = "d store";
+    spec.ctx = &lc;
+
+    int rc = kycg_ui_tree(&spec);
 
     if (rc >= 0) {          /* the widget ran; plain output is not wanted */
-      rows_free(&rows);
-      int frc = (rc == 1 && lc.picks.n) ? fetch_picked(&lc.picks, store) : 0;
       picks_free(&lc.picks);
-      return frc;
+      rows_free(&rows);
+      return 0;
     }
     picks_free(&lc.picks);  /* -1: terminal cannot host it, print plainly */
   }

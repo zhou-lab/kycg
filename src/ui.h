@@ -184,21 +184,92 @@ typedef void (*kycg_ui_expand_fn)(void *ctx, const char *row,
  * Same contract as kycg_ui_browse: returns -1 when the terminal cannot support
  * it, and must not be used when stdout is redirected.
  */
+/* ------------------------------------------------- panel inside a widget */
+
 /**
- * When `accept` is non-NULL the tree is also a picker: rows carrying a key
- * and not already marked KYCG_ROW_HAVE get a checkbox, space toggles one,
- * space on a parent toggles all of its children, and `f` accepts.
+ * A transient region at the foot of a full-screen widget, for work that
+ * happens without leaving it: a plan, a confirmation, a progress bar.
  *
- * Rows styled KYCG_ROW_HAVE are shown as already present and cannot be
- * checked — there is nothing to ask for.
+ * Suspending the widget to the normal screen for a download and coming back
+ * would lose the user's place and make fetching feel like a separate errand.
+ * The panel keeps the catalogue visible above whatever is being fetched.
  *
- * Returns 1 if the user accepted a non-empty selection (every checked row
- * having been passed to `accept`), 0 if they quit, -1 if the terminal cannot
- * support the widget.
+ * Line indices are relative to the top of the panel. Only meaningful while a
+ * full-screen widget is running; harmless otherwise.
  */
-int kycg_ui_tree(const char *title, const char *header,
-                 const char **roots, const unsigned char *root_styles,
-                 size_t n_roots, kycg_ui_expand_fn expand,
-                 kycg_ui_accept_fn accept, void *ctx);
+void kycg_ui_panel_open(int height);
+void kycg_ui_panel_line(int i, const char *fmt, ...);
+void kycg_ui_panel_close(void);
+int  kycg_ui_panel_active(void);
+
+/** Yes/no on one panel line, answered with a single keypress. */
+int kycg_ui_panel_confirm(int line, const char *question, int default_yes);
+
+/** Show a message on a panel line and wait for any key. */
+void kycg_ui_panel_pause(int line, const char *msg);
+
+/**
+ * Edit a line of text on one panel line. `buf` carries the current value in
+ * and the new one out. Returns 1 if accepted, 0 if cancelled.
+ */
+int kycg_ui_panel_ask(int line, const char *prompt, char *buf, size_t n);
+
+/**
+ * Called once, after every checked row has been reported through `accept`.
+ *
+ * Runs while the widget is still on screen; use the panel calls above for any
+ * output. Whatever it changes in the `roots` and `root_styles` arrays is
+ * picked up when the tree resumes — but it must replace the entries in place
+ * rather than reallocating the arrays, whose addresses the tree holds.
+ */
+typedef void (*kycg_ui_commit_fn)(void *ctx);
+
+/**
+ * Offered any key the tree does not handle itself, so a caller can bind
+ * actions of its own without the widget knowing what they mean. Runs with the
+ * widget still on screen; use the panel calls for output. Return nonzero if
+ * the roots changed and the view should reload.
+ */
+typedef int (*kycg_ui_key_fn)(void *ctx, char key);
+
+/**
+ * Everything kycg_ui_tree() needs. A struct because the list outgrew a
+ * readable argument list, and because most fields are optional.
+ */
+typedef struct {
+  const char *title;
+  const char *header;          /* tab-separated column names, may be NULL */
+
+  /* Not const: `commit` is allowed to rewrite entries in place so the view
+   * reflects what it just did. The arrays themselves must not move. */
+  char          **roots;
+  unsigned char  *root_styles; /* may be NULL */
+  size_t          n_roots;
+
+  kycg_ui_expand_fn expand;    /* may be NULL for a flat tree */
+  kycg_ui_accept_fn accept;    /* non-NULL turns the tree into a picker */
+  kycg_ui_commit_fn commit;    /* may be NULL: then `f` returns instead */
+  kycg_ui_key_fn    on_key;    /* may be NULL */
+  const char       *hint;      /* extra footer text for the caller's keys */
+  void *ctx;
+} kycg_ui_tree_t;
+
+/**
+ * Two-level tree viewer: a table whose rows unfold in place, optionally with
+ * checkboxes.
+ *
+ * When `accept` is set, rows carrying a key and not already marked
+ * KYCG_ROW_HAVE get a checkbox; space toggles one, space on a parent toggles
+ * all of its children, and `f` commits. Rows styled KYCG_ROW_HAVE are shown as
+ * already present and cannot be checked — there is nothing to ask for.
+ *
+ * With `commit` set, `f` does not end the session: the widget suspends, the
+ * callback runs on the normal screen, and the tree resumes with its children
+ * reloaded so the results are visible. Only `q` leaves.
+ *
+ * Returns 1 if the user committed at least once, 0 if they simply quit, -1 if
+ * the terminal cannot support the widget and the caller should print plainly.
+ */
+int kycg_ui_tree(const kycg_ui_tree_t *spec);
 
 #endif /* _KYCG_UI_H */
