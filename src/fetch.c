@@ -85,6 +85,7 @@
 #include "registry.h"
 #include "store.h"
 #include "ui.h"
+#include "kbinfo.h"
 
 #ifdef KYCG_HAVE_CURL
 #include <curl/curl.h>
@@ -1643,6 +1644,180 @@ static void on_commit(void *ctx) {
   refresh_overview(lc);
 }
 
+/**
+ * Which collection a target belongs to, for looking up a recommendation.
+ * Genomes recommend by name; every array platform shares one list, since the
+ * sets are the same annotation projected onto different probe orderings.
+ */
+static const char *reco_collection(const char *target) {
+  if (find_seq(target)) return target;
+  if (find_array(target)) return "array";
+  return NULL;
+}
+
+/** Is this set part of its collection's recommended selection? */
+int kycg_kb_recommended(void *ctx, const char *root, const char *key) {
+  (void)ctx;
+  char target[128], setn[256];
+  const char *tab = strchr(root, '\t');
+  size_t len = tab ? (size_t)(tab - root) : strlen(root);
+  if (len >= sizeof(target)) len = sizeof(target) - 1;
+  memcpy(target, root, len);
+  target[len] = '\0';
+
+  const char *coll = reco_collection(target);
+  if (!coll) return 0;
+
+  const char *file = strchr(key, ':');
+  file = file ? file + 1 : key;
+  set_name_of(file, setn, sizeof(setn));
+  return kycg_kbinfo_recommended(setn, coll);
+}
+
+/* ------------------------------------------------- provenance panel layout */
+
+/*
+ * A rendered panel: fully formatted lines, ANSI already embedded.
+ *
+ * The panel API needs its height at open time, but the fields being shown are
+ * sentences of no fixed length that have to be wrapped to the terminal. So the
+ * whole thing is laid out into this buffer first and the height read off it.
+ * Wrapping happens on word boundaries and the labelled fields hang-indent, so
+ * a three-line citation still reads as one field.
+ */
+#define INFO_MAX_LINES 64
+
+typedef struct {
+  char *line[INFO_MAX_LINES];
+  int   n;
+} info_lay_t;
+
+static void lay_push(info_lay_t *L, const char *s) {
+  if (L->n >= INFO_MAX_LINES) return;
+  L->line[L->n] = strdup(s ? s : "");
+  if (L->line[L->n]) ++L->n;
+}
+
+static void lay_free(info_lay_t *L) {
+  for (int i = 0; i < L->n; ++i) free(L->line[i]);
+  L->n = 0;
+}
+
+static void lay_head(info_lay_t *L, const char *setn, const char *title) {
+  char buf[1024];
+  snprintf(buf, sizeof(buf), "  %s%s%s  %s%s%s", kycg_ui_bold(), setn,
+           kycg_ui_reset(), kycg_ui_cyan(), title ? title : "",
+           kycg_ui_reset());
+  lay_push(L, buf);
+  lay_push(L, "");
+}
+
+/*
+ * Wrap `text` into the panel, under an optional dim label.
+ *
+ * `label` NULL means running prose at the left margin; otherwise the label is
+ * printed once in a fixed-width gutter and continuation lines align under the
+ * text rather than under the label.
+ */
+static void lay_wrap(info_lay_t *L, const char *label, const char *text) {
+  if (!text || !*text) return;
+
+  const int gutter = label ? 14 : 2;   /* "  processing  " is the widest */
+  int avail = kycg_ui_cols() - gutter - 2;
+  if (avail < 20) avail = 20;
+
+  const char *p = text;
+  int first = 1;
+  while (*p) {
+    while (*p == ' ') ++p;
+    if (!*p) break;
+
+    /* Longest prefix that fits, broken at the last space; a single word
+     * longer than the line is emitted whole and allowed to be truncated,
+     * which beats hyphenating a DOI. */
+    size_t rest = strlen(p), take = rest;
+    if (rest > (size_t)avail) {
+      size_t brk = 0;
+      for (size_t i = 0; i < (size_t)avail; ++i) if (p[i] == ' ') brk = i;
+      take = brk ? brk : (size_t)avail;
+    }
+
+    char buf[1024], head[64];
+    if (label && first)
+      snprintf(head, sizeof(head), "  %s%-*s%s", kycg_ui_dim(), gutter - 4,
+               label, kycg_ui_reset());
+    else
+      snprintf(head, sizeof(head), "%*s", gutter, "");
+
+    snprintf(buf, sizeof(buf), "%s%s%.*s", head, label && first ? "  " : "",
+             (int)take, p);
+    lay_push(L, buf);
+
+    p += take;
+    first = 0;
+  }
+  lay_push(L, "");
+}
+
+/** `i` in the browser: what is this set, and where did it come from. */
+int kycg_kb_show_info(const char *root, const char *child_key) {
+  char target[128], setn[256];
+  const char *tab = root ? strchr(root, '\t') : NULL;
+  size_t len = root ? (tab ? (size_t)(tab - root) : strlen(root)) : 0;
+  if (len >= sizeof(target)) len = sizeof(target) - 1;
+  if (root) memcpy(target, root, len);
+  target[len] = '\0';
+
+  /* On a set row describe the set; on a collection row describe nothing --
+   * the columns already say what a collection is. */
+  if (!child_key) return 0;
+  const char *file = strchr(child_key, ':');
+  file = file ? file + 1 : child_key;
+  set_name_of(file, setn, sizeof(setn));
+
+  const kycg_kbinfo_t *k = kycg_kbinfo_find(setn);
+  if (!k) {
+    kycg_ui_panel_open(3);
+    kycg_ui_panel_line(0, "  %s%s%s  %s(nothing recorded about this set)%s",
+                       kycg_ui_bold(), setn, kycg_ui_reset(),
+                       kycg_ui_dim(), kycg_ui_reset());
+    kycg_ui_panel_pause(2, "any key to return");
+    kycg_ui_panel_close();
+    return 0;
+  }
+
+  /* Lay the whole panel out before opening it: the height has to be known up
+   * front, and these fields are prose of no fixed length. */
+  info_lay_t L = {0};
+  lay_head(&L, setn, k->title);
+  lay_wrap(&L, NULL, k->biology);
+  lay_wrap(&L, "source", k->source);
+  lay_wrap(&L, "citation", k->citation);
+  lay_wrap(&L, "processing", k->processing);
+
+  /* The panel cannot be taller than the terminal, and a line past its height
+   * is dropped silently -- which on a short terminal would drop the prompt
+   * rather than the prose, leaving the browser looking hung. So truncate the
+   * text ourselves and say that we did. */
+  int room = kycg_ui_rows() - 2;
+  int shown = L.n;
+  if (shown + 2 > room) {
+    shown = room - 3;
+    if (shown < 1) shown = 1;
+  }
+
+  kycg_ui_panel_open(shown + 2 + (shown < L.n ? 1 : 0));
+  for (int i = 0; i < shown; ++i) kycg_ui_panel_line(i, "%s", L.line[i]);
+  if (shown < L.n)
+    kycg_ui_panel_line(shown, "  %s... %d more line%s; see data/knowledgebases.tsv%s",
+                       kycg_ui_dim(), L.n - shown, L.n - shown == 1 ? "" : "s",
+                       kycg_ui_reset());
+  kycg_ui_panel_pause(shown + (shown < L.n ? 2 : 1), "any key to return");
+  kycg_ui_panel_close();
+  lay_free(&L);
+  return 0;
+}
+
 /** Which rows a named target arrives with already checked. */
 static int on_preselect(void *ctx, const char *root, const char *key) {
   (void)root;
@@ -1656,8 +1831,11 @@ static int on_preselect(void *ctx, const char *root, const char *key) {
  * The store location is the one thing that cannot be changed from inside
  * otherwise -- every other question the browser answers is about its contents.
  */
-static int on_list_key(void *ctx, char key) {
+static int on_list_key(void *ctx, char key, const char *root,
+                       const char *child_key) {
   listctx_t *lc = ctx;
+
+  if (key == 'i') return kycg_kb_show_info(root, child_key);
 
   if (key != 'd') return 0;
 
@@ -1894,7 +2072,8 @@ int main_list(int argc, char *argv[]) {
     spec.actions[0].commit = on_commit;
     spec.n_actions = 1;
     spec.on_key = on_list_key;
-    spec.hint = "d store";
+    spec.recommend = kycg_kb_recommended;
+    spec.hint = "i info  d store";
     spec.ctx = &lc;
     if (open_target[0]) {
       spec.open_root = open_target;

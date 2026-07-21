@@ -203,6 +203,22 @@ void kycg_ui_panel_line(int i, const char *fmt, ...);
 void kycg_ui_panel_close(void);
 int  kycg_ui_panel_active(void);
 
+/**
+ * Usable terminal width, already clamped to the range the widgets assume.
+ * Callers that lay out prose in a panel need it: a panel line is truncated at
+ * the right margin, so text long enough to matter has to be wrapped by
+ * whoever knows where it may be broken.
+ */
+int kycg_ui_cols(void);
+
+/**
+ * Terminal height. A panel is clamped to two rows less than this and any
+ * line past its height is silently dropped -- so a caller laying out more
+ * text than fits must truncate deliberately, or the key-to-dismiss prompt is
+ * what disappears and the widget looks hung.
+ */
+int kycg_ui_rows(void);
+
 /** Yes/no on one panel line, answered with a single keypress. */
 int kycg_ui_panel_confirm(int line, const char *question, int default_yes);
 
@@ -242,11 +258,14 @@ typedef struct {
 
 /**
  * Offered any key the tree does not handle itself, so a caller can bind
- * actions of its own without the widget knowing what they mean. Runs with the
+ * actions of its own without the widget knowing what they mean. Receives the
+ * row under the cursor -- its parent's text, and its own key when it is a
+ * child -- so a binding can act on what is being looked at. Runs with the
  * widget still on screen; use the panel calls for output. Return nonzero if
  * the roots changed and the view should reload.
  */
-typedef int (*kycg_ui_key_fn)(void *ctx, char key);
+typedef int (*kycg_ui_key_fn)(void *ctx, char key, const char *root,
+                              const char *child_key);
 
 /**
  * Should this child start checked? Called once per child of the preselected
@@ -290,6 +309,12 @@ typedef struct {
    * the plain catalogue view. */
   const char          *open_root;
   kycg_ui_preselect_fn preselect;
+
+  /* Bound to `r` when set: opens every collection and checks the rows this
+   * accepts. A curated default matters because the catalogue is large and
+   * most of it is situational -- the answer to "which of these should I
+   * actually use" should be one keystroke, not a reading exercise. */
+  kycg_ui_preselect_fn recommend;
   void *ctx;
 } kycg_ui_tree_t;
 

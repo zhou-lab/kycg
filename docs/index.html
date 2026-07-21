@@ -116,8 +116,8 @@ kycg <span class="sub">fetch</span>
 kycg <span class="sub">fetch</span> mm10
 kycg <span class="sub">fetch</span> hg38:CGI,ChromHMM
 
-<span class="cm"># list one target, download nothing</span>
-kycg <span class="sub">fetch</span> -l hg38</code></pre>
+<span class="cm"># open with hg38 checked; f to start</span>
+kycg <span class="sub">fetch</span> hg38</code></pre>
     <div class="note"><b>Downloads happen in <code class="inl">fetch</code> and nowhere
       else</b>, and every question is gated on an interactive terminal. Inside a Nextflow
       job or a Docker build there is nobody to answer, so an explicit target proceeds
@@ -154,26 +154,41 @@ mm10 knowledgebases (Zenodo 18175656)
   </section>
 
   <section class="card">
-    <h2>Pick what you need <span class="m">— list, -o, -n</span></h2>
+    <h2>Pick what you need <span class="m">— r, i, -o</span></h2>
     <p>The full hg38 collection is 363&nbsp;MB. You rarely want all of it.</p>
     <pre><code><span class="cm"># a tree — → unfolds a target in place</span>
 $ kycg <span class="sub">fetch</span>
     target  kind          cached_sets
-  <span class="sub">▸</span> hg38    whole genome  3/33
+  <span class="sub">▸</span> hg38    whole genome  3/32
 <span class="sub">❯ ▾</span> mm10    whole genome  29/29
     ├ CGI       CGI…cm       120 KB  cached
     ├ ChromHMM  ChromHMM…cm  857 KB  cached
     ├ PMD       PMD…cm      16.3 KB  cached
+  row 1 of 9 · → open  space select  <b>r</b> recommended  f fetch  <b>i</b> info  d store
 
-<span class="cm"># cost it out before committing</span>
-$ kycg <span class="sub">fetch</span> -n hg38:CGI,ChromHMM
-3 file(s), 29.6 MB total.
+<span class="cm"># or name it directly — opens with those checked</span>
+$ kycg <span class="sub">fetch</span> hg38:CGI,ChromHMM
 
-<span class="cm"># fetch just those</span>
-$ kycg <span class="sub">fetch</span> hg38:CGI,ChromHMM</code></pre>
-    <div class="note"><code class="inl">-o</code> takes <b>set names</b>, not file names —
-      <code class="inl">ChromHMM</code>, not <code class="inl">ChromHMM.20220303.cm</code>.
-      The dates are how sets are versioned and nobody remembers them.</div>
+<span class="cm"># no browser, no questions (scripts, Docker, Nextflow)</span>
+$ kycg <span class="sub">fetch</span> -f hg38:CGI,ChromHMM</code></pre>
+    <p style="margin-top:11px"><b>r</b> checks the recommended selection for that
+      collection — the dozen sets worth having before you know what you are looking
+      for, instead of all forty. <b>i</b> answers what a set actually <i>is</i>:</p>
+    <pre><code>  <b>TFBSrm</b>  Transcription factor binding sites, ReMap
+
+  A larger, uniformly reprocessed TF binding compendium — around 1,188
+  factors — built from published ChIP-seq rather than one lab's panel.
+  The rm suffix is ReMap, not repeat-masked.
+
+  source      ReMap 2022, non-redundant MACS2 peaks
+  citation    Hammal et al. 2022, Nucleic Acids Res, doi:10.1093/nar/gkab996
+  processing  remap2022_nr_macs2 peaks, one set per factor.</code></pre>
+    <div class="note">Provenance is compiled into the binary from
+      <code class="inl">data/knowledgebases.tsv</code>, so <b>i</b> works offline. A field
+      nobody has been able to establish reads <code class="inl">not recorded</code> rather
+      than being quietly omitted — an honest gap beats a plausible invention.
+      <code class="inl">-o</code> takes <b>set names</b>, not file names —
+      <code class="inl">ChromHMM</code>, not <code class="inl">ChromHMM.20220303.cm</code>.</div>
   </section>
 
   <section class="card">

@@ -343,6 +343,14 @@ static void pick_commit_fetch(void *ctx) {
   p->n_chosen = 0;
 }
 
+/** i in the picker: describe the set under the cursor, same panel as fetch. */
+static int pick_key(void *ctx, char key, const char *root,
+                    const char *child_key) {
+  (void)ctx;
+  if (key == 'i') return kycg_kb_show_info(root, child_key);
+  return 0;
+}
+
 static void pick_free(pickctx_t *p) {
   for (size_t i = 0; i < p->n; ++i) { free(p->rows[i]); free(p->names[i]); }
   free(p->rows); free(p->names); free(p->styles);
@@ -551,6 +559,12 @@ int main_test(int argc, char *argv[]) {
     spec.n_actions = 2;
     /* Cached sets are the ones worth testing, so they stay checkable. */
     spec.have_selectable = 1;
+    /* r and i are the same callbacks the fetch browser uses, so a set is
+     * recommended and described identically whichever tree you reached it
+     * through. */
+    spec.recommend = kycg_kb_recommended;
+    spec.on_key = pick_key;
+    spec.hint = "i info";
     spec.ctx = &pc;
 
     int rc = kycg_ui_tree(&spec);

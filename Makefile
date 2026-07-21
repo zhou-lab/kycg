@@ -83,7 +83,12 @@ $(YAME_LIB) $(YAME_HTSLIB): yame
 ### compilation ###
 ###################
 
-$(SRC_DIR)/%.o: $(SRC_DIR)/%.c
+# Objects depend on every kycg header, not just their own .c. Without this a
+# regenerated registry.h or kbinfo.h leaves a stale binary that reports the
+# previous contents -- which looks like a data bug and is not one.
+KYCG_HEADERS := $(wildcard $(SRC_DIR)/*.h)
+
+$(SRC_DIR)/%.o: $(SRC_DIR)/%.c $(KYCG_HEADERS)
 	$(CC) -c $(CFLAGS) $< -o $@
 
 ###################

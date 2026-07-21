@@ -71,6 +71,18 @@ kycg_catalogue_t *kycg_catalogue(const char *target, const char *store,
                                  size_t *n);
 void kycg_catalogue_free(kycg_catalogue_t *v, size_t n);
 
+/**
+ * The two browser callbacks that describe knowledgebases rather than move
+ * them. Both are shared with `kycg test`'s picker so that `r` and `i` mean
+ * exactly the same thing in both trees -- a second implementation would be
+ * free to drift, which is the failure this project exists to avoid.
+ *
+ * kycg_kb_recommended matches kycg_ui_preselect_fn; kycg_kb_show_info is
+ * called from an on_key handler when the user presses `i`.
+ */
+int kycg_kb_recommended(void *ctx, const char *root, const char *key);
+int kycg_kb_show_info(const char *root, const char *child_key);
+
 /* Subcommand entry points, dispatched from main() on argv[1]. */
 int main_test(int argc, char *argv[]);
 int main_info(int argc, char *argv[]);

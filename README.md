@@ -61,6 +61,17 @@ stdout, which is what keeps scripts working unchanged. `→` unfolds a target, `
 checks a set, `f` fetches everything checked, `d` points the browser at a different store. Sets already present show a green ✓ and cannot be checked —
 there is nothing to ask for. `kycg fetch` with no target simply opens it.
 
+Two keys answer the questions the columns cannot. `r` checks that collection's
+recommended selection in one keypress — the dozen or so sets worth having
+before you know what you are looking for, rather than all forty. `i` describes
+the set under the cursor: what the annotation means for methylation, the
+upstream database, the publication, and what was done to it on the way in.
+That last one is the answer to "is `TFBSrm` the same as `TFBS`, differently
+filtered?" — it is not; `rm` is ReMap. The text lives in
+[`data/knowledgebases.tsv`](data/knowledgebases.tsv) and is compiled into the
+binary, so both keys work with no network and no data files to find. Fields
+nobody has been able to establish read `not recorded` rather than being hidden.
+
 Fetching does not leave the browser. The plan, the confirmation and the
 progress bar render in a panel across the bottom rows while the catalogue
 stays visible above; when it finishes, the counts and check marks refresh in
@@ -72,7 +83,7 @@ place with your folds and cursor where you left them. Only `q` exits.
    ├ [x] ABCompartment   ABCompartment.20220911.cm   9.5 KB  -
    ├  ✓  Blacklist       Blacklist.20220304.cm       3.1 KB  cached
    ├ [ ] CTCFbind        CTCFbind.20220911.cm        159 KB  -
-  row 4 of 42  •  1 selected  •  → open  ← close  space select  f fetch  q quit
+  row 4 of 42  •  1 selected  •  → open  ← close  space select  r recommended  f fetch  i info  d store   q quit
 ```
 
 **Nothing is asked when nobody can answer.** DESIGN.md's original rule was
@@ -180,7 +191,7 @@ Knowledgebases for 21,867,837 rows -- space to choose, t to test
 ❯ ▾ mm10    whole genome  21,867,837  29
    ├ [x] CGI          CGI.20220904.cm            cached
    ├ [ ] EvoCons      EvoCons.20220314.cm        -
-  row 3 of 30 · 1 selected · → open  ← close  space select  f fetch  t test  q quit
+  row 3 of 30 · 1 selected · → open  ← close  space select  r recommended  f fetch  i info  t test  q quit
 ```
 
 It lists everything a collection publishes, not just what you have — so if the

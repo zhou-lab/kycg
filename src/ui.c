@@ -180,6 +180,9 @@ static int term_rows(void) {
   return r > 0 ? r : 24;
 }
 
+int kycg_ui_cols(void) { return term_cols(); }
+int kycg_ui_rows(void) { return term_rows(); }
+
 /* --------------------------------------------------------------- raw mode */
 
 /*
@@ -1356,8 +1359,10 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
       for (size_t i = 0; i < n_roots; ++i)
         for (size_t j = 0; j < node[i].kids.n; ++j)
           if (node[i].checked && node[i].checked[j]) ++nsel;
-      char acts[128];
+      char acts[160];
       size_t ao = 0;
+      if (spec->recommend)
+        ao += (size_t)snprintf(acts + ao, sizeof(acts) - ao, "r recommended  ");
       for (size_t a = 0; a < spec->n_actions && ao + 24 < sizeof(acts); ++a)
         ao += (size_t)snprintf(acts + ao, sizeof(acts) - ao, "%c %s  ",
                                spec->actions[a].key, spec->actions[a].verb);
@@ -1508,7 +1513,31 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
       else if (picking && find_action(spec, ch) >= 0) { /* above */ }
       else if (ch == 'j') { if (cur + 1 < nflat) ++cur; }
       else if (ch == 'k') { if (cur) --cur; }
-      else if (on_key && on_key(ctx, ch)) {
+      else if (picking && spec->recommend && ch == 'r' && nflat) {
+        /* Scoped to the collection under the cursor. Recommending across
+         * every collection at once would check sets for platforms the user is
+         * not working on, and open all of them to do it. */
+        size_t i = ri;
+        if (!node[i].loaded) {
+          if (expand) expand(ctx, roots[i], &node[i].kids);
+          if (node[i].kids.n) node[i].checked = calloc(node[i].kids.n, 1);
+          node[i].loaded = 1;
+        }
+        if (node[i].kids.n) node[i].expanded = 1;
+        for (size_t j = 0; j < node[i].kids.n; ++j) {
+          int req = node[i].kids.styles &&
+                    ((!spec->have_selectable &&
+                      node[i].kids.styles[j] == KYCG_ROW_HAVE) ||
+                     node[i].kids.styles[j] == KYCG_ROW_REQUIRED);
+          if (!req && node[i].checked && node[i].kids.keys &&
+              node[i].kids.keys[j])
+            node[i].checked[j] = spec->recommend(ctx, roots[i],
+                                                 node[i].kids.keys[j]);
+        }
+      }
+      else if (on_key && on_key(ctx, ch, nflat ? roots[ri] : NULL,
+                                (nflat && ci >= 0 && node[ri].kids.keys)
+                                  ? node[ri].kids.keys[ci] : NULL)) {
         /* The caller changed what the roots describe -- a different store,
          * say -- so every expansion is about something else now. */
         kycg_ui_panel_close();
