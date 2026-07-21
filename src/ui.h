@@ -131,6 +131,7 @@ typedef enum {
   KYCG_ROW_PLAIN = 0,
   KYCG_ROW_HAVE,      /* present locally -- green */
   KYCG_ROW_MISSING,   /* not present -- dimmed */
+  KYCG_ROW_REQUIRED,  /* comes with any fetch, not selectable -- red */
 } kycg_row_style_t;
 
 /**

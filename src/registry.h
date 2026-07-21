@@ -5,6 +5,10 @@
  * Arrays: sha256(<PLATFORM>/KYCG/SHA256SUMS) at the pinned tag is the trust
  * anchor; every file digest chains from it. NULL anchor = not published.
  *
+ * Set counts are pinned too. A tag is immutable, so the number of sets it
+ * publishes is a fixed fact about it -- there is nothing to discover at run
+ * time, and the overview can show have/total without touching the network.
+ *
  * Whole genome: the same, anchored on sha256(SHA256SUMS) in KYCGKB_<genome>
  * at its own tag. File sizes are pinned alongside for display only; nothing
  * depends on them, so a set added upstream needs no rebuild.
@@ -31,18 +35,23 @@
 typedef struct {
     const char *platform;
     uint64_t    rows;          /* probes in the platform's ordering */
+    uint64_t    n_sets;        /* .cm sets published at this tag */
     const char *sums_sha256;   /* sha256 of <platform>/KYCG/SHA256SUMS */
+    /* The probe ordering sits one level up, under the platform's own
+     * manifest, and is fetched alongside any set: it is what gives a row
+     * index a probe name, so a set without it is a column of anonymous bits. */
+    const char *plat_sums_sha256; /* sha256 of <platform>/SHA256SUMS */
 } kycg_array_reg_t;
 
 static const kycg_array_reg_t KYCG_ARRAY_REGISTRY[] = {
-    { "EPIC", 866553, "1678294f10134013db3fe274dfeb5243cd5e4352d40e01ef50528c91ac3b077b" },
-    { "EPICv2", 937690, "82c17bbc0b59fbf96545ea029cdc089a19214395d8d3f6e6826ee161b8b8eb17" },
-    { "HM27", 27722, "450bdb2bb74d152ba8d8b96646e6976122ebe00900d41e7aa67ebcadcf739b68" },
-    { "HM450", 486427, "27e4d8ef73bcd1c8b75ddb0fc203e17218bd5de1b05e0bfc847b217621c308bf" },
-    { "Mammal40", 38607, "f49d45d83eac05f556595980aadba6cce39ee64172050f065a7b2137b73ea351" },
-    { "MM285", 287692, "2cb53129949cfce5f8149c6ab1321069f30a236757a3f4095c2e5e00b3c141e9" },
-    { "MSA", 284309, "cc63264354f71f436e7aa4e7b9820430461e6923d657c54a24bb03cca4682db5" },
-    { NULL, 0, NULL }
+    { "EPIC", 866553, 17, "1678294f10134013db3fe274dfeb5243cd5e4352d40e01ef50528c91ac3b077b", "a50d593bb904ab30e7602fb62ff404fa4d639bf951712dda4899eb8d543c6c8c" },
+    { "EPICv2", 937690, 16, "82c17bbc0b59fbf96545ea029cdc089a19214395d8d3f6e6826ee161b8b8eb17", "06139afa41798e1655b7a237903869352b67aaebc8c7be33a1410046500ed842" },
+    { "HM27", 27722, 15, "450bdb2bb74d152ba8d8b96646e6976122ebe00900d41e7aa67ebcadcf739b68", "653a6ef7982d7726688ce7b63083fd3ab1322711a01a400117faba8d3d833c37" },
+    { "HM450", 486427, 18, "27e4d8ef73bcd1c8b75ddb0fc203e17218bd5de1b05e0bfc847b217621c308bf", "6fd4845dae5c668f16b1fd0343b8e3eb7500507856384cccf4f9fc1a84871500" },
+    { "Mammal40", 38607, 15, "f49d45d83eac05f556595980aadba6cce39ee64172050f065a7b2137b73ea351", "03a571de82ca657a91f3a2905ae9a8f5ac04601a8eca486366146e857aa71cbf" },
+    { "MM285", 287692, 17, "2cb53129949cfce5f8149c6ab1321069f30a236757a3f4095c2e5e00b3c141e9", "5edd9172be38121d1c0f05638a16d208725c68efdb0224e693d879f2e31c531d" },
+    { "MSA", 284309, 32, "cc63264354f71f436e7aa4e7b9820430461e6923d657c54a24bb03cca4682db5", "68198ff2da93346a3d43e5191f0eb7b1db636859780bd794e2a3776eded3175b" },
+    { NULL, 0, 0, NULL, NULL }
 };
 
 /* A published file size, for display only -- never for correctness. */
@@ -147,6 +156,7 @@ static const kycg_fsize_t KYCG_SIZES_mm10[] = {
 typedef struct {
     const char        *genome;
     uint64_t           rows;      /* CpGs in cpg_nocontig.cr */
+    uint64_t           n_sets;    /* .cm sets published at this tag */
     const char        *repo;      /* GitHub repository name */
     const char        *tag;       /* pinned tag */
     const char        *sums_sha256;
@@ -156,9 +166,9 @@ typedef struct {
 } kycg_seq_reg_t;
 
 static const kycg_seq_reg_t KYCG_SEQ_REGISTRY[] = {
-    { "hg38", 29401795, "KYCGKB_hg38", "v2", "8e0594ade2936a7b837306cec8e4d29bb9028a6a3be5b2cdbd372af7c16f650a", "18175838", "10.5281/zenodo.18175837", KYCG_SIZES_hg38 },
-    { "mm10", 21867837, "KYCGKB_mm10", "v1", "0693eb6d7e173c04e083c48c41eedc593af96a8ac78c80e8cfd2b24b71c25d3a", "18175656", "10.5281/zenodo.18175655", KYCG_SIZES_mm10 },
-    { NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL }
+    { "hg38", 29401795, 32, "KYCGKB_hg38", "v2", "8e0594ade2936a7b837306cec8e4d29bb9028a6a3be5b2cdbd372af7c16f650a", "18175838", "10.5281/zenodo.18175837", KYCG_SIZES_hg38 },
+    { "mm10", 21867837, 29, "KYCGKB_mm10", "v1", "0693eb6d7e173c04e083c48c41eedc593af96a8ac78c80e8cfd2b24b71c25d3a", "18175656", "10.5281/zenodo.18175655", KYCG_SIZES_mm10 },
+    { NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
 };
 
 #endif /* _KYCG_REGISTRY_H */

@@ -63,6 +63,10 @@ cat <<EOF
  * Arrays: sha256(<PLATFORM>/KYCG/SHA256SUMS) at the pinned tag is the trust
  * anchor; every file digest chains from it. NULL anchor = not published.
  *
+ * Set counts are pinned too. A tag is immutable, so the number of sets it
+ * publishes is a fixed fact about it -- there is nothing to discover at run
+ * time, and the overview can show have/total without touching the network.
+ *
  * Whole genome: the same, anchored on sha256(SHA256SUMS) in KYCGKB_<genome>
  * at its own tag. File sizes are pinned alongside for display only; nothing
  * depends on them, so a set added upstream needs no rebuild.
@@ -89,7 +93,12 @@ cat <<EOF
 typedef struct {
     const char *platform;
     uint64_t    rows;          /* probes in the platform's ordering */
+    uint64_t    n_sets;        /* .cm sets published at this tag */
     const char *sums_sha256;   /* sha256 of <platform>/KYCG/SHA256SUMS */
+    /* The probe ordering sits one level up, under the platform's own
+     * manifest, and is fetched alongside any set: it is what gives a row
+     * index a probe name, so a set without it is a column of anonymous bits. */
+    const char *plat_sums_sha256; /* sha256 of <platform>/SHA256SUMS */
 } kycg_array_reg_t;
 
 static const kycg_array_reg_t KYCG_ARRAY_REGISTRY[] = {
@@ -99,17 +108,30 @@ for entry in $platforms; do
     plat=$(echo "$entry" | cut -d: -f1)
     nrow=$(echo "$entry" | cut -d: -f2)
     url="$base/$tag/$plat/KYCG/SHA256SUMS"
-    sha=$(curl -sfL "$url" 2>/dev/null | shasum -a 256 | cut -d' ' -f1 || true)
-    if [ -n "${sha:-}" ] && curl -sfL "$url" >/dev/null 2>&1; then
-        printf '    { "%s", %s, "%s" },\n' "$plat" "$nrow" "$sha"
+    # Fetch once: the manifest yields both the anchor and the set count.
+    body=$(curl -sfL "$url" 2>/dev/null || true)
+    psha=$(curl -sfL "$base/$tag/$plat/SHA256SUMS" 2>/dev/null \
+           | shasum -a 256 | cut -d' ' -f1 || true)
+    pbody=$(curl -sfL "$base/$tag/$plat/SHA256SUMS" 2>/dev/null || true)
+    [ -n "$pbody" ] || psha=""
+    if [ -n "$body" ]; then
+        sha=$(printf '%s\n' "$body" | shasum -a 256 | cut -d' ' -f1)
+        nset=$(printf '%s\n' "$body" | grep -c '\.cm$' || true)
+        if [ -n "$psha" ]; then
+            printf '    { "%s", %s, %s, "%s", "%s" },\n' \
+                "$plat" "$nrow" "$nset" "$sha" "$psha"
+        else
+            printf '    { "%s", %s, %s, "%s", NULL },\n' \
+                "$plat" "$nrow" "$nset" "$sha"
+        fi
     else
-        printf '    { "%s", %s, NULL },  /* not published at %s */\n' \
+        printf '    { "%s", %s, 0, NULL, NULL },  /* not published at %s */\n' \
             "$plat" "$nrow" "$tag"
     fi
 done
 
 cat <<'EOF'
-    { NULL, 0, NULL }
+    { NULL, 0, 0, NULL, NULL }
 };
 
 /* A published file size, for display only -- never for correctness. */
@@ -154,6 +176,7 @@ cat <<'EOF'
 typedef struct {
     const char        *genome;
     uint64_t           rows;      /* CpGs in cpg_nocontig.cr */
+    uint64_t           n_sets;    /* .cm sets published at this tag */
     const char        *repo;      /* GitHub repository name */
     const char        *tag;       /* pinned tag */
     const char        *sums_sha256;
@@ -173,18 +196,20 @@ for g in $genomes; do
     doi=$(echo "$g" | cut -d: -f5)
     nrow=$(echo "$g" | cut -d: -f6)
     url="https://github.com/zhou-lab/$repo/raw/$gtag/SHA256SUMS"
-    sha=$(curl -sfL "$url" 2>/dev/null | shasum -a 256 | cut -d' ' -f1 || true)
-    if [ -n "${sha:-}" ] && curl -sfL "$url" >/dev/null 2>&1; then
-        printf '    { "%s", %s, "%s", "%s", "%s", "%s", "%s", KYCG_SIZES_%s },\n' \
-            "$genome" "$nrow" "$repo" "$gtag" "$sha" "$record" "$doi" "$genome"
+    body=$(curl -sfL "$url" 2>/dev/null || true)
+    if [ -n "$body" ]; then
+        sha=$(printf '%s\n' "$body" | shasum -a 256 | cut -d' ' -f1)
+        nset=$(printf '%s\n' "$body" | grep -c '\.cm$' || true)
+        printf '    { "%s", %s, %s, "%s", "%s", "%s", "%s", "%s", KYCG_SIZES_%s },\n' \
+            "$genome" "$nrow" "$nset" "$repo" "$gtag" "$sha" "$record" "$doi" "$genome"
     else
-        printf '    { "%s", %s, "%s", "%s", NULL, "%s", "%s", KYCG_SIZES_%s },  /* no manifest at %s */\n' \
+        printf '    { "%s", %s, 0, "%s", "%s", NULL, "%s", "%s", KYCG_SIZES_%s },  /* no manifest at %s */\n' \
             "$genome" "$nrow" "$repo" "$gtag" "$record" "$doi" "$genome" "$gtag"
     fi
 done
 
 cat <<'EOF'
-    { NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL }
+    { NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
 };
 
 #endif /* _KYCG_REGISTRY_H */

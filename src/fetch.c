@@ -78,6 +78,7 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include <sys/stat.h>
+#include <dirent.h>
 
 #include "kycg.h"
 #include "digest.h"
@@ -192,15 +193,26 @@ typedef struct coll_s {
   char                source[256]; /* provenance, for display               */
   const char         *anchor;      /* sha256 of SHA256SUMS; NULL = unpinned */
   const kycg_fsize_t *sizes;       /* display only, may be NULL/incomplete  */
+  uint64_t            n_sets;      /* sets published at the pinned tag       */
   int                 unpinned_tag;/* -t named a tag this build cannot verify */
+
+  /* The companion: the file that gives a row index its identity. For a genome
+   * that is cpg_nocontig.cr, the coordinate list every sequencing analysis is
+   * positioned against; for an array it is the probe ordering, without which a
+   * set is a column of anonymous bits. Neither is a knowledgebase and neither
+   * is optional, so both ride along with any fetch rather than being offered
+   * as a choice. */
+  char                comp_name[256];  /* "" when there is none              */
+  char                comp_base[1024]; /* may differ from base               */
+  const char         *comp_anchor;     /* NULL: listed in the main manifest  */
 } coll_t;
 
 struct coll_s;
 #define KYCG_MF_LOCAL 0
 #define KYCG_MF_FETCH 1
-#define KYCG_MF_FORCE 2
 
 static char *coll_manifest(const struct coll_s *c, size_t *len_out, int mode);
+static int coll_companion_sha(const struct coll_s *c, char sha_out[65], int mode);
 
 /**
  * Resolve a target name to a collection. Returns 0 on success.
@@ -223,6 +235,11 @@ static int coll_for(const char *target, const char *store, const char *tag,
     snprintf(c->source, sizeof(c->source), "%s %s", sr->repo, sr->tag);
     c->anchor = sr->sums_sha256;
     c->sizes = sr->sizes;
+    c->n_sets = sr->n_sets;
+    /* Listed in the same manifest as the sets, so no second anchor. */
+    snprintf(c->comp_name, sizeof(c->comp_name), "cpg_nocontig.cr");
+    snprintf(c->comp_base, sizeof(c->comp_base), "%s", c->base);
+    c->comp_anchor = NULL;
     return 0;
   }
 
@@ -239,6 +256,15 @@ static int coll_for(const char *target, const char *store, const char *tag,
     c->unpinned_tag = (strcmp(tag, KYCG_IA_TAG) != 0);
     c->anchor = ar->sums_sha256;
     c->sizes = NULL;      /* this channel publishes no sizes */
+    c->n_sets = ar->n_sets;
+    /* One level up, under the platform's own manifest. */
+    if (ar->plat_sums_sha256) {
+      snprintf(c->comp_name, sizeof(c->comp_name), "%s.ordering.tsv.gz",
+               ar->platform);
+      snprintf(c->comp_base, sizeof(c->comp_base), "%s/%s/%s",
+               KYCG_IA_BASE_URL, tag, ar->platform);
+      c->comp_anchor = ar->plat_sums_sha256;
+    }
     return 0;
   }
 
@@ -560,13 +586,29 @@ static int build_plan(const coll_t *c, const fetch_conf_t *conf, plan_t *plan) {
   plan->sizes_known = (c->sizes != NULL);
 
   for (size_t i = 0; i < n_ent; ++i) {
-    if (!passes_filter(ent[i].name, conf->only)) continue;
+    /* The companion ignores the subset filter: asking for one set still means
+     * asking for the thing that makes that set interpretable. */
+    int is_comp = (c->comp_name[0] && strcmp(ent[i].name, c->comp_name) == 0);
+    if (!is_comp && !passes_filter(ent[i].name, conf->only)) continue;
     plan_item_t *it = plan_add(plan);
     if (!it) break;
     snprintf(it->name, sizeof(it->name), "%s", ent[i].name);
     snprintf(it->url, sizeof(it->url), "%s/%s", c->base, ent[i].name);
     snprintf(it->sha, sizeof(it->sha), "%s", ent[i].sha);
     it->size = coll_size_of(c, ent[i].name);
+  }
+
+  /* A companion under a manifest of its own is not in the list above. */
+  if (c->comp_name[0] && c->comp_anchor) {
+    char csha[65];
+    if (coll_companion_sha(c, csha, KYCG_MF_FETCH)) {
+      plan_item_t *it = plan_add(plan);
+      if (it) {
+        snprintf(it->name, sizeof(it->name), "%s", c->comp_name);
+        snprintf(it->url, sizeof(it->url), "%s/%s", c->comp_base, c->comp_name);
+        snprintf(it->sha, sizeof(it->sha), "%s", csha);
+      }
+    }
   }
 
   free(ent);
@@ -978,16 +1020,16 @@ static void on_pick(void *ctx, const char *root, const char *key) {
  * A platform's SHA256SUMS: the catalogue of what that platform publishes.
  *
  * Looked for in three places, cheapest first -- the local store, this run's
- * memo, then the network. `mode` picks how far to go:
+ * memo, then the network. `mode` is KYCG_MF_LOCAL to stop before the network
+ * (the overview redraws too often to reach it) or KYCG_MF_FETCH to go all the
+ * way.
  *
- *   KYCG_MF_LOCAL  local or memo only; never reaches the network. Used when
- *                  drawing the overview, which happens on every keystroke.
- *   KYCG_MF_FETCH  fall through to the network if neither has it.
- *   KYCG_MF_FORCE  ignore both and re-pull. This is what refresh means, and
- *                  it is the only way to replace a local manifest that has
- *                  gone stale -- a store written by an older kycg holds only
- *                  the digests of files it fetched, not the full catalogue,
- *                  and would otherwise be believed forever.
+ * The store's copy is accepted only if it hashes to the pinned anchor. That
+ * single check makes staleness self-healing: a manifest written by an older
+ * kycg -- which recorded only the files it fetched, not the whole catalogue --
+ * fails it and is replaced, with no refresh button to remember to press. It is
+ * the same test a freshly downloaded manifest has to pass, applied to the copy
+ * already on disk.
  *
  * Returns a malloc'd copy the caller frees, or NULL if unavailable. A fetched
  * manifest is verified against the compiled anchor exactly as a download would
@@ -996,12 +1038,6 @@ static void on_pick(void *ctx, const char *root, const char *key) {
 static struct { const char *plat; char *text; size_t len; } g_manifest[16];
 static size_t g_manifest_n = 0;
 
-/** Drop the memo, so the next lookup goes back to the network. */
-static void array_manifest_forget(void) {
-  for (size_t i = 0; i < g_manifest_n; ++i) free(g_manifest[i].text);
-  g_manifest_n = 0;
-}
-
 static char *coll_manifest(const struct coll_s *c, size_t *len_out, int mode) {
   if (len_out) *len_out = 0;
 
@@ -1009,7 +1045,7 @@ static char *coll_manifest(const struct coll_s *c, size_t *len_out, int mode) {
    *    authoritative and always current, so it is never memoized. */
   char sums[4400];
   snprintf(sums, sizeof(sums), "%s/%s", c->dir, KYCG_IA_SUMS_FILE);
-  FILE *fp = (mode == KYCG_MF_FORCE) ? NULL : fopen(sums, "rb");
+  FILE *fp = fopen(sums, "rb");
   if (fp) {
     fseek(fp, 0, SEEK_END);
     long sz = ftell(fp);
@@ -1021,12 +1057,22 @@ static char *coll_manifest(const struct coll_s *c, size_t *len_out, int mode) {
       text[len] = '\0';
     }
     fclose(fp);
-    if (text) { if (len_out) *len_out = len; return text; }
+    if (text) {
+      char got[65];
+      kycg_sha256_buf(text, len, got);
+      if (c->anchor && kycg_digest_equal(got, c->anchor)) {
+        if (len_out) *len_out = len;
+        return text;
+      }
+      /* Does not match what this build pins -- written by an older kycg, or
+       * against a different tag. Not trustworthy as a catalogue. */
+      free(text);
+    }
   }
 
   /* 2. Something this run already pulled. */
-  for (size_t i = 0; mode != KYCG_MF_FORCE && i < g_manifest_n; ++i) {
-    if (g_manifest[i].plat != c->target) continue;
+  for (size_t i = 0; i < g_manifest_n; ++i) {
+    if (g_manifest[i].plat != c->anchor) continue;
     if (!g_manifest[i].text) return NULL;
     char *dup = malloc(g_manifest[i].len + 1);
     if (!dup) return NULL;
@@ -1057,7 +1103,7 @@ static char *coll_manifest(const struct coll_s *c, size_t *len_out, int mode) {
   /* Remember the outcome either way: a failed lookup memoized as NULL stops
    * a dead platform being retried on every redraw. */
   if (g_manifest_n < 16) {
-    g_manifest[g_manifest_n].plat = c->target;
+    g_manifest[g_manifest_n].plat = c->anchor;
     g_manifest[g_manifest_n].len = len;
     g_manifest[g_manifest_n].text = NULL;
     if (text) {
@@ -1068,9 +1114,9 @@ static char *coll_manifest(const struct coll_s *c, size_t *len_out, int mode) {
     ++g_manifest_n;
   }
 
-  /* A forced pull is authoritative: write it back so the store stops carrying
-   * a manifest that disagrees with upstream. */
-  if (text && mode == KYCG_MF_FORCE && kycg_store_is_file(sums)) {
+  /* Replace a rejected local copy, so the store stops carrying a manifest that
+   * disagrees with the tag this build pins. */
+  if (text && kycg_store_is_file(sums)) {
     FILE *out = fopen(sums, "wb");
     if (out) { fwrite(text, 1, len, out); fclose(out); }
   }
@@ -1078,6 +1124,40 @@ static char *coll_manifest(const struct coll_s *c, size_t *len_out, int mode) {
   if (len_out) *len_out = len;
   return text;
 #endif
+}
+
+/**
+ * Digest of the companion file, or 0 if it cannot be established.
+ *
+ * A genome's companion is listed in the same manifest as its sets; an array's
+ * lives under the platform manifest, so that one is fetched and verified in
+ * its own right. Either way the file is trusted exactly as a set is.
+ */
+static int coll_companion_sha(const struct coll_s *c, char sha_out[65], int mode) {
+  if (!c->comp_name[0]) return 0;
+
+  coll_t src = *c;
+  if (c->comp_anchor) {          /* a manifest of its own */
+    snprintf(src.base, sizeof(src.base), "%s", c->comp_base);
+    src.anchor = c->comp_anchor;
+  }
+
+  size_t len = 0;
+  char *text = coll_manifest(&src, &len, mode);
+  if (!text) return 0;
+
+  size_t n_ent = 0;
+  sums_ent_t *ent = parse_sums(text, &n_ent);
+  int found = 0;
+  for (size_t i = 0; ent && i < n_ent; ++i) {
+    if (strcmp(ent[i].name, c->comp_name) != 0) continue;
+    snprintf(sha_out, 65, "%s", ent[i].sha);
+    found = 1;
+    break;
+  }
+  free(ent);
+  free(text);
+  return found;
 }
 
 /** How many sets a collection publishes, or 0 if the catalogue is not to hand. */
@@ -1168,11 +1248,29 @@ static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
     return;
   }
 
+  /* The companion goes first and in red: it is not a choice, it comes with
+   * whatever you pick, and burying it alphabetically among things that are
+   * choices would misrepresent it. */
+  if (c.comp_name[0]) {
+    char cpath[4400], hb[24];
+    snprintf(cpath, sizeof(cpath), "%s/%s", c.dir, c.comp_name);
+    int chave = kycg_store_is_file(cpath);
+    uint64_t csz = coll_size_of(&c, c.comp_name);
+    char setn[256];
+    set_name_of(c.comp_name, setn, sizeof(setn));
+    kid_push(out, chave ? KYCG_ROW_HAVE : KYCG_ROW_REQUIRED, NULL,
+             "%-22.22s %-32.32s %9s  %s", setn, c.comp_name,
+             csz ? kycg_ui_human(csz, hb, sizeof(hb)) : "",
+             chave ? "cached" : "always fetched");
+  }
+
   size_t n_ent = 0;
   sums_ent_t *ent = parse_sums(text, &n_ent);
   for (size_t i = 0; ent && i < n_ent; ++i) {
     const char *nm = ent[i].name;
     if (!is_selectable(nm)) continue;
+    /* Already shown above, out of alphabetical order and on purpose. */
+    if (c.comp_name[0] && strcmp(nm, c.comp_name) == 0) continue;
 
     char setn[256], path[4400], hb[24];
     set_name_of(nm, setn, sizeof(setn));
@@ -1204,7 +1302,10 @@ static void build_overview(const char *root, rows_t *rows) {
     if (coll_for(r->genome, root, NULL, &c) != 0) continue;
 
     uint64_t have = count_cached(c.dir);
-    uint64_t nt = coll_set_total(&c);
+    /* Pinned, not discovered: the tag is immutable, so its set count is a
+     * fixed fact about this build. The overview therefore shows have/total
+     * immediately, without a manifest and without touching the network. */
+    uint64_t nt = c.n_sets;
 
     char rb[32], cnt[64];
     if (nt) snprintf(cnt, sizeof(cnt), "%" PRIu64 "/%" PRIu64, have, nt);
@@ -1222,11 +1323,7 @@ static void build_overview(const char *root, rows_t *rows) {
     if (coll_for(r->platform, root, NULL, &c) != 0) continue;
 
     uint64_t nc = count_cached(c.dir);
-    /* The total comes from the manifest, which is the catalogue. Only counted
-     * when that is already to hand -- locally, or pulled earlier this run --
-     * because this runs on every redraw and must not touch the network.
-     * Unfolding a target, or pressing r, warms it. */
-    uint64_t nt = coll_set_total(&c);
+    uint64_t nt = c.n_sets;
 
     char rb[32], cnt[64];
     if (nt) snprintf(cnt, sizeof(cnt), "%" PRIu64 "/%" PRIu64, nc, nt);
@@ -1386,39 +1483,6 @@ static void on_commit(void *ctx) {
 static int on_list_key(void *ctx, char key) {
   listctx_t *lc = ctx;
 
-  if (key == 'r') {
-    /* Refresh: drop every remembered catalogue and pull them again. This is
-     * the one place that reaches the network for all platforms at once, which
-     * is why it is a key the user presses rather than something the overview
-     * does on its own. It also fills in every denominator. */
-    array_manifest_forget();
-
-    kycg_ui_panel_open(2);
-    size_t n = 0, tot = 0;
-    for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome; ++r) ++tot;
-    for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform; ++r) ++tot;
-
-    for (size_t pass = 0; pass < 2; ++pass) {
-      for (size_t i = 0;; ++i) {
-        const char *name = pass == 0
-          ? (KYCG_SEQ_REGISTRY[i].genome ? KYCG_SEQ_REGISTRY[i].genome : NULL)
-          : (KYCG_ARRAY_REGISTRY[i].platform ? KYCG_ARRAY_REGISTRY[i].platform : NULL);
-        if (!name) break;
-        kycg_ui_panel_line(0, "  %srefreshing catalogues%s  %s%zu/%zu  %s%s",
-                           kycg_ui_bold(), kycg_ui_reset(), kycg_ui_dim(),
-                           ++n, tot, name, kycg_ui_reset());
-        coll_t c;
-        if (coll_for(name, lc->root, NULL, &c) != 0) continue;
-        size_t len = 0;
-        free(coll_manifest(&c, &len, KYCG_MF_FORCE));
-      }
-    }
-    kycg_ui_panel_close();
-
-    refresh_overview(lc);
-    return 1;
-  }
-
   if (key != 'd') return 0;
 
   char buf[4096];
@@ -1440,28 +1504,26 @@ static int on_list_key(void *ctx, char key) {
   return 1;
 }
 
+/**
+ * How many .cm sets are actually on disk in a directory.
+ *
+ * Counted by looking, not by consulting the manifest. What is present is a
+ * property of the filesystem, and reading it from a manifest made the number
+ * wrong whenever that manifest was missing, partial, or stale -- a store with
+ * eight sets in it reported zero.
+ */
 static uint64_t count_cached(const char *dir) {
-  char sums[4600];
-  snprintf(sums, sizeof(sums), "%s/%s", dir, KYCG_IA_SUMS_FILE);
-
-  FILE *fp = fopen(sums, "rb");
-  if (!fp) return 0;
+  DIR *d = opendir(dir);
+  if (!d) return 0;
 
   uint64_t n = 0;
-  char line[1024];
-  while (fgets(line, sizeof(line), fp)) {
-    char *nm = strstr(line, "  ");
-    if (!nm) continue;
-    nm += 2;
-    size_t len = strlen(nm);
-    while (len && (nm[len-1] == '\n' || nm[len-1] == '\r')) nm[--len] = '\0';
-    if (len > 3 && strcmp(nm + len - 3, ".cm") == 0) {
-      char path[4700];
-      snprintf(path, sizeof(path), "%s/%s", dir, nm);
-      if (kycg_store_is_file(path)) ++n;
-    }
+  struct dirent *e;
+  while ((e = readdir(d))) {
+    size_t l = strlen(e->d_name);
+    if (e->d_name[0] == '.') continue;
+    if (l > 3 && strcmp(e->d_name + l - 3, ".cm") == 0) ++n;
   }
-  fclose(fp);
+  closedir(d);
   return n;
 }
 
@@ -1567,7 +1629,7 @@ int main_list(int argc, char *argv[]) {
     spec.accept = on_pick;
     spec.commit = on_commit;
     spec.on_key = on_list_key;
-    spec.hint = "r refresh  d store";
+    spec.hint = "d store";
     spec.ctx = &lc;
 
     int rc = kycg_ui_tree(&spec);

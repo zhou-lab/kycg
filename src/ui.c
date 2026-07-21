@@ -932,8 +932,9 @@ int *kycg_ui_multiselect(const char *title, const char **items,
 static const char *style_color(const unsigned char *styles, size_t i) {
   if (!styles) return "";
   switch (styles[i]) {
-  case KYCG_ROW_HAVE:    return kycg_ui_green();
-  case KYCG_ROW_MISSING: return kycg_ui_dim();
+  case KYCG_ROW_HAVE:     return kycg_ui_green();
+  case KYCG_ROW_MISSING:  return kycg_ui_dim();
+  case KYCG_ROW_REQUIRED: return kycg_ui_red();
   default:               return "";
   }
 }
@@ -1284,15 +1285,19 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
         char cut[1024];
         fit(nd->kids.rows[fr->child], cols - 14, cut, sizeof(cut));
 
-        /* A row already present needs no checkbox: there is nothing to ask
-         * for, so it shows the mark it earned instead. */
+        /* Neither a row already present nor a required one needs a checkbox:
+         * in both cases there is nothing to ask for, so each shows what it is
+         * instead of pretending to be a choice. */
         int have = nd->kids.styles &&
                    nd->kids.styles[fr->child] == KYCG_ROW_HAVE;
+        int required = nd->kids.styles &&
+                       nd->kids.styles[fr->child] == KYCG_ROW_REQUIRED;
         /* Every marker is four cells wide so the text after it lines up, and
          * the check sits where the x would be in "[x]". */
         const char *box = "";
         if (picking) {
-          if (have) box = kycg_ui_unicode() ? " ✓  " : " ok ";
+          if (required)  box = kycg_ui_unicode() ? " ●  " : " ** ";
+          else if (have) box = kycg_ui_unicode() ? " ✓  " : " ok ";
           else if (nd->kids.keys && nd->checked)
             box = nd->checked[fr->child] ? "[x] " : "[ ] ";
           else box = "    ";
@@ -1371,7 +1376,9 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
     else if (picking && key == K_SPACE && nflat) {
       treenode_t *nd = &node[ri];
       if (ci >= 0) {
-        int have = nd->kids.styles && nd->kids.styles[ci] == KYCG_ROW_HAVE;
+        int have = nd->kids.styles &&
+                   (nd->kids.styles[ci] == KYCG_ROW_HAVE ||
+                    nd->kids.styles[ci] == KYCG_ROW_REQUIRED);
         if (nd->checked && nd->kids.keys && !have)
           nd->checked[ci] = !nd->checked[ci];
         if (cur + 1 < nflat) ++cur;
@@ -1388,7 +1395,9 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
         for (size_t j = 0; j < nd->kids.n; ++j)
           if (nd->checked && nd->checked[j]) any = 1;
         for (size_t j = 0; j < nd->kids.n; ++j) {
-          int have = nd->kids.styles && nd->kids.styles[j] == KYCG_ROW_HAVE;
+          int have = nd->kids.styles &&
+                     (nd->kids.styles[j] == KYCG_ROW_HAVE ||
+                      nd->kids.styles[j] == KYCG_ROW_REQUIRED);
           if (nd->checked && nd->kids.keys && !have) nd->checked[j] = !any;
         }
       }

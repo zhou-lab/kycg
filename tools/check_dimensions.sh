@@ -52,35 +52,61 @@ check() {
 # of the file's contents kept in this script.
 echo "Verifying row-space dimensions in src/registry.h"
 
-# Whole genomes: { "hg38", 29401795, "KYCGKB_hg38", "v2", ... }
-grep -oE '\{ "[a-z0-9]+", [0-9]+, "KYCGKB_[^"]+", "[^"]+"' src/registry.h |
-while IFS= read -r line; do
-    genome=$(echo "$line" | sed -E 's/.*\{ "([^"]+)".*/\1/')
-    rows=$(echo   "$line" | sed -E 's/.*", ([0-9]+),.*/\1/')
-    repo=$(echo   "$line" | sed -E 's/.*, "(KYCGKB_[^"]+)".*/\1/')
-    tag=$(echo    "$line" | sed -E 's/.*"([^"]+)"$/\1/')
-    # The smallest .cm in the repo is enough; ChromosomeXY is ~100 bytes.
-    small=$(curl -sfL "https://api.github.com/repos/zhou-lab/$repo/contents/?ref=$tag" \
-            | python3 -c '
-import sys, json
-d = json.load(sys.stdin)
-cm = [f for f in d if f["name"].endswith(".cm")]
-print(min(cm, key=lambda x: x["size"])["name"] if cm else "")' 2>/dev/null || true)
-    [ -n "$small" ] || { printf '  %-12s %-12s no .cm found\n' "$genome" "SKIP"; continue; }
-    check "$genome" "https://github.com/zhou-lab/$repo/raw/$tag/$small" "$rows"
-done
+# Parse the registry with python rather than by regex position: the struct has
+# gained fields twice already, and a positional pattern fails silently when it
+# does -- printing a clean header and checking nothing, which is worse than an
+# error. This keys on the field names in the struct instead.
+python3 - "$tmp" <<'PY'
+import re, subprocess, sys, os, json, urllib.request
 
-# Arrays: { "MSA", 284309, "<sha>" } under the one InfiniumAnnotation tag.
-iatag=$(sed -n 's/^#define KYCG_IA_TAG *"\([^"]*\)".*/\1/p' src/registry.h)
-grep -oE '\{ "[A-Za-z0-9]+", [0-9]+, "[0-9a-f]{64}" \}' src/registry.h |
-while IFS= read -r line; do
-    plat=$(echo "$line" | sed -E 's/.*\{ "([^"]+)".*/\1/')
-    rows=$(echo "$line" | sed -E 's/.*", ([0-9]+),.*/\1/')
-    base="https://github.com/zhou-lab/InfiniumAnnotation/raw/$iatag/$plat/KYCG"
-    small=$(curl -sfL "$base/SHA256SUMS" 2>/dev/null |
-            awk '{print $2}' | grep '\.cm$' | head -1 || true)
-    [ -n "$small" ] || { printf '  %-12s %-12s no .cm found\n' "$plat" "SKIP"; continue; }
-    check "$plat" "$base/$small" "$rows"
-done
+tmp = sys.argv[1]
+reg = open("src/registry.h").read()
+iatag = re.search(r'#define KYCG_IA_TAG\s+"([^"]+)"', reg).group(1)
 
-exit $fail
+rows = []   # (label, url, expected_rows)
+
+for m in re.finditer(r'\{ "([a-z0-9]+)", (\d+), (\d+), "(KYCGKB_[^"]+)", "([^"]+)"', reg):
+    genome, nrow, _nset, repo, tag = m.groups()
+    try:
+        d = json.load(urllib.request.urlopen(
+            f"https://api.github.com/repos/zhou-lab/{repo}/contents/?ref={tag}"))
+        cm = [f for f in d if f["name"].endswith(".cm")]
+        small = min(cm, key=lambda x: x["size"])["name"]
+    except Exception:
+        print(f"  {genome:<12} {'SKIP':<12} could not list repo"); continue
+    rows.append((genome,
+                 f"https://github.com/zhou-lab/{repo}/raw/{tag}/{small}", nrow))
+
+for m in re.finditer(r'\{ "([A-Za-z0-9]+)", (\d+), (\d+), "[0-9a-f]{64}"', reg):
+    plat, nrow, _nset = m.groups()
+    base = (f"https://github.com/zhou-lab/InfiniumAnnotation/raw/{iatag}"
+            f"/{plat}/KYCG")
+    try:
+        sums = urllib.request.urlopen(base + "/SHA256SUMS").read().decode()
+    except Exception:
+        print(f"  {plat:<12} {'SKIP':<12} no manifest"); continue
+    cm = [l.split()[1] for l in sums.splitlines()
+          if l.strip().endswith(".cm")]
+    if not cm:
+        print(f"  {plat:<12} {'SKIP':<12} no .cm found"); continue
+    rows.append((plat, f"{base}/{cm[0]}", nrow))
+
+fail = 0
+for label, url, want in rows:
+    probe = os.path.join(tmp, "probe.cm")
+    try:
+        with urllib.request.urlopen(url) as r, open(probe, "wb") as o:
+            o.write(r.read())
+    except Exception:
+        print(f"  {label:<12} {'SKIP':<12} could not fetch probe"); continue
+    out = subprocess.run(["./kycg", "info", probe],
+                         capture_output=True, text=True).stdout.splitlines()
+    got = out[1].split("\t")[4] if len(out) > 1 else "?"
+    if got == want:
+        print(f"  {label:<12} {'OK':<12} {got}")
+    else:
+        print(f"  {label:<12} {'MISMATCH':<12} pinned {want}, actual {got}")
+        fail = 1
+
+sys.exit(fail)
+PY
