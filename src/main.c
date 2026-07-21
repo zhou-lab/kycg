@@ -115,9 +115,6 @@ int main(int argc, char *argv[]) {
   if      (strcmp(argv[1], "test") == 0)  ret = main_test(argc - 1, argv + 1);
   else if (strcmp(argv[1], "info") == 0)  ret = main_info(argc - 1, argv + 1);
   else if (strcmp(argv[1], "fetch") == 0) ret = main_fetch(argc - 1, argv + 1);
-  /* `list` was a separate command before browsing and fetching became one
-   * screen. Kept working, deliberately undocumented. */
-  else if (strcmp(argv[1], "list") == 0)  ret = main_list(argc - 1, argv + 1);
   else if (strcmp(argv[1], "-h") == 0 ||
            strcmp(argv[1], "--help") == 0) return usage();
   else if (strcmp(argv[1], "--version") == 0) {

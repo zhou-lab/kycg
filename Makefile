@@ -102,12 +102,15 @@ $(PROG): $(YAME_LIB) $(OBJECTS)
 ###    tests    ###
 ###################
 
-# The statistics are pure functions over counts and link without YAME.
+# The statistics are pure functions over counts, and argv permutation is a
+# pure function over argv, so the tested modules all link without YAME.
 TEST_SRC := $(wildcard $(TEST_DIR)/*.c)
 TEST_BIN := $(TEST_SRC:$(TEST_DIR)/%.c=$(TEST_DIR)/%)
 
-$(TEST_DIR)/%: $(TEST_DIR)/%.c $(SRC_DIR)/hypergeo.o $(SRC_DIR)/enrich.o
-	$(CC) $(CFLAGS) -o $@ $< $(SRC_DIR)/hypergeo.o $(SRC_DIR)/enrich.o -lm
+TEST_OBJ = $(SRC_DIR)/hypergeo.o $(SRC_DIR)/enrich.o $(SRC_DIR)/args.o
+
+$(TEST_DIR)/%: $(TEST_DIR)/%.c $(TEST_OBJ)
+	$(CC) $(CFLAGS) -o $@ $< $(TEST_OBJ) -lm
 
 test: $(TEST_BIN)
 	@for t in $(TEST_BIN); do echo "== $$t"; ./$$t || exit 1; done

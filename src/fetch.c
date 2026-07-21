@@ -27,16 +27,16 @@
  *   no verification. This command is the tie.
  *
  * TWO WAYS IN
- *   kycg fetch hg38                 everything for a target
  *   kycg fetch hg38:CGI,ChromHMM    a named subset, no questions asked
- *   kycg list                       browse, check what you want, fetch it
+ *   kycg fetch                      browse, check what you want, fetch it
  *
  *   The colon form exists so a pipeline can name exactly what it wants on one
  *   line. The browser exists because nobody memorizes 33 set names -- and
  *   since browsing the catalogue and choosing from it are the same activity,
- *   `kycg list` is where both happen. `kycg fetch` with no target simply opens
- *   it; there is no second guided flow to drift out of step with the first.
- *   See main_list() and fetch_picked() below.
+ *   one command does both. There was a separate `kycg list` for the browsing
+ *   half; it was removed once that stopped being a separate act, so there is
+ *   no second entry point to drift out of step with this one.
+ *   See browse_catalogue() and fetch_picked() below.
  *
  * PLAN, CONFIRM, EXECUTE
  *   Nothing downloads until a plan has been built and shown: which files, how
@@ -81,6 +81,7 @@
 #include <dirent.h>
 
 #include "kycg.h"
+#include "args.h"
 #include "digest.h"
 #include "registry.h"
 #include "store.h"
@@ -920,11 +921,17 @@ static int usage(void) {
   return 1;
 }
 
+/* The browser lives further down this file; `fetch` with no target, and
+ * `fetch <target>` on a terminal, both hand off to it. */
+static int browse_catalogue(int argc, char *argv[]);
+
 int main_fetch(int argc, char *argv[]) {
   fetch_conf_t conf = {0};
   conf.tag = KYCG_IA_TAG;
 
   int c;
+  /* Options may follow the target; BSD getopt would stop at it. */
+  kycg_permute_args(argc, argv, "d:o:t:frh");
   while ((c = getopt(argc, argv, "d:o:t:frh")) >= 0) {
     switch (c) {
     case 'd': conf.store = optarg; break;
@@ -944,7 +951,7 @@ int main_fetch(int argc, char *argv[]) {
           "kycg was compiled without libcurl, so fetch is unavailable. Install\n"
           "libcurl development headers and rebuild, or populate the store by\n"
           "hand -- fetched files are ordinary .cm files and `kycg test -m` takes\n"
-          "any path. See `kycg list` for the expected layout.\n");
+          "any path. See `kycg fetch` for the expected layout.\n");
   return 1;
 #else
   curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -968,7 +975,7 @@ int main_fetch(int argc, char *argv[]) {
     lav[lac] = NULL;
     optind = 1;
     curl_global_cleanup();
-    return main_list(lac, lav);
+    return browse_catalogue(lac, lav);
   }
 
   /* A named target on a terminal opens the catalogue with that target chosen,
@@ -984,7 +991,7 @@ int main_fetch(int argc, char *argv[]) {
     lav[lac] = NULL;
     optind = 1;
     curl_global_cleanup();
-    return main_list(lac, lav);
+    return browse_catalogue(lac, lav);
   }
 
   for (int j = optind; j < argc && n_targets < 64; ++j)
@@ -1018,7 +1025,7 @@ int main_fetch(int argc, char *argv[]) {
     if (coll_for(target, kycg_store_root(tc.store), tc.tag, &coll) != 0) {
       fprintf(stderr,
               "kycg fetch: '%s' is not a known platform or genome.\n"
-              "Run `kycg list` to see what is available.\n", target);
+              "Run `kycg fetch` to see what is available.\n", target);
       rc = 1;
       continue;
     }
@@ -1066,11 +1073,11 @@ int main_fetch(int argc, char *argv[]) {
 #endif
 }
 
-/* -------------------------------------------------------------- kycg list */
+/* ------------------------------------------------ the catalogue browser */
 
-static int list_usage(void) {
+static int browse_usage(void) {
   fprintf(stderr, "\n");
-  fprintf(stderr, "Usage: kycg list [options] [target ...]\n");
+  fprintf(stderr, "Usage: kycg fetch [options] [target ...]\n");
   fprintf(stderr, "\n");
   fprintf(stderr, "Browse knowledgebase collections and fetch from them.\n");
   fprintf(stderr, "On a terminal this is an interactive tree: arrows move,\n");
@@ -1086,7 +1093,7 @@ static int list_usage(void) {
 }
 
 /*
- * `kycg list` output is buffered rather than printed directly, so it can be
+ * `kycg fetch` output is buffered rather than printed directly, so it can be
  * handed to the in-place browser when someone is watching and written as plain
  * TSV when it is not. The distinction is stdout: a redirected stdout means the
  * caller wants data, and turning that into a full-screen widget would break
@@ -1125,7 +1132,7 @@ static void rows_free(rows_t *r) {
  *  '#' line preserved in plain mode and folded into the title when browsing. */
 static void rows_emit(rows_t *r, const char *comment, const char *header) {
   if (isatty(STDOUT_FILENO) &&
-      kycg_ui_browse(comment ? comment : "kycg list", header,
+      kycg_ui_browse(comment ? comment : "kycg fetch", header,
                      (const char **)r->a, r->st, r->n) == 0) {
     rows_free(r);
     return;
@@ -1137,7 +1144,7 @@ static void rows_emit(rows_t *r, const char *comment, const char *header) {
 }
 
 /*
- * `kycg list` is also the fetch picker, so its expand and accept callbacks
+ * the browser is also the fetch picker, so its expand and accept callbacks
  * share one context: the store root they read, and the selection they build.
  */
 typedef struct {
@@ -1374,7 +1381,7 @@ static void kid_push(kycg_ui_kids_t *k, unsigned char style, const char *key,
 }
 
 /**
- * Children of one row of the `kycg list` overview: the sets that target holds.
+ * Children of one row of the `kycg fetch` overview: the sets that target holds.
  *
  * Widths are fixed rather than measured, because the tree renders children one
  * parent at a time — columns that re-measured on each expansion would shift
@@ -1936,14 +1943,16 @@ static uint64_t count_cached(const char *dir) {
   return n;
 }
 
-int main_list(int argc, char *argv[]) {
+static int browse_catalogue(int argc, char *argv[]) {
   const char *store = NULL;
   int c;
+  /* Options may follow the target; BSD getopt would stop at it. */
+  kycg_permute_args(argc, argv, "d:h");
   while ((c = getopt(argc, argv, "d:h")) >= 0) {
     switch (c) {
     case 'd': store = optarg; break;
-    case 'h': return list_usage();
-    default: return list_usage();
+    case 'h': return browse_usage();
+    default: return browse_usage();
     }
   }
 
@@ -2032,7 +2041,7 @@ int main_list(int argc, char *argv[]) {
         free(text);
         rows_emit(&rows, title, "set\tfile\tsize\tcached");
       } else {
-        fprintf(stderr, "kycg list: '%s' is not a known platform or genome.\n",
+        fprintf(stderr, "kycg fetch: '%s' is not a known platform or genome.\n",
                 target);
         return 1;
       }

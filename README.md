@@ -119,7 +119,7 @@ The Zenodo deposits remain the citable archive and keep the DOIs
 [mm10](https://doi.org/10.5281/zenodo.18175655)); they are recorded in the
 registry as provenance and are no longer the fetch path.
 
-**libcurl is optional.** `test`, `info`, and `list` build and run without it;
+**libcurl is optional.** `test` and `info` build and run without it;
 only `fetch` needs it, and it says so plainly if the build lacks it. `CURL=0`
 forces it off.
 

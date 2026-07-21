@@ -988,7 +988,7 @@ int kycg_ui_browse(const char *title, const char *header,
    * The viewport tracks a cursor rather than a scroll offset.
    *
    * Scrolling alone is not enough: whenever the table fits on screen -- nine
-   * targets in `kycg list`, or a 44-row listing in a tall terminal -- there is
+   * targets in `kycg fetch`, or a 44-row listing in a tall terminal -- there is
    * nothing to scroll, so every arrow key becomes a no-op while the footer
    * still advertises them. A cursor always moves, and the view follows it only
    * when it has to.

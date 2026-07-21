@@ -67,6 +67,7 @@
 #include <stdarg.h>
 
 #include "kycg.h"
+#include "args.h"
 #include "enrich.h"
 #include "store.h"
 #include "registry.h"
@@ -456,6 +457,8 @@ int main_test(int argc, char *argv[]) {
   size_t n_masks = 0;
 
   int c;
+  /* Options may follow the target; BSD getopt would stop at it. */
+  kycg_permute_args(argc, argv, "m:a:Gs:MFHo:h");
   while ((c = getopt(argc, argv, "m:a:Gs:MFHo:h")) >= 0) {
     switch (c) {
     case 'm': {

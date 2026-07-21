@@ -38,6 +38,7 @@
 #include <inttypes.h>
 
 #include "kycg.h"
+#include "args.h"
 
 /* YAME (submodule) */
 #include "cfile.h"
@@ -85,6 +86,8 @@ static const char *fmt_name(char fmt) {
 int main_info(int argc, char *argv[]) {
   int no_header = 0;
   int c;
+  /* Options may follow the target; BSD getopt would stop at it. */
+  kycg_permute_args(argc, argv, "Hh");
   while ((c = getopt(argc, argv, "Hh")) >= 0) {
     switch (c) {
     case 'H': no_header = 1; break;
