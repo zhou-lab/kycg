@@ -31,6 +31,21 @@
 #include "kycg.h"
 #include "registry.h"
 
+/**
+ * What this build is bound to.
+ *
+ * A build can verify only the tags whose digests were compiled into it, so
+ * "which generation of the data does this kycg speak to" is a real question
+ * with a fixed answer. It belongs in the help text rather than behind a flag
+ * nobody knows to type.
+ */
+static void print_pins(FILE *out) {
+  fprintf(out, "Knowledgebases pinned by this build:\n");
+  for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome; ++r)
+    fprintf(out, "    %-9s %s %s\n", r->genome, r->repo, r->tag);
+  fprintf(out, "    %-9s InfiniumAnnotation %s\n", "arrays", KYCG_IA_TAG);
+}
+
 static int usage(void) {
   fprintf(stderr, "\n");
   fprintf(stderr, "Program: kycg (functional analysis of DNA methylation)\n");
@@ -43,6 +58,11 @@ static int usage(void) {
   fprintf(stderr, "    list      show available and cached knowledgebases\n");
   fprintf(stderr, "    test      set enrichment against a knowledgebase\n");
   fprintf(stderr, "    info      describe the records in a .cg or .cm file\n");
+  fprintf(stderr, "\n");
+  print_pins(stderr);
+  fprintf(stderr, "\n");
+  fprintf(stderr, "Only these tags can be verified; following a newer one means\n");
+  fprintf(stderr, "regenerating src/registry.h (tools/make_registry.sh) and rebuilding.\n");
   fprintf(stderr, "\n");
   return 1;
 }
@@ -64,10 +84,7 @@ int main(int argc, char *argv[]) {
      * that binding visible, so "which data does this kycg speak to" is
      * answerable without reading the registry. */
     printf("kycg %s\n", KYCG_VERSION);
-    printf("knowledgebases pinned by this build:\n");
-    for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome; ++r)
-      printf("  %-10s %s %s\n", r->genome, r->repo, r->tag);
-    printf("  %-10s InfiniumAnnotation %s\n", "arrays", KYCG_IA_TAG);
+    print_pins(stdout);
     return 0;
   } else {
     fprintf(stderr, "[main] Unrecognized command '%s'.\n", argv[1]);

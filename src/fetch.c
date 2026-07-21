@@ -105,6 +105,22 @@ static void set_name_of(const char *fname, char *out, size_t n) {
   out[len] = '\0';
 }
 
+/**
+ * Is this a file a user would select -- a knowledgebase set, or the reference
+ * row list that gives the whole-genome sets their coordinates?
+ *
+ * Excludes .idx sidecars, which are not independently useful: they are fetched
+ * alongside the .cm they index. Includes .cr, which is not a set but is the
+ * thing every sequencing analysis is positioned against, and which was
+ * previously fetchable only by typing its name.
+ */
+static int is_selectable(const char *name) {
+  size_t l = strlen(name);
+  if (l > 3 && strcmp(name + l - 3, ".cm") == 0) return 1;
+  if (l > 3 && strcmp(name + l - 3, ".cr") == 0) return 1;
+  return 0;
+}
+
 /** Does this file pass the subset filter? A token matches the whole file name
  *  or its set name. NULL/empty filter passes everything. */
 static int passes_filter(const char *fname, const char *only) {
@@ -1156,8 +1172,7 @@ static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
   sums_ent_t *ent = parse_sums(text, &n_ent);
   for (size_t i = 0; ent && i < n_ent; ++i) {
     const char *nm = ent[i].name;
-    size_t l = strlen(nm);
-    if (l < 4 || strcmp(nm + l - 3, ".cm") != 0) continue;
+    if (!is_selectable(nm)) continue;
 
     char setn[256], path[4400], hb[24];
     set_name_of(nm, setn, sizeof(setn));
@@ -1501,8 +1516,7 @@ int main_list(int argc, char *argv[]) {
         sums_ent_t *ent = parse_sums(text, &n_ent);
         for (size_t i = 0; ent && i < n_ent; ++i) {
           const char *nm = ent[i].name;
-          size_t l = strlen(nm);
-          if (l < 4 || strcmp(nm + l - 3, ".cm") != 0) continue;
+          if (!is_selectable(nm)) continue;
           char setn[256], path[4400], hb[24];
           set_name_of(nm, setn, sizeof(setn));
           snprintf(path, sizeof(path), "%s/%s", c.dir, nm);
