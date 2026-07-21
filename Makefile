@@ -12,6 +12,8 @@ CC ?= gcc
 CFLAGS = -W -Wall -finline-functions -std=gnu99 -Wno-unused-result -O3
 CLIB = -lpthread -lz -lm
 
+PREFIX ?= /usr/local
+
 OS := $(shell uname)
 ifeq ($(OS), Darwin)
 	CFLAGS += -Wno-unused-function
@@ -59,7 +61,7 @@ OBJECTS := $(SOURCES:$(SRC_DIR)/%.c=$(SRC_DIR)/%.o)
 # Everything except the CLI dispatcher, so tests can link the library half.
 LIBOBJECTS = $(filter-out $(SRC_DIR)/main.o, $(OBJECTS))
 
-.PHONY: all build debug clean test yame
+.PHONY: all build debug clean test yame install
 
 all: build
 
@@ -114,6 +116,21 @@ $(TEST_DIR)/%: $(TEST_DIR)/%.c $(TEST_OBJ)
 
 test: $(TEST_BIN)
 	@for t in $(TEST_BIN); do echo "== $$t"; ./$$t || exit 1; done
+
+###################
+###   install   ###
+###################
+
+# Install the binary into $(PREFIX)/bin, honouring $(DESTDIR). Used by the
+# conda recipe; `make install PREFIX=/usr/local` for a manual install.
+#
+# Only the binary is installed. kycg carries no runtime data files -- the
+# registry is compiled in and knowledgebases are fetched into the user's own
+# store -- so there is nothing else to place.
+install: $(PROG)
+	mkdir -p $(DESTDIR)$(PREFIX)/bin
+	cp -f $(PROG) $(DESTDIR)$(PREFIX)/bin/$(PROG)
+	chmod 755 $(DESTDIR)$(PREFIX)/bin/$(PROG)
 
 ###################
 ###    clean    ###

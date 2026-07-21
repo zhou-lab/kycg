@@ -80,6 +80,21 @@ static void print_pins(FILE *out) {
           H_NOTE, H_OFF);
   fprintf(out, "    %sregenerate src/registry.h (tools/make_registry.sh) and rebuild%s\n",
           H_NOTE, H_OFF);
+  fprintf(out, "\n");
+
+  /* libcurl is optional at build time, and a build without it is a kycg that
+   * analyzes fine and cannot fetch anything. That is invisible until someone
+   * runs `fetch` and gets told, which for a *packaged* build is far too late
+   * -- so state it here, where it is also the thing a package test can assert
+   * on. */
+  fprintf(out, "%sNetwork%s\n", H_TITLE, H_OFF);
+#ifdef KYCG_HAVE_CURL
+  fprintf(out, "    %slibcurl%s   %sfetch available%s\n",
+          H_KEY, H_OFF, H_NOTE, H_OFF);
+#else
+  fprintf(out, "    %snone%s      %sbuilt without libcurl; fetch is unavailable%s\n",
+          H_KEY, H_OFF, H_NOTE, H_OFF);
+#endif
 }
 
 static void cmd(FILE *out, const char *name, const char *what) {

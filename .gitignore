@@ -3,7 +3,10 @@
 *.a
 /kycg
 
-# test binaries (tests/*.c compile to extensionless binaries beside them)
+# test binaries (tests/*.c compile to extensionless binaries beside them).
+# Listed by name rather than by pattern: tests/ also holds .c and .R sources
+# that must stay tracked.
+/tests/test_args
 /tests/test_hypergeo
 
 # editor / OS

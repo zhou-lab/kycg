@@ -23,7 +23,21 @@ Phase 0 (foundation) and Phase 1 (`kycg test`) are implemented and validated.
 | 3 | Plot recipes (with cinderplot) | not started |
 | 4 | `proximity`, `sea`, `anno`, `bed2cg` | not started |
 
-## Building
+## Installing
+
+```bash
+conda install -c zhou-lab -c conda-forge kycg
+```
+
+Knowledgebases are not in the package — `kycg fetch` pulls them into your own
+store on demand. The compendium is hundreds of megabytes and versioned
+separately from the software, so bundling it would turn every data update into
+a software release. What the binary does carry is the registry of tags and
+digests it can verify; `kycg --version` prints it.
+
+See [`conda-recipe/`](conda-recipe/) to build the package yourself.
+
+## Building from source
 
 YAME is a submodule; the build drives its `make lib` target automatically.
 
@@ -40,6 +54,10 @@ git submodule update --init --recursive
 ```
 
 Dependencies are YAME's: vendored htslib, zlib, libm, pthreads. Nothing else.
+libcurl is optional and used only by `kycg fetch`; `make CURL=0` forces it off,
+and `kycg --version` reports whether a build has it.
+
+`make install PREFIX=/usr/local` installs the binary.
 
 ## Usage
 

@@ -1,0 +1,73 @@
+{% set name = "kycg" %}
+{% set version = "0.1.0" %}
+
+package:
+  name: {{ name }}
+  version: {{ version }}
+
+source:
+  # In-repo recipe: build the checked-out tree (with its YAME submodule and
+  # YAME's nested htslib). CI builds the pushed commit; a release build = check
+  # out the vX.Y.Z tag, then conda build.
+  path: ..
+
+build:
+  number: 0
+  skip: true  # [win]
+
+requirements:
+  build:
+    - {{ compiler('c') }}
+    - make
+  host:
+    - zlib
+    - libcurl
+  run:
+    # zlib and libcurl each carry run_exports that pin the runtime
+    # automatically; listed for clarity.
+    - zlib
+    - libcurl
+
+test:
+  commands:
+    # --version prints the knowledgebase tags this build can verify, so it
+    # exercises the compiled-in registry rather than just the binary loading.
+    - kycg --version
+    # kycg's Makefile probes curl-config and silently drops network support if
+    # it is missing, which would ship a `kycg fetch` that cannot fetch. Assert
+    # positively that fetch is available. Grep the *state*, not the library
+    # name: the no-libcurl banner says "built without libcurl", so grepping
+    # for "libcurl" matches both cases and proves nothing. A negative grep is
+    # worse still -- it passes on any multi-line output.
+    - kycg --version | grep -q "fetch available"
+
+about:
+  home: https://github.com/zhou-lab/kycg
+  license: AGPL-3.0-or-later
+  license_family: AGPL
+  license_file: LICENSE
+  summary: Functional analysis of DNA methylation at CpG resolution — set enrichment over a curated knowledgebase compendium.
+  description: |
+    kycg is a dependency-light C reimplementation of the knowYourCG
+    R/Bioconductor package, built on YAME's bit-packed CpG formats. It tests a
+    CpG query set against knowledgebases of genomic annotation — chromatin
+    states, CpG islands, repeats, transcription factor binding, tissue
+    signatures — reporting a hypergeometric tail probability in log space, six
+    effect-size coefficients, and a group-stratified Benjamini-Hochberg false
+    discovery rate. Results agree with the R package to floating-point
+    tolerance.
+
+    Its other half is `kycg fetch`, a browsable catalogue of the knowledgebase
+    compendium for human and mouse whole-genome CpG references and seven
+    Infinium array platforms, with a verified download path: every collection
+    publishes a SHA256SUMS whose digest is compiled into the binary, so a
+    download is checked against a pin the build carries rather than against
+    whatever the server serves. Nothing is downloaded outside that command.
+
+    The only runtime dependencies are zlib and libcurl.
+  dev_url: https://github.com/zhou-lab/kycg
+  doc_url: https://github.com/zhou-lab/kycg/blob/main/README.md
+
+extra:
+  recipe-maintainers:
+    - zwdzwd
