@@ -48,6 +48,20 @@
  * the caller reports that, since only it knows what to say.
  */
 size_t kycg_resolve_spec(const char *spec, const char *store, char ***out);
+
+/**
+ * As kycg_resolve_spec, but also reports the named sets that matched nothing.
+ *
+ * Resolving a spec filters the store's directory, so a set name that matches
+ * nothing contributes no files and is otherwise invisible -- which made
+ * `-m EPIC:ProbeType,ChromHMM` run against ProbeType alone and say nothing.
+ * *missing receives a malloc'd, comma-joined list of unmatched names, or NULL
+ * when everything matched. Callers should treat a non-NULL value as an error:
+ * doing less than you were asked, silently, produces output that looks
+ * complete.
+ */
+size_t kycg_resolve_spec_ex(const char *spec, const char *store, char ***out,
+                            char **missing);
 void kycg_free_specs(char **v, size_t n);
 
 /**

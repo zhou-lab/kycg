@@ -325,7 +325,20 @@ int main_test(int argc, char *argv[]) {
        * does, and resolves against the store. An existing file is taken
        * literally, so plain paths are unaffected. */
       char **paths = NULL;
-      size_t n = kycg_resolve_spec(optarg, NULL, &paths);
+      char *missing = NULL;
+      size_t n = kycg_resolve_spec_ex(optarg, NULL, &paths, &missing);
+      if (missing) {
+        /* Testing against fewer knowledgebases than were named changes every
+         * FDR in the table, and the output gives no sign it happened. */
+        char tgt[128];
+        const char *cn = strchr(optarg, ':');
+        size_t tl = cn ? (size_t)(cn - optarg) : strlen(optarg);
+        if (tl >= sizeof(tgt)) tl = sizeof(tgt) - 1;
+        memcpy(tgt, optarg, tl);
+        tgt[tl] = '\0';
+        wzfatal("No set named '%s' in '%s'. Fetch it with: "
+                "kycg fetch -f %s:%s\n", missing, tgt, tgt, missing);
+      }
       if (!n) {
         usage();
         wzfatal("No knowledgebase matches '%s'.\n"

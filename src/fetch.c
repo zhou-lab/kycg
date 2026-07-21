@@ -302,8 +302,75 @@ void kycg_free_specs(char **v, size_t n) {
   free(v);
 }
 
+/**
+ * Which of `only`'s comma-separated tokens matched nothing in `paths`?
+ *
+ * A spec names sets the user believes exist. Resolving it by filtering the
+ * directory means a token that matches nothing simply contributes no files --
+ * so `-m EPIC:ProbeType,ChromHMM` with ChromHMM absent quietly ran against
+ * ProbeType alone. Silently doing less than you were asked is the worst of
+ * the available behaviours here: the output looks complete.
+ *
+ * Returns a malloc'd, comma-joined list of the unmatched tokens, or NULL when
+ * every token matched.
+ */
+static char *unmatched_tokens(const char *only, char *const *paths, size_t n) {
+  if (!only || !*only) return NULL;
+
+  char *miss = NULL;
+  size_t used = 0, cap = 0;
+
+  const char *p = only;
+  while (*p) {
+    const char *comma = strchr(p, ',');
+    size_t len = comma ? (size_t)(comma - p) : strlen(p);
+
+    if (len) {
+      char tok[256];
+      size_t tl = len < sizeof(tok) - 1 ? len : sizeof(tok) - 1;
+      memcpy(tok, p, tl);
+      tok[tl] = '\0';
+
+      int hit = 0;
+      for (size_t i = 0; i < n && !hit; ++i) {
+        const char *base = strrchr(paths[i], '/');
+        base = base ? base + 1 : paths[i];
+        char setn[256];
+        set_name_of(base, setn, sizeof(setn));
+        if ((strlen(base) == tl && strncasecmp(base, tok, tl) == 0) ||
+            (strlen(setn) == tl && strncasecmp(setn, tok, tl) == 0))
+          hit = 1;
+      }
+
+      if (!hit) {
+        size_t want = used + tl + 2;
+        if (want > cap) {
+          size_t nc = want * 2;
+          char *nm = realloc(miss, nc);
+          if (!nm) { free(miss); return NULL; }
+          miss = nm; cap = nc;
+          if (!used) miss[0] = '\0';
+        }
+        if (used) { miss[used++] = ','; }   /* a valid spec fragment */
+        memcpy(miss + used, tok, tl);
+        used += tl;
+        miss[used] = '\0';
+      }
+    }
+    if (!comma) break;
+    p = comma + 1;
+  }
+  return miss;
+}
+
 size_t kycg_resolve_spec(const char *spec, const char *store, char ***out) {
+  return kycg_resolve_spec_ex(spec, store, out, NULL);
+}
+
+size_t kycg_resolve_spec_ex(const char *spec, const char *store, char ***out,
+                            char **missing) {
   *out = NULL;
+  if (missing) *missing = NULL;
   if (!spec || !*spec) return 0;
 
   /* An existing path wins outright. Nothing else can then be ambiguous, and a
@@ -408,6 +475,9 @@ size_t kycg_resolve_spec(const char *spec, const char *store, char ***out) {
 
   free(how);
   *out = v;
+  /* Report tokens that matched nothing, after collapsing versions: a token is
+   * unmatched only if no surviving file answers to it. */
+  if (missing) *missing = unmatched_tokens(only, v, n);
   return n;
 }
 

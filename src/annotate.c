@@ -474,8 +474,32 @@ int main_annotate(int argc, char *argv[]) {
   kb_t *kbs = NULL;
   size_t n_kb = 0, kb_cap = 0;
   for (size_t i = 0; i < n_specs; ++i) {
-    char **paths = NULL;
-    size_t np = kycg_resolve_spec(specs[i], NULL, &paths);
+    char **paths = NULL, *missing = NULL;
+    size_t np = kycg_resolve_spec_ex(specs[i], NULL, &paths, &missing);
+    if (missing) {
+      /* Named but absent. Annotating against a subset of what was asked for
+       * produces a table that looks complete and is not. */
+      /* Suggest fetching only what is missing, not the whole spec: the rest
+       * is already here, and a command that re-lists it invites confusion
+       * about which part failed. */
+      char tgt[128];
+      const char *cn = strchr(specs[i], ':');
+      size_t tl = cn ? (size_t)(cn - specs[i]) : strlen(specs[i]);
+      if (tl >= sizeof(tgt)) tl = sizeof(tgt) - 1;
+      memcpy(tgt, specs[i], tl);
+      tgt[tl] = '\0';
+      fprintf(stderr,
+              "kycg annotate: no set named '%s' in '%s'.\n"
+              "  fetch it with:  kycg fetch -f %s:%s\n",
+              missing, tgt, tgt, missing);
+      free(missing);
+      kycg_free_specs(paths, np);
+      for (size_t k = 0; k < n_kb; ++k) kb_free(&kbs[k]);
+      free(kbs);
+      ordering_free(&ord);
+      kycg_free_specs(picked, n_picked);
+      return 1;
+    }
     if (!np) {
       /* A set the collection publishes but the store does not have. Warn and
        * carry on rather than failing outright: the browser lists everything a
