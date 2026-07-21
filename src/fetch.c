@@ -1634,6 +1634,61 @@ static int on_list_key(void *ctx, char key) {
  * wrong whenever that manifest was missing, partial, or stale -- a store with
  * eight sets in it reported zero.
  */
+void kycg_catalogue_free(kycg_catalogue_t *v, size_t n) {
+  if (!v) return;
+  for (size_t i = 0; i < n; ++i) free(v[i].name);
+  free(v);
+}
+
+kycg_catalogue_t *kycg_catalogue(const char *target, const char *store,
+                                 size_t *n) {
+  *n = 0;
+  coll_t c;
+  if (coll_for(target, kycg_store_root(store), NULL, &c) != 0) return NULL;
+
+  size_t len = 0;
+  char *text = coll_manifest(&c, &len, KYCG_MF_FETCH);
+  if (!text) return NULL;
+
+  size_t n_ent = 0;
+  sums_ent_t *ent = parse_sums(text, &n_ent);
+  kycg_catalogue_t *v = calloc(n_ent ? n_ent : 1, sizeof(kycg_catalogue_t));
+  size_t k = 0;
+
+  for (size_t i = 0; ent && v && i < n_ent; ++i) {
+    size_t l = strlen(ent[i].name);
+    if (l <= 3 || strcmp(ent[i].name + l - 3, ".cm") != 0) continue;
+    char path[4600];
+    snprintf(path, sizeof(path), "%s/%s", c.dir, ent[i].name);
+    v[k].name = strdup(ent[i].name);
+    v[k].cached = kycg_store_is_file(path);
+    if (v[k].name) ++k;
+  }
+  free(ent);
+  free(text);
+
+  *n = k;
+  return v;
+}
+
+int kycg_fetch_specs(char *const *specs, size_t n, const char *store) {
+  picks_t p = {0};
+  for (size_t i = 0; i < n; ++i) {
+    /* Split "mm10:CGI.20220904.cm" the way the picker hands it over. */
+    const char *colon = strchr(specs[i], ':');
+    if (!colon || !colon[1]) continue;
+    char target[128];
+    size_t len = (size_t)(colon - specs[i]);
+    if (len >= sizeof(target)) len = sizeof(target) - 1;
+    memcpy(target, specs[i], len);
+    target[len] = '\0';
+    picks_add(&p, target, colon + 1);
+  }
+  int rc = p.n ? fetch_picked(&p, store) : 0;
+  picks_free(&p);
+  return rc;
+}
+
 static uint64_t count_cached(const char *dir) {
   DIR *d = opendir(dir);
   if (!d) return 0;
@@ -1779,8 +1834,11 @@ int main_list(int argc, char *argv[]) {
     spec.root_styles = rows.st;
     spec.n_roots = rows.n;
     spec.expand = expand_target;
-    spec.accept = on_pick;
-    spec.commit = on_commit;
+    spec.actions[0].key = 'f';
+    spec.actions[0].verb = "fetch";
+    spec.actions[0].accept = on_pick;
+    spec.actions[0].commit = on_commit;
+    spec.n_actions = 1;
     spec.on_key = on_list_key;
     spec.hint = "d store";
     spec.ctx = &lc;

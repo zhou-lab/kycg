@@ -1139,6 +1139,13 @@ typedef struct {
   long   child;      /* -1 for the root row itself */
 } flatrow_t;
 
+/** Index of the action bound to `ch`, or -1. */
+static int find_action(const kycg_ui_tree_t *spec, char ch) {
+  for (size_t i = 0; i < spec->n_actions; ++i)
+    if (spec->actions[i].key == ch) return (int)i;
+  return -1;
+}
+
 int kycg_ui_tree(const kycg_ui_tree_t *spec) {
   const char *title = spec->title;
   const char *header = spec->header;
@@ -1146,15 +1153,13 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
   const unsigned char *root_styles = spec->root_styles;
   size_t n_roots = spec->n_roots;
   kycg_ui_expand_fn expand = spec->expand;
-  kycg_ui_accept_fn accept = spec->accept;
-  kycg_ui_commit_fn commit = spec->commit;
   kycg_ui_key_fn on_key = spec->on_key;
   void *ctx = spec->ctx;
 
   if (!n_roots || !kycg_ui_fancy()) return -1;
   if (raw_enter() != 0) return -1;
 
-  const int picking = (accept != NULL);
+  const int picking = (spec->n_actions > 0);
   int accepted = 0;
 
   /* Column widths over the root rows only; children arrive preformatted. */
@@ -1320,7 +1325,7 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
         /* Neither a row already present nor a required one needs a checkbox:
          * in both cases there is nothing to ask for, so each shows what it is
          * instead of pretending to be a choice. */
-        int have = nd->kids.styles &&
+        int have = nd->kids.styles && !spec->have_selectable &&
                    nd->kids.styles[fr->child] == KYCG_ROW_HAVE;
         int required = nd->kids.styles &&
                        nd->kids.styles[fr->child] == KYCG_ROW_REQUIRED;
@@ -1351,13 +1356,18 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
       for (size_t i = 0; i < n_roots; ++i)
         for (size_t j = 0; j < node[i].kids.n; ++j)
           if (node[i].checked && node[i].checked[j]) ++nsel;
+      char acts[128];
+      size_t ao = 0;
+      for (size_t a = 0; a < spec->n_actions && ao + 24 < sizeof(acts); ++a)
+        ao += (size_t)snprintf(acts + ao, sizeof(acts) - ao, "%c %s  ",
+                               spec->actions[a].key, spec->actions[a].verb);
       frame_line(&f, "%s  row %zu of %zu  %s  %zu selected  %s  %s open  "
-                     "%s close  space select  f fetch%s%s  q quit%s",
+                     "%s close  space select  %s%s%s q quit%s",
                  kycg_ui_dim(), nflat ? cur + 1 : 0, nflat,
                  kycg_ui_bullet(), nsel, kycg_ui_bullet(),
                  kycg_ui_unicode() ? "→" : "right",
                  kycg_ui_unicode() ? "←" : "left",
-                 spec->hint ? "  " : "", spec->hint ? spec->hint : "",
+                 acts, spec->hint ? spec->hint : "", spec->hint ? "  " : "",
                  kycg_ui_reset());
     } else {
       frame_line(&f, "%s  row %zu of %zu   %s  %s open  %s close  q quit%s",
@@ -1409,7 +1419,8 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
       treenode_t *nd = &node[ri];
       if (ci >= 0) {
         int have = nd->kids.styles &&
-                   (nd->kids.styles[ci] == KYCG_ROW_HAVE ||
+                   ((!spec->have_selectable &&
+                     nd->kids.styles[ci] == KYCG_ROW_HAVE) ||
                     nd->kids.styles[ci] == KYCG_ROW_REQUIRED);
         if (nd->checked && nd->kids.keys && !have)
           nd->checked[ci] = !nd->checked[ci];
@@ -1428,13 +1439,15 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
           if (nd->checked && nd->checked[j]) any = 1;
         for (size_t j = 0; j < nd->kids.n; ++j) {
           int have = nd->kids.styles &&
-                     (nd->kids.styles[j] == KYCG_ROW_HAVE ||
+                     ((!spec->have_selectable &&
+                       nd->kids.styles[j] == KYCG_ROW_HAVE) ||
                       nd->kids.styles[j] == KYCG_ROW_REQUIRED);
           if (nd->checked && nd->kids.keys && !have) nd->checked[j] = !any;
         }
       }
     }
-    else if (picking && key == K_CHAR && ch == 'f') {
+    else if (picking && key == K_CHAR && find_action(spec, ch) >= 0) {
+      const kycg_ui_action_t *act = &spec->actions[find_action(spec, ch)];
       size_t nsel = 0;
       for (size_t i = 0; i < n_roots; ++i)
         for (size_t j = 0; j < node[i].kids.n; ++j)
@@ -1442,15 +1455,18 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
       if (nsel) {
         for (size_t i = 0; i < n_roots; ++i)
           for (size_t j = 0; j < node[i].kids.n; ++j)
-            if (node[i].checked && node[i].checked[j] && node[i].kids.keys)
-              accept(ctx, roots[i], node[i].kids.keys[j]);
-        accepted = 1;
+            if (node[i].checked && node[i].checked[j] && node[i].kids.keys &&
+                act->accept)
+              act->accept(ctx, roots[i], node[i].kids.keys[j]);
 
-        if (!commit) break;    /* caller wants the selection, not the work */
+        if (!act->commit) {    /* caller wants the selection, not the work */
+          accepted = find_action(spec, ch) + 1;
+          break;
+        }
 
         /* Do the work without leaving: the panel covers the bottom rows and
          * the catalogue stays visible above it. */
-        commit(ctx);
+        act->commit(ctx);
         kycg_ui_panel_close();
 
         /* What was fetched is now present, so every loaded expansion is
@@ -1489,6 +1505,7 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
     else if (key == K_NONE) break;
     else if (key == K_CHAR) {
       if (ch == 'q') break;
+      else if (picking && find_action(spec, ch) >= 0) { /* above */ }
       else if (ch == 'j') { if (cur + 1 < nflat) ++cur; }
       else if (ch == 'k') { if (cur) --cur; }
       else if (on_key && on_key(ctx, ch)) {

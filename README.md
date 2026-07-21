@@ -169,23 +169,24 @@ target — which is what makes a store worth having. Testing one query against
 30 knowledgebases in 30 processes decompresses the query 30 times; pooling
 them decompresses it once.
 
-Omitting `-m` on a terminal offers the store instead, **filtered to the sets
-whose row count matches the query**. A `.cm` from another row space is not a
-worse choice but a meaningless one — `kycg test` would refuse it on the
-row-count check anyway — so the picker turns that late error into a list you
-cannot pick wrong from:
+Omitting `-m` on a terminal opens the same browser `kycg fetch` uses, showing
+only the collections whose row count matches the query — a `.cm` from another
+row space is not a worse choice but a meaningless one, and `kycg test` would
+refuse it anyway, so the list is one you cannot pick wrong from:
 
 ```
-Knowledgebases matching 21,867,837 rows (29 of 35 in the store)
-
-  [ ] mm10/Blacklist.20220304.cm
-  [x] mm10/CGI.20220904.cm
-❯ [x] mm10/ChromHMM.20220414.cm
-  [ ] mm10/ChromHMMfullStack.20231222.cm
-  ...
-  29/29 shown · 2 selected · arrows move  space toggles  a/n all/none
-  / filter  enter accept  esc cancel
+Knowledgebases for 21,867,837 rows -- space to choose, t to test
+    target  kind          rows        cached_sets
+❯ ▾ mm10    whole genome  21,867,837  29
+   ├ [x] CGI          CGI.20220904.cm            cached
+   ├ [ ] EvoCons      EvoCons.20220314.cm        -
+  row 3 of 30 · 1 selected · → open  ← close  space select  f fetch  t test  q quit
 ```
+
+It lists everything a collection publishes, not just what you have — so if the
+set you want is missing, check it, press `f` to fetch it, then `t` to test
+against it, without leaving. Targets are filtered by the row counts pinned in
+the registry, so this is a table lookup rather than a scan of the store.
 
 The picker and the catalogue both render in place: arrows or `j`/`k` to move,
 `/` to search, `q` to quit.

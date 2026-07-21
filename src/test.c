@@ -64,10 +64,12 @@
 #include <math.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <stdarg.h>
 
 #include "kycg.h"
 #include "enrich.h"
 #include "store.h"
+#include "registry.h"
 #include "ui.h"
 
 /* YAME (submodule) */
@@ -211,6 +213,144 @@ static const char *commify(uint64_t v, char *buf, size_t n) {
   return buf;
 }
 
+/* Append one child row to an expansion. */
+static void kid_push_local(kycg_ui_kids_t *k, unsigned char style,
+                           const char *key, const char *fmt, ...) {
+  char **v = realloc(k->rows, (k->n + 1) * sizeof(char *));
+  if (!v) return;
+  k->rows = v;
+  char **kv = realloc(k->keys, (k->n + 1) * sizeof(char *));
+  if (!kv) return;
+  k->keys = kv;
+  k->keys[k->n] = key ? strdup(key) : NULL;
+  unsigned char *sv = realloc(k->styles, k->n + 1);
+  if (!sv) return;
+  k->styles = sv;
+  k->styles[k->n] = style;
+
+  char buf[1024];
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, ap);
+  va_end(ap);
+  k->rows[k->n] = strdup(buf);
+  if (k->rows[k->n]) ++k->n;
+}
+
+/* ------------------------------------------------ the no -m picker */
+
+/**
+ * State for offering the store as a tree, the same widget `kycg fetch` uses.
+ *
+ * Roots are the collections whose pinned row count matches the query; children
+ * are the sets actually cached under them, which by construction share that
+ * row space. So the list cannot contain a choice that `kycg test` would then
+ * refuse.
+ */
+typedef struct {
+  const char *root;        /* store root */
+  uint64_t    qrows;
+
+  char        **rows;      /* root row text, tab-separated */
+  unsigned char *styles;
+  char        **names;     /* the target name for each root */
+  size_t        n, m;
+
+  char        **chosen;    /* paths picked, filled on accept */
+  size_t        n_chosen, m_chosen;
+} pickctx_t;
+
+static void pick_add_target(pickctx_t *p, const char *name, const char *kind,
+                            uint64_t rows) {
+  char **paths = NULL;
+  size_t n_cached = kycg_resolve_spec(name, NULL, &paths);
+  kycg_free_specs(paths, n_cached);
+
+  if (p->n == p->m) {
+    size_t want = p->m ? p->m * 2 : 16;
+    p->rows   = realloc(p->rows,   want * sizeof(char *));
+    p->names  = realloc(p->names,  want * sizeof(char *));
+    p->styles = realloc(p->styles, want);
+    if (!p->rows || !p->names || !p->styles) return;
+    p->m = want;
+  }
+
+  char buf[512], rb[32];
+  snprintf(buf, sizeof(buf), "%s\t%s\t%s\t%zu",
+           name, kind, commify(rows, rb, sizeof(rb)), n_cached);
+  p->rows[p->n] = strdup(buf);
+  p->names[p->n] = strdup(name);
+  /* Dim a collection with nothing in it: it is listed so the user learns it
+   * exists and could be fetched, not because it can be tested against. */
+  p->styles[p->n] = n_cached ? KYCG_ROW_HAVE : KYCG_ROW_MISSING;
+  ++p->n;
+}
+
+static void pick_expand(void *ctx, const char *row, kycg_ui_kids_t *out) {
+  (void)ctx;
+
+  char target[128];
+  const char *tab = strchr(row, '\t');
+  size_t len = tab ? (size_t)(tab - row) : strlen(row);
+  if (len >= sizeof(target)) len = sizeof(target) - 1;
+  memcpy(target, row, len);
+  target[len] = '\0';
+
+  /* Everything the collection publishes, not just what is here: seeing what
+   * is missing is half the point, since f can fetch it and t can then test
+   * against it without leaving. */
+  size_t n = 0;
+  kycg_catalogue_t *cat = kycg_catalogue(target, NULL, &n);
+  if (!cat) {
+    kid_push_local(out, KYCG_ROW_MISSING, NULL,
+                   "catalogue unavailable - try: kycg fetch %s", target);
+    return;
+  }
+
+  for (size_t i = 0; i < n; ++i) {
+    char key[512], setn[256];
+    snprintf(key, sizeof(key), "%s:%s", target, cat[i].name);
+    const char *dot = strchr(cat[i].name, '.');
+    size_t l = dot ? (size_t)(dot - cat[i].name) : strlen(cat[i].name);
+    if (l >= sizeof(setn)) l = sizeof(setn) - 1;
+    memcpy(setn, cat[i].name, l);
+    setn[l] = '\0';
+    kid_push_local(out, cat[i].cached ? KYCG_ROW_HAVE : KYCG_ROW_MISSING, key,
+                   "%-22.22s %-32.32s %s", setn, cat[i].name,
+                   cat[i].cached ? "cached" : "-");
+  }
+  kycg_catalogue_free(cat, n);
+}
+
+static void pick_accept(void *ctx, const char *root, const char *key) {
+  (void)root;
+  pickctx_t *p = ctx;
+  if (p->n_chosen == p->m_chosen) {
+    size_t want = p->m_chosen ? p->m_chosen * 2 : 16;
+    char **v = realloc(p->chosen, want * sizeof(char *));
+    if (!v) return;
+    p->chosen = v; p->m_chosen = want;
+  }
+  p->chosen[p->n_chosen] = strdup(key);
+  if (p->chosen[p->n_chosen]) ++p->n_chosen;
+}
+
+/** f in the picker: fetch whatever is checked but not yet here, then stay. */
+static void pick_commit_fetch(void *ctx) {
+  pickctx_t *p = ctx;
+  if (p->n_chosen) kycg_fetch_specs(p->chosen, p->n_chosen, NULL);
+  for (size_t i = 0; i < p->n_chosen; ++i) free(p->chosen[i]);
+  p->n_chosen = 0;
+}
+
+static void pick_free(pickctx_t *p) {
+  for (size_t i = 0; i < p->n; ++i) { free(p->rows[i]); free(p->names[i]); }
+  free(p->rows); free(p->names); free(p->styles);
+  for (size_t i = 0; i < p->n_chosen; ++i) free(p->chosen[i]);
+  free(p->chosen);
+  memset(p, 0, sizeof(*p));
+}
+
 /* Growable result table. */
 typedef struct {
   kycg_result_t *a;
@@ -349,96 +489,93 @@ int main_test(int argc, char *argv[]) {
     usage();
     wzfatal("Please supply a query file.\n");
   }
-  /* No -m: offer what is already in the store. Only on a terminal -- a
-   * pipeline that forgot -m must fail loudly rather than wait for an answer
-   * nobody is there to give. */
+  /* No -m: offer the store in the same tree `kycg fetch` uses. Only on a
+   * terminal -- a pipeline that forgot -m must fail loudly rather than wait
+   * for an answer nobody is there to give. */
   if (!n_masks && kycg_ui_interactive()) {
     if (optind >= argc) {
       usage();
       wzfatal("Please supply a query file.\n");
     }
 
-    const char *root = kycg_store_root(NULL);
-    size_t n_found = 0;
-    char **found = kycg_store_find_cm(root, &n_found);
-
-    if (!n_found) {
-      kycg_store_free_list(found, n_found);
-      usage();
-      wzfatal("No knowledgebase given, and the store at %s is empty.\n"
-              "Run `kycg fetch` to populate it.\n", root);
-    }
-
-    /* Offer only knowledgebases in the query's row space.
-     *
-     * A .cm from another row space is not a worse choice, it is a
-     * meaningless one: `kycg test` would refuse it on the row-count check
-     * anyway. Filtering here turns that late error into a list the user
-     * cannot pick wrong from, and it is the one place kycg can act on row
-     * spaces without guessing, because both counts are known exactly. */
     uint64_t qrows = first_record_rows(argv[optind]);
-    if (!qrows) {
-      kycg_store_free_list(found, n_found);
-      wzfatal("Cannot read a record from query '%s'.\n", argv[optind]);
-    }
+    if (!qrows) wzfatal("Cannot read a record from query '%s'.\n", argv[optind]);
 
-    if (kycg_ui_fancy())
-      fprintf(stderr, "%s  scanning the store...%s\r",
-              kycg_ui_dim(), kycg_ui_reset());
+    /* Targets are filtered by the row counts pinned in the registry, so this
+     * is a comparison against a table rather than a scan of the store. The
+     * previous picker opened every .cm on disk to ask the same question and
+     * took about a second to do it. */
+    pickctx_t pc = {0};
+    pc.root = kycg_store_root(NULL);
+    pc.qrows = qrows;
 
-    char **match = malloc(n_found * sizeof(char *));
-    size_t n_match = 0;
-    for (size_t i = 0; i < n_found; ++i)
-      if (first_record_rows(found[i]) == qrows) match[n_match++] = found[i];
+    for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome; ++r)
+      if (r->rows == qrows) pick_add_target(&pc, r->genome, "whole genome", r->rows);
+    for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform; ++r)
+      if (r->rows == qrows) pick_add_target(&pc, r->platform, "array", r->rows);
 
-    if (kycg_ui_fancy()) fputs("\r\033[2K", stderr);
-
-    if (!n_match) {
+    if (!pc.n) {
       char qb[32];
       fprintf(stderr,
-              "No knowledgebase in %s indexes the same row list as '%s'\n"
-              "(%s rows). Sequencing queries need sets for their genome, and\n"
-              "array queries need sets for their platform; a .cm from one row\n"
-              "space is meaningless in the other.\n"
-              "Run `kycg list` to see what is cached, or `kycg fetch`.\n",
-              root, argv[optind], commify(qrows, qb, sizeof(qb)));
-      free(match);
-      kycg_store_free_list(found, n_found);
+              "No knowledgebase collection indexes the same row list as '%s'\n"
+              "(%s rows). Sequencing queries need sets for their genome and array\n"
+              "queries need sets for their platform; a .cm from one row space is\n"
+              "meaningless in the other. Run `kycg fetch` to see what exists.\n",
+              argv[optind], commify(qrows, qb, sizeof(qb)));
       return 1;
     }
 
-    /* Store-relative paths; the absolute ones are mostly $HOME repeated. */
-    const char **labels = malloc(n_match * sizeof(char *));
-    for (size_t i = 0; i < n_match; ++i)
-      labels[i] = kycg_store_relative(root, match[i]);
-
     char title[256], qb[32];
     snprintf(title, sizeof(title),
-             "Knowledgebases matching %s rows (%zu of %zu in the store)",
-             commify(qrows, qb, sizeof(qb)), n_match, n_found);
+             "Knowledgebases for %s rows -- space to choose, t to test",
+             commify(qrows, qb, sizeof(qb)));
 
-    /* Default to all: testing a query against everything on hand is the
-     * workflow the store exists for, and it means the Enter key does
-     * something useful rather than looping on an empty selection. */
-    int *flags = kycg_ui_multiselect(title, labels, NULL, n_match, 1);
-    free(labels);
+    kycg_ui_tree_t spec = {0};
+    spec.title = title;
+    spec.header = "target\tkind\trows\tcached_sets";
+    spec.roots = pc.rows;
+    spec.root_styles = pc.styles;
+    spec.n_roots = pc.n;
+    spec.expand = pick_expand;
+    /* Two verbs on one screen: fetch what is missing, then test against it.
+     * f keeps the browser open (it has a commit); t ends it and the selection
+     * is what gets tested. */
+    spec.actions[0].key = 'f';
+    spec.actions[0].verb = "fetch";
+    spec.actions[0].accept = pick_accept;
+    spec.actions[0].commit = pick_commit_fetch;
+    spec.actions[1].key = 't';
+    spec.actions[1].verb = "test";
+    spec.actions[1].accept = pick_accept;
+    spec.actions[1].commit = NULL;
+    spec.n_actions = 2;
+    /* Cached sets are the ones worth testing, so they stay checkable. */
+    spec.have_selectable = 1;
+    spec.ctx = &pc;
 
-    if (!flags) {
-      free(match);
-      kycg_store_free_list(found, n_found);
+    int rc = kycg_ui_tree(&spec);
+    if (rc != 2 || !pc.n_chosen) {   /* 2 = the test action */
+      pick_free(&pc);
       wzfatal("No knowledgebase selected.\n");
     }
 
-    for (size_t i = 0; i < n_match; ++i) {
-      if (!flags[i]) continue;
-      mask_names = realloc(mask_names, (n_masks + 1) * sizeof(char *));
-      if (!mask_names) wzfatal("[%s:%d] Cannot allocate.\n", __func__, __LINE__);
-      mask_names[n_masks++] = strdup(match[i]);
+    for (size_t i = 0; i < pc.n_chosen; ++i) {
+      char **paths = NULL;
+      size_t np = kycg_resolve_spec(pc.chosen[i], NULL, &paths);
+      if (!np) {
+        fprintf(stderr, "  %sskipping %s: not in the store%s\n",
+                kycg_ui_yellow(), pc.chosen[i], kycg_ui_reset());
+        continue;
+      }
+      for (size_t j = 0; j < np; ++j) {
+        mask_names = realloc(mask_names, (n_masks + 1) * sizeof(char *));
+        if (!mask_names) wzfatal("[%s:%d] Cannot allocate.\n", __func__, __LINE__);
+        mask_names[n_masks++] = paths[j];
+      }
+      free(paths);
     }
-    free(flags);
-    free(match);
-    kycg_store_free_list(found, n_found);
-    fputc('\n', stderr);
+    pick_free(&pc);
+    if (!n_masks) wzfatal("Nothing selected is in the store.\n");
   }
 
   if (!n_masks) {

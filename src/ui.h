@@ -226,6 +226,21 @@ int kycg_ui_panel_ask(int line, const char *prompt, char *buf, size_t n);
 typedef void (*kycg_ui_commit_fn)(void *ctx);
 
 /**
+ * One thing that can be done with the checked rows.
+ *
+ * `accept` is called per checked row, then `commit`. A NULL commit means the
+ * action ends the session and the caller acts on what it collected; a non-NULL
+ * one runs inside the widget (use the panel calls) and the tree carries on,
+ * reloaded, so several actions can be taken in one sitting.
+ */
+typedef struct {
+  char               key;
+  const char        *verb;    /* shown in the footer */
+  kycg_ui_accept_fn  accept;
+  kycg_ui_commit_fn  commit;  /* NULL: the action returns instead */
+} kycg_ui_action_t;
+
+/**
  * Offered any key the tree does not handle itself, so a caller can bind
  * actions of its own without the widget knowing what they mean. Runs with the
  * widget still on screen; use the panel calls for output. Return nonzero if
@@ -256,10 +271,20 @@ typedef struct {
   size_t          n_roots;
 
   kycg_ui_expand_fn expand;    /* may be NULL for a flat tree */
-  kycg_ui_accept_fn accept;    /* non-NULL turns the tree into a picker */
-  kycg_ui_commit_fn commit;    /* may be NULL: then `f` returns instead */
+
+  /* What can be done with a selection. Any action makes the tree a picker.
+   * More than one lets a single screen serve more than one verb -- fetching
+   * what is missing and then testing against it, without leaving. */
+  kycg_ui_action_t  actions[4];
+  size_t            n_actions;
+
   kycg_ui_key_fn    on_key;    /* may be NULL */
   const char       *hint;      /* extra footer text for the caller's keys */
+
+  /* Whether a row already present can still be checked. False for fetching,
+   * where having it means there is nothing to ask for; true when the action
+   * is something other than acquiring it -- testing against it, say. */
+  int               have_selectable;
 
   /* Open this root on entry and offer its children to `preselect`. NULL for
    * the plain catalogue view. */
