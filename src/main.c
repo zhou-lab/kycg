@@ -114,6 +114,7 @@ static int usage(void) {
   fprintf(o, "%sCommands%s\n", H_TITLE, H_OFF);
   cmd(o, "fetch", "browse, choose and download knowledgebases");
   cmd(o, "test",  "set enrichment against a knowledgebase");
+  cmd(o, "annotate", "label a TSV of probe IDs by set membership");
   cmd(o, "info",  "describe the records in a .cg or .cm file");
   fprintf(o, "\n");
 
@@ -130,6 +131,7 @@ int main(int argc, char *argv[]) {
   if      (strcmp(argv[1], "test") == 0)  ret = main_test(argc - 1, argv + 1);
   else if (strcmp(argv[1], "info") == 0)  ret = main_info(argc - 1, argv + 1);
   else if (strcmp(argv[1], "fetch") == 0) ret = main_fetch(argc - 1, argv + 1);
+  else if (strcmp(argv[1], "annotate") == 0) ret = main_annotate(argc - 1, argv + 1);
   else if (strcmp(argv[1], "-h") == 0 ||
            strcmp(argv[1], "--help") == 0) return usage();
   else if (strcmp(argv[1], "--version") == 0) {

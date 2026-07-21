@@ -53,7 +53,7 @@ static const kycg_kbinfo_t KYCG_KBINFO[] = {
       "CpG-dense, usually promoter-associated and usually unmethylated; the single most informative partition of the methylome. Shores and shelves flank them and carry most tissue-specific variation.",
       "UCSC Genome Browser cpgIslandExt track",
       "Gardiner-Garden & Frommer 1987, J Mol Biol, doi:10.1016/0022-2836(87)90689-9",
-      "Island as published; Shore = +/-2 kb around it; Shelf = +/-4 kb minus the shore; OpenSea = the complement. Four mutually exclusive states." },
+      "Island as published; Shore = +/-2 kb around it; Shelf = +/-4 kb minus the shore; OpenSea = the complement. Nearly disjoint rather than strictly so: on EPIC 49 probes fall in two states where flanks of neighbouring islands meet, and 716 (mostly control and SNP probes) fall in none." },
     { "ChromHMM", "hg38,mm10,array", "hg38,mm10,array",
       "Chromatin states",
       "Chromatin segmentation into states such as active TSS, enhancer, transcribed, quiescent and Polycomb-repressed. Methylation means different things in each, so this is the usual first pass at what kind of region a CpG set sits in.",

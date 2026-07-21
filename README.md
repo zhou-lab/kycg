@@ -20,7 +20,7 @@ knowYourCG sequencing workflow.
 | 1 | `kycg test` — hypergeometric, group-stratified BH, effect sizes | done |
 | 2 | `kycg fetch` — registry, catalogue browser, verified store | done |
 | 3 | Plot recipes (with cinderplot) | not started |
-| 4 | `proximity`, `sea`, `anno`, `bed2cg` | not started |
+| 4 | `annotate` (done), `proximity`, `sea`, `bed2cg` | partial |
 
 ## Installing
 
@@ -180,6 +180,48 @@ tools/check_dimensions.sh          # confirm the pinned row counts still hold
 
 The trade is reproducibility for immediacy — a given kycg release means an
 exact, known set of knowledgebases, and data updates ride software releases.
+
+### `kycg annotate` — label a table of probe IDs
+
+```bash
+kycg annotate -m EPIC:CGI,ProbeType hits.tsv > annotated.tsv
+```
+
+The lookup half of the same data `test` aggregates over: testing asks whether a
+group of probes is enriched somewhere, annotating asks where one probe actually
+is. It reads a TSV, keeps every column and row in order, and appends one column
+per knowledgebase.
+
+```
+Probe_ID    beta  CGI      ProbeType
+cg00000029  0.5   Shore    cg
+cg00000103  0.5   OpenSea  cg
+cg99999999  0.1   NA       NA
+```
+
+`-i` gives an indicator matrix instead — one 0/1 column per set, which is what
+you want feeding a model rather than reading.
+
+```
+    -m SPEC   path or platform[:sets]; repeatable [required]
+    -p PLAT   platform, when -m is a plain path
+    -c COL    probe ID column: a name or 1-based index [Probe_ID, else 1]
+    -i        indicator columns (0/1) per set
+    -s SEP    separator when a probe is in several sets [,]
+    -H        the input has no header line
+    -o FILE   write to FILE instead of stdout
+```
+
+**Arrays only, and the platform is named rather than inferred.** A probe ID
+means nothing without the ordering that gives it a row, so `annotate` reads the
+platform's `ordering.tsv.gz` — fetched with any set for that platform — and
+binary-searches it. knowYourCG guesses the platform from probe ID patterns;
+kycg does not, for the same reason it never guesses row spaces: a wrong guess
+produces a full table of confident, wrong answers.
+
+A probe absent from the ordering and a probe in no set both read `NA`, which
+are different facts, so the count of the first goes to stderr where it cannot
+corrupt the table.
 
 ### `kycg test` — set enrichment
 

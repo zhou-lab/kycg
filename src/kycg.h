@@ -89,5 +89,6 @@ void kycg_kb_detail(void *ctx, const char *root, const char *child_key,
 int main_test(int argc, char *argv[]);
 int main_info(int argc, char *argv[]);
 int main_fetch(int argc, char *argv[]);
+int main_annotate(int argc, char *argv[]);
 
 #endif /* _KYCG_H */
