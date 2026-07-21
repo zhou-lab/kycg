@@ -22,8 +22,10 @@ find external/YAME -name '*.o' -delete 2>/dev/null || true
 # CFLAGS / LDFLAGS. The vendored YAME and htslib Makefiles set rigid CFLAGS and
 # ignore CPPFLAGS, so bake conda's *compile* flags into CC -- every level of
 # sub-make (kycg -> YAME -> htslib) uses CC verbatim, and a command-line CC
-# propagates to all sub-makes. LDFLAGS reaches the final link through the
-# environment, which make imports on its own.
+# propagates to all sub-makes. LDFLAGS is expanded explicitly by kycg's link
+# rule -- make imports the environment into a variable, but an explicit recipe
+# never expands it by itself, and conda-forge puts -L$PREFIX/lib only in
+# LDFLAGS, so without that a linux-64 build fails to find -lz.
 #
 # CURL is left at its default of `auto`: curl-config comes from the libcurl
 # host dependency, so detection succeeds and the package gets network support.

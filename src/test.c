@@ -268,19 +268,33 @@ static void pick_add_target(pickctx_t *p, const char *name, const char *kind,
   kycg_free_specs(paths, n_cached);
 
   if (p->n == p->m) {
+    /* `p->x = realloc(p->x, ...)` loses the original on failure, and returning
+     * without updating p->m left the arrays grown but the capacity stale --
+     * the next call re-entered this branch, realloc(NULL) handed back a fresh
+     * block, every prior name leaked, and pick_free() then freed garbage.
+     * Adopt each block only once it has succeeded, and update m last. */
     size_t want = p->m ? p->m * 2 : 16;
-    p->rows   = realloc(p->rows,   want * sizeof(char *));
-    p->names  = realloc(p->names,  want * sizeof(char *));
-    p->styles = realloc(p->styles, want);
-    if (!p->rows || !p->names || !p->styles) return;
+    char **nr = realloc(p->rows, want * sizeof(char *));
+    if (!nr) return;
+    p->rows = nr;
+    char **nn = realloc(p->names, want * sizeof(char *));
+    if (!nn) return;
+    p->names = nn;
+    unsigned char *ns = realloc(p->styles, want);
+    if (!ns) return;
+    p->styles = ns;
     p->m = want;
   }
 
   char buf[512], rb[32];
   snprintf(buf, sizeof(buf), "%s\t%s\t%s\t%zu",
            name, kind, commify(rows, rb, sizeof(rb)), n_cached);
-  p->rows[p->n] = strdup(buf);
-  p->names[p->n] = strdup(name);
+  /* Both strings must land before n advances: a NULL row reaches
+   * kycg_ui_tree(), whose strchr() on it would crash. */
+  char *row_s = strdup(buf), *name_s = strdup(name);
+  if (!row_s || !name_s) { free(row_s); free(name_s); return; }
+  p->rows[p->n] = row_s;
+  p->names[p->n] = name_s;
   /* Dim a collection with nothing in it: it is listed so the user learns it
    * exists and could be fetched, not because it can be tested against. */
   p->styles[p->n] = n_cached ? KYCG_ROW_HAVE : KYCG_ROW_MISSING;
@@ -640,9 +654,11 @@ int main_test(int argc, char *argv[]) {
 
     const char *qry_disp = conf.full_name ? fname_qry : get_basename(fname_qry);
 
+    uint64_t n_qry_rec = 0;
     for (uint64_t kq = 0;; ++kq) {
       cdata_t c_qry = read_cdata1(&cf_qry);
       if (c_qry.n == 0) break;
+      ++n_qry_rec;
 
       if (snames_qry.n && kq >= (unsigned)snames_qry.n) {
         wzfatal("[%s:%d] More records (N=%" PRIu64 ") in '%s' than names in "
@@ -676,9 +692,11 @@ int main_test(int argc, char *argv[]) {
             wzfatal("[%s:%d] Cannot seek knowledgebase '%s'.\n",
                     __func__, __LINE__, ms->fname);
           }
+          uint64_t n_mask_rec = 0;
           for (uint64_t km = 0;; ++km) {
             cdata_t c_mask = read_cdata1(&ms->cf);
             if (c_mask.n == 0) break;
+            ++n_mask_rec;
             prepare_mask(&c_mask);
 
             kstring_t sm = {0};
@@ -691,12 +709,28 @@ int main_test(int argc, char *argv[]) {
             free(sm.s);
             free_cdata(&c_mask);
           }
+
+          /* Zero records is not an empty result, it is a file that could not
+           * be read as a knowledgebase -- truncated, corrupt, or simply not a
+           * .cm. Reporting success with an empty table would let a pipeline
+           * treat "the knowledgebase failed to load" as "nothing was
+           * enriched", which are opposite conclusions. */
+          if (!n_mask_rec) {
+            wzfatal("[%s:%d] No records in knowledgebase '%s'. The file is "
+                    "empty or not a readable .cm.\n",
+                    __func__, __LINE__, ms->fname);
+          }
         }
       }
 
       free(sq.s);
       free_cdata(&c_qry);
       c_qry.s = NULL;
+    }
+
+    if (!n_qry_rec) {
+      wzfatal("[%s:%d] No records in query '%s'. The file is empty or not a "
+              "readable .cg.\n", __func__, __LINE__, fname_qry);
     }
 
     bgzf_close(cf_qry.fh);

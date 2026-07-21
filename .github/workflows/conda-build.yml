@@ -8,8 +8,28 @@ on:
     branches: [main]
 
 jobs:
+  # The conda package ships only the binary, so the statistics it computes are
+  # not covered by the recipe's own test commands. Run the real suite once --
+  # it needs no conda and no network, and a package whose numbers had drifted
+  # would otherwise build and publish clean.
+  selftest:
+    name: unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Build and test
+        run: |
+          make -j"$(nproc)"
+          make test
+
   build:
     name: ${{ matrix.name }}
+    # Gate on the unit tests. Without this the two jobs run in parallel and a
+    # v* tag publishes to anaconda.org whether or not `make test` passed --
+    # which is exactly the drift the selftest job exists to catch.
+    needs: selftest
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -55,30 +75,21 @@ jobs:
             echo "ANACONDA_TOKEN secret is not set; cannot publish." >&2
             exit 1
           fi
-          # guard: the pushed tag must match the recipe version
+          # guard: the pushed tag must match BOTH the recipe version and the
+          # version compiled into the binary. Checking only meta.yaml would let
+          # a package labelled 0.2.0 ship a kycg whose --version says 0.1.0.
           version=$(sed -n 's/.*set version = "\(.*\)".*/\1/p' conda-recipe/meta.yaml)
+          binver=$(sed -n 's/.*KYCG_VERSION "\(.*\)".*/\1/p' src/kycg.h)
           tag="${GITHUB_REF_NAME#v}"
           if [ "$version" != "$tag" ]; then
-            echo "tag v$tag does not match recipe version $version; bump meta.yaml" >&2
+            echo "tag v$tag does not match recipe version $version; bump conda-recipe/meta.yaml" >&2
+            exit 1
+          fi
+          if [ "$binver" != "$tag" ]; then
+            echo "tag v$tag does not match KYCG_VERSION $binver; bump src/kycg.h" >&2
             exit 1
           fi
           for pkg in "$RUNNER_TEMP"/bld/*/*.conda; do
             echo "uploading $pkg"
             conda run -n base anaconda -t "$ANACONDA_TOKEN" upload -u zhou-lab --label main --force "$pkg"
           done
-
-  # The conda package ships only the binary, so the statistics it computes are
-  # not covered by the recipe's own test commands. Run the real suite once --
-  # it needs no conda and no network, and a package whose numbers had drifted
-  # would otherwise build and publish clean.
-  selftest:
-    name: unit tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Build and test
-        run: |
-          make -j"$(nproc)"
-          make test

@@ -61,15 +61,19 @@ OBJECTS := $(SOURCES:$(SRC_DIR)/%.c=$(SRC_DIR)/%.o)
 # Everything except the CLI dispatcher, so tests can link the library half.
 LIBOBJECTS = $(filter-out $(SRC_DIR)/main.o, $(OBJECTS))
 
-.PHONY: all build debug clean test yame install
+.PHONY: all build debug clean distclean test yame install
 
 all: build
 
 build: $(PROG)
 
+# `clean` first, deliberately: target-specific variables do not participate in
+# up-to-date checks, so `make && make debug` would otherwise recompile nothing
+# and leave the optimized, unsanitized binary in place -- reporting success
+# while giving you no sanitizer at all.
 debug: CFLAGS += -g -fsanitize=address,undefined
 debug: CFLAGS := $(filter-out -O3,$(CFLAGS))
-debug: build
+debug: clean build
 
 #####################
 ##### libraries #####
@@ -88,7 +92,12 @@ $(YAME_LIB) $(YAME_HTSLIB): yame
 # Objects depend on every kycg header, not just their own .c. Without this a
 # regenerated registry.h or kbinfo.h leaves a stale binary that reports the
 # previous contents -- which looks like a data bug and is not one.
-KYCG_HEADERS := $(wildcard $(SRC_DIR)/*.h)
+# YAME's headers count too: src/test.c and src/info.c include cdata.h, cfile.h,
+# summary.h and wzmisc.h from the submodule. Without them, bumping the
+# submodule to a YAME whose cdata_t layout changed relinks against the new
+# libyame.a while keeping stale objects compiled for the old struct -- the link
+# succeeds and the offsets disagree at run time.
+KYCG_HEADERS := $(wildcard $(SRC_DIR)/*.h) $(wildcard $(YAME_DIR)/src/*.h)
 
 $(SRC_DIR)/%.o: $(SRC_DIR)/%.c $(KYCG_HEADERS)
 	$(CC) -c $(CFLAGS) $< -o $@
@@ -97,8 +106,12 @@ $(SRC_DIR)/%.o: $(SRC_DIR)/%.c $(KYCG_HEADERS)
 ###   linking   ###
 ###################
 
+# $(LDFLAGS) is expanded explicitly: this is an explicit recipe, so no implicit
+# rule supplies it. conda-forge puts -L$$PREFIX/lib ONLY in LDFLAGS, and without
+# it a linux-64 conda build fails to find -lz -- libcurl resolves by luck,
+# because curl-config emits its own -L.
 $(PROG): $(YAME_LIB) $(OBJECTS)
-	$(CC) $(CFLAGS) -o $@ $(OBJECTS) $(YAME_LIB) $(YAME_HTSLIB) $(CLIB)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJECTS) $(YAME_LIB) $(YAME_HTSLIB) $(CLIB)
 
 ###################
 ###    tests    ###
@@ -109,7 +122,8 @@ $(PROG): $(YAME_LIB) $(OBJECTS)
 TEST_SRC := $(wildcard $(TEST_DIR)/*.c)
 TEST_BIN := $(TEST_SRC:$(TEST_DIR)/%.c=$(TEST_DIR)/%)
 
-TEST_OBJ = $(SRC_DIR)/hypergeo.o $(SRC_DIR)/enrich.o $(SRC_DIR)/args.o
+TEST_OBJ = $(SRC_DIR)/hypergeo.o $(SRC_DIR)/enrich.o $(SRC_DIR)/args.o \
+           $(SRC_DIR)/store.o
 
 $(TEST_DIR)/%: $(TEST_DIR)/%.c $(TEST_OBJ)
 	$(CC) $(CFLAGS) -o $@ $< $(TEST_OBJ) -lm

@@ -40,6 +40,16 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+int kycg_store_safe_name(const char *s) {
+  if (!s || !*s) return 0;
+  if (s[0] == '.') return 0;              /* ".", "..", and hidden files */
+  for (const char *p = s; *p; ++p) {
+    if (*p == '/' || *p == '\\') return 0;
+    if ((unsigned char)*p < 0x20) return 0;   /* control chars, incl. newline */
+  }
+  return 1;
+}
+
 const char *kycg_store_root(const char *override) {
   static char buf[4096];
   if (override && *override) return override;
@@ -108,14 +118,23 @@ static void walk(const char *dir, int depth, char ***v, size_t *n, size_t *m) {
     char path[4096];
     snprintf(path, sizeof(path), "%s/%s", dir, e->d_name);
 
+    /* lstat, not stat: a symlinked directory inside the store would otherwise
+     * be descended into, and a link pointing at an ancestor yields the same
+     * .cm more than once. A duplicate is not cosmetic here -- testing one
+     * knowledgebase twice in a stratum inflates BH's m and shifts every FDR
+     * in it. Symlinked *files* are still followed, which is what makes a
+     * store assembled from a shared mount work. */
     struct stat st;
-    if (stat(path, &st) != 0) continue;
+    if (lstat(path, &st) != 0) continue;
 
     if (S_ISDIR(st.st_mode)) {
       walk(path, depth + 1, v, n, m);
-    } else if (S_ISREG(st.st_mode) && ends_with(e->d_name, ".cm")) {
-      /* .cm.idx is excluded by construction: it does not end in ".cm". */
-      push(v, n, m, path);
+    } else if (ends_with(e->d_name, ".cm")) {
+      /* .cm.idx is excluded by construction: it does not end in ".cm".
+       * S_ISREG is deliberately not required: lstat above means a symlinked
+       * .cm reports as a link, and those are legitimate in a store assembled
+       * from a shared mount. */
+      if (push(v, n, m, path) != 0) return;
     }
   }
   closedir(d);

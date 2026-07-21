@@ -30,6 +30,10 @@
  * not be read.
  */
 int kycg_sha256_file(const char *path, char out[65]);
+/* md5 was needed while the whole-genome sets came from Zenodo, whose record
+ * API publishes nothing stronger. Both channels now publish SHA256SUMS, so
+ * nothing calls this; it is kept because the archival Zenodo deposits still
+ * carry md5 and a future verifier against them would want it. */
 int kycg_md5_file(const char *path, char out[33]);
 
 /** Hex sha256 of a memory buffer. `out` must hold 65 bytes. */

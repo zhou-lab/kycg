@@ -4,10 +4,11 @@
 /kycg
 
 # test binaries (tests/*.c compile to extensionless binaries beside them).
-# Listed by name rather than by pattern: tests/ also holds .c and .R sources
-# that must stay tracked.
-/tests/test_args
-/tests/test_hypergeo
+# A pattern, not a list: the Makefile discovers tests with $(wildcard
+# tests/*.c), so any new test produced a binary that `git add -A` would
+# happily commit. The negation keeps the sources tracked.
+/tests/test_*
+!/tests/test_*.c
 
 # local working notes, not part of the published repo
 CLAUDE.md
@@ -18,4 +19,3 @@ TODO.md
 *~
 compile_commands.json
 .cache/
-/tests/test_enrich

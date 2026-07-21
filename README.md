@@ -95,8 +95,8 @@ stays visible above; when it finishes, the counts and check marks refresh in
 place with your folds and cursor where you left them. Only `q` exits.
 
 ```
-    target    kind          source                 cached_sets
-❯ ▾ hg38      whole genome  KYCGKB_hg38 v2         4/32
+    target    kind          rows        source           cached_sets
+❯ ▾ hg38      whole genome  29,401,795  KYCGKB_hg38 v2    4/32
    ├ [x] ABCompartment   ABCompartment.20220911.cm   9.5 KB  -
    ├  ✓  Blacklist       Blacklist.20220304.cm       3.1 KB  cached
    ├ [ ] CTCFbind        CTCFbind.20220911.cm        159 KB  -
@@ -148,10 +148,18 @@ says which:
 ```
 $ kycg --version
 kycg 0.1.0
-knowledgebases pinned by this build:
-  hg38       KYCGKB_hg38 v2
-  mm10       KYCGKB_mm10 v2
-  arrays     InfiniumAnnotation v8
+Store
+    /Users/zhouw3/.cache/kycg   ($KYCG_DATA_DIR unset; -d overrides)
+
+Knowledgebases pinned by this build
+    hg38      KYCGKB_hg38 v2
+    mm10      KYCGKB_mm10 v2
+    arrays    InfiniumAnnotation v8
+    only these tags can be verified; to follow a newer one,
+    regenerate src/registry.h (tools/make_registry.sh) and rebuild
+
+Network
+    libcurl   fetch available
 ```
 
 Nothing updates on its own, deliberately: the digest a download is checked
@@ -208,7 +216,7 @@ Knowledgebases for 21,867,837 rows -- space to choose, t to test
 ❯ ▾ mm10    whole genome  21,867,837  28
    ├ [x] CGI          CGI.20220904.cm            cached
    ├ [ ] EvoCons      EvoCons.20220314.cm        -
-  row 3 of 30 · 1 selected · → open  ← close  space select  r recommended  f fetch  i info  t test  q quit
+  row 3 of 30 · 1 selected · → open  ← close  space select  r recommended  f fetch  t test  i info  q quit
 ```
 
 It lists everything a collection publishes, not just what you have — so if the
@@ -224,9 +232,9 @@ folds it back, so the `cached_sets` count and the sets it counts are one
 keystroke apart:
 
 ```
-    target    kind          source                 cached_sets
-  ▸ hg38      whole genome  KYCGKB_hg38 v2         3/32
-❯ ▾ mm10      whole genome  KYCGKB_mm10 v2         28/28
+    target    kind          rows        source           cached_sets
+  ▸ hg38      whole genome  29,401,795  KYCGKB_hg38 v2    3/32
+❯ ▾ mm10      whole genome  21,867,837  KYCGKB_mm10 v2   28/28
     ├ CGI                CGI.20220904.cm            120 KB  cached
     ├ ChromHMM           ChromHMM.20220414.cm       857 KB  cached
     ├ PMD                PMD.20220911.cm           16.3 KB  cached
@@ -246,9 +254,9 @@ the same row count, so `kycg test` will refuse a mismatch.
 `cached_sets` reads *have/total* once the catalogue is known. For whole
 genomes that is always, since the file list is compiled in. For an array
 platform the total lives in its manifest, so it appears as soon as that is to
-hand — locally, after unfolding the platform, or after `r`, which pulls them
-all. Until then only the count is shown, because drawing the overview happens
-on every keystroke and must never reach the network.
+hand — locally, or after unfolding the platform, which pulls it. Until then
+only the count is shown, because drawing the overview happens on every
+keystroke and must never reach the network.
 
 The picker, the browser and the tree are full-screen: they take the alternate
 screen buffer, scroll a fixed-height viewport, and hand the terminal back
@@ -391,9 +399,19 @@ space, looping "until underflow" by construction.
 ```
 src/hypergeo.{c,h}   log-space hypergeometric tail + BH   (pure, no YAME)
 src/enrich.{c,h}     effect sizes, FDR strata, ordering, TSV emission
+src/args.{c,h}       argv permutation so options may follow operands
+src/store.{c,h}      store paths, enumeration, member-name safety
+src/digest.{c,h}     sha256
+src/registry.h       generated: pinned tags, anchors, row counts, sizes
+src/kbinfo.h         generated: per-set provenance from data/knowledgebases.tsv
+src/ui.{c,h}         terminal layer: tree browser, panels, progress, TTY gating
+src/fetch.c          kycg fetch — catalogue, plan, verified download
 src/test.c           kycg test
 src/info.c           kycg info
 src/main.c           subcommand dispatch (the only main())
+data/                knowledgebase metadata (source of truth for kbinfo.h)
+tools/               generators for registry.h and kbinfo.h, dimension checks
+conda-recipe/        conda package
 tests/               unit tests + R cross-validation
 external/YAME/       submodule
 ```

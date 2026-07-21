@@ -101,6 +101,8 @@ int main_info(int argc, char *argv[]) {
     wzfatal("Please supply an input file.\n");
   }
 
+  int rc = 0;
+
   if (!no_header) fputs("file\trecord\tname\tformat\tn_rows\tn_set\n", stdout);
 
   for (int j = optind; j < argc; ++j) {
@@ -109,9 +111,11 @@ int main_info(int argc, char *argv[]) {
     snames_t snames = loadSampleNamesFromIndex(fname);
     const char *disp = get_basename(fname);
 
+    uint64_t n_rec = 0;
     for (uint64_t k = 0;; ++k) {
       cdata_t cd = read_cdata1(&cf);
       if (cd.n == 0) break;
+      ++n_rec;
 
       char fmt = cd.fmt;
       prepare_mask(&cd);   /* normalize so cd.n is a row count, not bytes */
@@ -135,7 +139,18 @@ int main_info(int argc, char *argv[]) {
 
     bgzf_close(cf.fh);
     cleanSampleNames2(snames);
+
+    /* A file that opens but yields no records is corrupt, truncated, or not a
+     * YAME file at all -- not a file that happens to describe nothing. Exiting
+     * 0 here printed a lone header and told a shell that all was well; on a
+     * corrupt input YAME even writes "Unmatched signature. File corrupted."
+     * while kycg reported success. */
+    if (!n_rec) {
+      fprintf(stderr, "kycg info: no records in '%s'; it is empty, truncated, "
+                      "or not a .cg/.cm file.\n", fname);
+      rc = 1;
+    }
   }
 
-  return 0;
+  return rc;
 }

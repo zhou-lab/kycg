@@ -40,6 +40,35 @@ const char *kycg_store_root(const char *override);
 /** mkdir -p. Returns 0 on success. */
 int kycg_store_mkdir_p(const char *path);
 
+/**
+ * Is this manifest entry a name we are willing to write to?
+ *
+ * The anchor proves a manifest is the one upstream published. It says nothing
+ * about whether upstream should get to choose *where* a file lands -- and the
+ * name from a manifest line was being joined straight onto the store directory
+ * with snprintf("%s/%s"). An entry reading
+ *
+ *     <64 hex>  ../../../../.ssh/authorized_keys
+ *
+ * therefore resolved outside the store entirely, and since whoever writes the
+ * manifest also serves the bytes, the digest check would pass and the file
+ * would be renamed into place. Verified by construction, not theory: joining
+ * that name to a real store directory and fopen()ing it writes the file
+ * outside the store.
+ *
+ * A network attacker cannot reach this -- they cannot forge a manifest that
+ * satisfies the compiled-in anchor. The realistic route is an upstream
+ * repository compromise that a maintainer then pins with make_registry.sh,
+ * which hashes whatever it is served without inspecting the names. That is
+ * exactly the case where authentication is not authorization.
+ *
+ * The store layout is flat, so the rule is simply: no separators, no dot-
+ * leading names, nothing that could be a traversal component. All 196 entries
+ * across the currently published manifests are plain filenames, so this
+ * rejects nothing legitimate.
+ */
+int kycg_store_safe_name(const char *s);
+
 /** Nonzero if `path` is an existing regular file. */
 int kycg_store_is_file(const char *path);
 

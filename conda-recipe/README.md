@@ -75,12 +75,16 @@ git tag -a v0.1.0 -m "kycg 0.1.0" && git push origin v0.1.0
   package would fail at load time rather than at build time.
 - **Flag handling.** The vendored Makefiles have rigid `CFLAGS` and ignore
   `CPPFLAGS`, so `build.sh` bakes conda's compile flags into `CC` (which every
-  sub-make uses verbatim). `LDFLAGS` reaches the final link via the environment.
+  sub-make uses verbatim). `LDFLAGS` is expanded explicitly by the link rule —
+  make imports the environment into a variable, but an explicit recipe never
+  expands it on its own, and conda-forge puts `-L$PREFIX/lib` only there.
 - **libcurl is optional to kycg but required here.** kycg's Makefile probes
   `curl-config` and silently builds without network support if it is missing —
   which for a *packaged* build would mean a `kycg fetch` that cannot fetch, and
-  it would pass a naive smoke test. `meta.yaml`'s test greps `fetch -h` for the
-  "no network support" banner so that failure cannot ship.
+  it would pass a naive smoke test. `meta.yaml`'s test greps `kycg --version`
+  for `fetch available` so that failure cannot ship — asserting the working
+  state positively, since the failure banner itself contains the word
+  "libcurl" and a negative grep would match both.
 - **Dependencies.** Only zlib and libcurl (both from conda-forge, with
   `run_exports` that pin the runtime automatically). Make sure conda-forge is on
   your channel list when building.

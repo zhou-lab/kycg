@@ -35,6 +35,20 @@
 # files and two JSON listings.
 set -eu
 
+# sha256 of stdin. shasum (perl Digest::SHA) is absent on Alpine and minimal
+# RHEL images, where sha256sum is what exists; tools/make_kycgkb_sums.sh
+# already probes for both and this script must not assume differently.
+sha256_of() {
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 | cut -d' ' -f1
+    elif command -v sha256sum >/dev/null 2>&1; then
+        sha256sum | cut -d' ' -f1
+    else
+        echo "make_registry.sh: need shasum or sha256sum" >&2
+        exit 1
+    fi
+}
+
 tag=${1:-v8}
 base=${KYCG_IA_BASE_URL:-https://github.com/zhou-lab/InfiniumAnnotation/raw}
 
@@ -110,12 +124,19 @@ for entry in $platforms; do
     url="$base/$tag/$plat/KYCG/SHA256SUMS"
     # Fetch once: the manifest yields both the anchor and the set count.
     body=$(curl -sfL "$url" 2>/dev/null || true)
-    psha=$(curl -sfL "$base/$tag/$plat/SHA256SUMS" 2>/dev/null \
-           | shasum -a 256 | cut -d' ' -f1 || true)
+    # Fetch the platform manifest ONCE and hash what we actually got. Fetching
+    # twice and hashing the first result while validating the second meant a
+    # transient failure on the first request pinned sha256("") --
+    # e3b0c442...b855 -- against a non-empty second body, which compiles fine
+    # and permanently breaks verification for that platform.
     pbody=$(curl -sfL "$base/$tag/$plat/SHA256SUMS" 2>/dev/null || true)
-    [ -n "$pbody" ] || psha=""
+    if [ -n "$pbody" ]; then
+        psha=$(printf '%s\n' "$pbody" | sha256_of)
+    else
+        psha=""
+    fi
     if [ -n "$body" ]; then
-        sha=$(printf '%s\n' "$body" | shasum -a 256 | cut -d' ' -f1)
+        sha=$(printf '%s\n' "$body" | sha256_of)
         nset=$(printf '%s\n' "$body" | grep -c '\.cm$' || true)
         if [ -n "$psha" ]; then
             printf '    { "%s", %s, %s, "%s", "%s" },\n' \
@@ -198,7 +219,7 @@ for g in $genomes; do
     url="https://github.com/zhou-lab/$repo/raw/$gtag/SHA256SUMS"
     body=$(curl -sfL "$url" 2>/dev/null || true)
     if [ -n "$body" ]; then
-        sha=$(printf '%s\n' "$body" | shasum -a 256 | cut -d' ' -f1)
+        sha=$(printf '%s\n' "$body" | sha256_of)
         nset=$(printf '%s\n' "$body" | grep -c '\.cm$' || true)
         printf '    { "%s", %s, %s, "%s", "%s", "%s", "%s", "%s", KYCG_SIZES_%s },\n' \
             "$genome" "$nrow" "$nset" "$repo" "$gtag" "$sha" "$record" "$doi" "$genome"

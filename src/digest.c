@@ -27,15 +27,17 @@
  * The SHA-256 core follows the same structure as sesame-cli's src/sha256.c,
  * which solves this identical problem for the same annotation repository.
  *
- * WHY TWO HASHES
- *   The two resource channels publish different digests, and kycg verifies
- *   against whatever the publisher actually signs rather than inventing its
- *   own. InfiniumAnnotation ships a SHA256SUMS file per directory, so that
- *   channel is a sha256 chain. Zenodo publishes an md5 per file through its
- *   record API and nothing stronger, so that channel is md5. Both digests are
- *   compiled into the binary by tools/make_registry.sh, so in neither case is
- *   kycg trusting a digest it fetched at run time — md5's collision weakness
- *   would matter if the digest travelled with the file, and it does not.
+ * WHY ONLY SHA-256
+ *   Both resource channels publish a SHA256SUMS per directory, so both are
+ *   sha256 chains anchored on a digest compiled into the binary by
+ *   tools/make_registry.sh. kycg therefore never trusts a digest it fetched at
+ *   run time.
+ *
+ *   This was not always true. The whole-genome sets came from Zenodo, whose
+ *   record API publishes an md5 per file and nothing stronger, so that channel
+ *   was md5 and this file carried both algorithms. Once KYCGKB_<genome> began
+ *   publishing its own SHA256SUMS the md5 half became dead weight and was
+ *   removed; Zenodo remains the citable archive but is no longer fetched from.
  */
 
 #include "digest.h"

@@ -31,7 +31,7 @@
  *   kycg fetch                      browse, check what you want, fetch it
  *
  *   The colon form exists so a pipeline can name exactly what it wants on one
- *   line. The browser exists because nobody memorizes 33 set names -- and
+ *   line. The browser exists because nobody memorizes 32 set names -- and
  *   since browsing the catalogue and choosing from it are the same activity,
  *   one command does both. There was a separate `kycg list` for the browsing
  *   half; it was removed once that stopped being a separate act, so there is
@@ -44,9 +44,8 @@
  *   the hg38 collection is 363 MB and the difference between wanting all of it
  *   and wanting two sets is easy to express and easy to get wrong.
  *
- *   Building the plan for the Zenodo channel is free -- the file list is
- *   compiled in. Building it for the array channel costs one small request for
- *   SHA256SUMS, since the whole point of anchoring on that manifest is that
+ *   Building a plan costs one small request for that collection's SHA256SUMS,
+ *   since the whole point of anchoring on that manifest is that
  *   kycg does not carry the file list and upstream can add a set without a
  *   rebuild. So the array path reaches the network before the confirmation, by
  *   a few kilobytes, and says so while it does.
@@ -63,9 +62,9 @@
  *   else. No other subcommand touches the network.
  *
  * TRUST
- *   Both channels verify against a digest compiled into this binary by
- *   tools/make_registry.sh; see src/registry.h and src/digest.c for why the two
- *   channels use different hashes. Downloads land on a ".part" sibling and are
+ *   Both channels verify against a sha256 compiled into this binary by
+ *   tools/make_registry.sh; see src/registry.h. Downloads land on a ".part"
+ *   sibling and are
  *   renamed only after their digest matches, so an interrupted or corrupted
  *   fetch can never leave a file in the store that later reads as valid.
  */
@@ -349,10 +348,17 @@ size_t kycg_resolve_spec(const char *spec, const char *store, char ***out) {
 
     if (n == m) {
       size_t want = m ? m * 2 : 16;
+      /* Adopt each block as it succeeds. Freeing them on partial failure
+       * released the block realloc had just returned while v/how still held
+       * the invalidated originals -- the caller then got a freed pointer to
+       * walk and free again. */
       char **nv = realloc(v, want * sizeof(char *));
+      if (!nv) break;
+      v = nv;
       unsigned char *nh = realloc(how, want);
-      if (!nv || !nh) { free(nv); free(nh); break; }
-      v = nv; how = nh; m = want;
+      if (!nh) break;
+      how = nh;
+      m = want;
     }
     char path[4600];
     snprintf(path, sizeof(path), "%s/%s", c.dir, e->d_name);
@@ -412,8 +418,7 @@ size_t kycg_resolve_spec(const char *spec, const char *store, char ***out) {
 typedef struct {
   char     name[512];
   char     url[4096];
-  char     sha[65];       /* "" when this channel does not use sha256 */
-  char     md5[33];       /* "" when this channel does not use md5    */
+  char     sha[65];       /* always set: both channels publish sha256 */
   uint64_t size;          /* 0 = not published by this channel        */
   int      have;          /* already present and digest-verified      */
 } plan_item_t;
@@ -421,6 +426,7 @@ typedef struct {
 typedef struct {
   plan_item_t *a;
   size_t       n, m;
+  size_t       n_sets;     /* items that are knowledgebases, not the companion */
   char         dir[4096];
   char         target[128];
   char         source[256];
@@ -467,10 +473,6 @@ static void plan_check_present(plan_t *p, int force) {
     char got[65];
     if (it->sha[0]) {
       if (kycg_sha256_file(path, got) == 0 && kycg_digest_equal(got, it->sha))
-        it->have = 1;
-    } else if (it->md5[0]) {
-      char m[33];
-      if (kycg_md5_file(path, m) == 0 && kycg_digest_equal(m, it->md5))
         it->have = 1;
     }
   }
@@ -639,7 +641,7 @@ static sums_ent_t *parse_sums(const char *text, size_t *n) {
       if (nlen >= sizeof(v[cnt].name)) nlen = sizeof(v[cnt].name) - 1;
       memcpy(v[cnt].name, q, nlen);
       v[cnt].name[nlen] = '\0';
-      if (v[cnt].name[0]) ++cnt;
+      if (v[cnt].name[0] && kycg_store_safe_name(v[cnt].name)) ++cnt;
     }
 
     if (!eol) break;
@@ -717,6 +719,7 @@ static int build_plan(const coll_t *c, const fetch_conf_t *conf, plan_t *plan) {
      * asking for the thing that makes that set interpretable. */
     int is_comp = (c->comp_name[0] && strcmp(ent[i].name, c->comp_name) == 0);
     if (!is_comp && !passes_filter(ent[i].name, conf->only)) continue;
+    if (!is_comp) ++plan->n_sets;
     plan_item_t *it = plan_add(plan);
     if (!it) break;
     snprintf(it->name, sizeof(it->name), "%s", ent[i].name);
@@ -778,13 +781,12 @@ static int execute_plan(const plan_t *plan, tally_t *t) {
       continue;
     }
 
+    /* No digest, no rename. Both channels always publish one, so an item
+     * without a sha is a bug rather than a permissive case. */
     int ok = 0;
     char got[65];
     if (it->sha[0]) {
       if (kycg_sha256_file(part, got) == 0) ok = kycg_digest_equal(got, it->sha);
-    } else if (it->md5[0]) {
-      char m[33];
-      if (kycg_md5_file(part, m) == 0) ok = kycg_digest_equal(m, it->md5);
     }
 
     if (!ok) {
@@ -818,7 +820,9 @@ static int execute_plan(const plan_t *plan, tally_t *t) {
     FILE *fp = fopen(sp, "wb");
     if (fp) { fwrite(plan->sums_text, 1, plan->sums_len, fp); fclose(fp); }
   } else {
-    /* Zenodo publishes md5 only, so we compute the sha256 side ourselves. */
+    /* build_plan always sets sums_text, so this is belt and braces: rebuild a
+     * manifest from what actually landed rather than leave the store without
+     * one. */
     FILE *fp = fopen(sp, "wb");
     if (fp) {
       for (size_t i = 0; i < plan->n; ++i) {
@@ -1042,6 +1046,20 @@ int main_fetch(int argc, char *argv[]) {
       continue;
     }
 
+    /* A named subset that matched no set is a failed request. The plan is not
+     * empty in that case -- the companion reference is always in it -- so
+     * without this a typo like "mm10:CGl" fetched only the .cr and reported
+     * "1 fetched", leaving the user believing CGI was downloaded. */
+    if (only && *only && !plan.n_sets) {
+      fprintf(stderr,
+              "kycg fetch: no set in '%s' matches '%s'.\n"
+              "Run `kycg fetch %s` to see what it publishes.\n",
+              target, only, target);
+      plan_free(&plan);
+      rc = 1;
+      continue;
+    }
+
     plan_check_present(&plan, tc.redownload);
     plan_show(&plan);
 
@@ -1166,12 +1184,18 @@ static void picks_add(picks_t *p, const char *target, const char *file) {
   if (p->n == p->m) {
     size_t want = p->m ? p->m * 2 : 32;
     char **t = realloc(p->target, want * sizeof(char *));
+    if (!t) return;
+    p->target = t;
     char **f = realloc(p->file, want * sizeof(char *));
-    if (!t || !f) { free(t); free(f); return; }
-    p->target = t; p->file = f; p->m = want;
+    if (!f) return;
+    p->file = f;
+    p->m = want;
   }
-  p->target[p->n] = strdup(target);
-  p->file[p->n] = strdup(file);
+  /* Both strdups must land before n advances, or picks_free walks a NULL. */
+  char *t = strdup(target), *f = strdup(file);
+  if (!t || !f) { free(t); free(f); return; }
+  p->target[p->n] = t;
+  p->file[p->n] = f;
   ++p->n;
 }
 

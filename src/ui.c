@@ -157,8 +157,18 @@ static double now_sec(void) {
 
 /* Terminal width, clamped to something sane. */
 static int term_cols(void) {
-  const char *c = getenv("COLUMNS");
-  int w = c ? atoi(c) : 0;
+  /* Ask the terminal first, exactly as term_rows does. $COLUMNS is a shell
+   * convenience that bash does not export to children, so consulting it alone
+   * meant every widget rendered at the 80-column fallback no matter how wide
+   * the window actually was. */
+  struct winsize ws;
+  int w = 0;
+  if (ioctl(STDERR_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
+    w = ws.ws_col;
+  if (w <= 0) {
+    const char *c = getenv("COLUMNS");
+    w = c ? atoi(c) : 0;
+  }
   if (w <= 0) w = 80;
   if (w < 40) w = 40;
   if (w > 200) w = 200;
@@ -384,6 +394,17 @@ void kycg_ui_panel_open(int height) {
   fflush(stderr);
 }
 
+/* Where a panel line actually lands. panel_open clamps the panel to the
+ * terminal, so a caller's fixed line index can fall outside it on a short
+ * window; for an *interactive* line, dropping the write leaves the user
+ * staring at nothing while read_key() blocks, which reads as a hang. Prompts
+ * therefore clamp to the last row rather than disappear. */
+static int panel_clamp(int i) {
+  if (i < 0) return 0;
+  if (i >= panel_h) return panel_h - 1;
+  return i;
+}
+
 void kycg_ui_panel_line(int i, const char *fmt, ...) {
   if (panel_h <= 0 || i < 0 || i >= panel_h) return;
   fprintf(stderr, "\033[%d;1H\033[2K", panel_top + i);
@@ -397,6 +418,7 @@ void kycg_ui_panel_line(int i, const char *fmt, ...) {
 void kycg_ui_panel_close(void) { panel_h = 0; panel_top = 0; }
 
 int kycg_ui_panel_confirm(int line, const char *question, int default_yes) {
+  line = panel_clamp(line);
   for (;;) {
     kycg_ui_panel_line(line, "  %s%s%s %s[%s]%s ",
                        kycg_ui_bold(), question, kycg_ui_reset(),
@@ -414,6 +436,7 @@ int kycg_ui_panel_confirm(int line, const char *question, int default_yes) {
 }
 
 void kycg_ui_panel_pause(int line, const char *msg) {
+  line = panel_clamp(line);
   if (panel_h <= 0) return;
   kycg_ui_panel_line(line, "  %s%s%s", kycg_ui_dim(), msg, kycg_ui_reset());
   char ch = 0;
