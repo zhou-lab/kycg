@@ -156,6 +156,71 @@ static const kycg_seq_reg_t *find_seq(const char *name) {
   return NULL;
 }
 
+
+/* ------------------------------------------------------- one collection */
+
+/**
+ * A fetchable collection, whichever channel it comes from.
+ *
+ * The two channels differ only in where their files sit and what they are
+ * called. Both publish a SHA256SUMS at a pinned tag, both verify against an
+ * anchor compiled in here, and both name their sets the same way -- so past
+ * this struct there is one code path. That was not true while the whole-genome
+ * sets came from Zenodo, which had no manifest and forced a parallel
+ * implementation pinned file-by-file against md5.
+ */
+typedef struct coll_s {
+  const char         *target;      /* "hg38" or "MSA", as the user types it */
+  char                base[1024];  /* URL prefix, no trailing slash         */
+  char                dir[4096];   /* where it lands in the store           */
+  char                source[256]; /* provenance, for display               */
+  const char         *anchor;      /* sha256 of SHA256SUMS; NULL = unpinned */
+  const kycg_fsize_t *sizes;       /* display only, may be NULL/incomplete  */
+} coll_t;
+
+struct coll_s;
+static char *coll_manifest(const struct coll_s *c, size_t *len_out,
+                           int allow_fetch);
+
+/** Resolve a target name to a collection. Returns 0 on success. */
+static int coll_for(const char *target, const char *store, coll_t *c) {
+  memset(c, 0, sizeof(*c));
+
+  const kycg_seq_reg_t *sr = find_seq(target);
+  if (sr) {
+    c->target = sr->genome;
+    snprintf(c->base, sizeof(c->base), "%s/%s/raw/%s",
+             KYCG_KB_BASE_URL, sr->repo, sr->tag);
+    snprintf(c->dir, sizeof(c->dir), "%s/%s", store, sr->genome);
+    snprintf(c->source, sizeof(c->source), "%s %s", sr->repo, sr->tag);
+    c->anchor = sr->sums_sha256;
+    c->sizes = sr->sizes;
+    return 0;
+  }
+
+  const kycg_array_reg_t *ar = find_array(target);
+  if (ar) {
+    c->target = ar->platform;
+    snprintf(c->base, sizeof(c->base), "%s/%s/%s/KYCG",
+             KYCG_IA_BASE_URL, KYCG_IA_TAG, ar->platform);
+    snprintf(c->dir, sizeof(c->dir), "%s/%s/KYCG", store, ar->platform);
+    snprintf(c->source, sizeof(c->source), "InfiniumAnnotation %s", KYCG_IA_TAG);
+    c->anchor = ar->sums_sha256;
+    c->sizes = NULL;      /* this channel publishes no sizes */
+    return 0;
+  }
+
+  return -1;
+}
+
+/** Published size of a file, or 0 when unknown. Display only. */
+static uint64_t coll_size_of(const coll_t *c, const char *name) {
+  if (!c->sizes) return 0;
+  for (const kycg_fsize_t *f = c->sizes; f->name; ++f)
+    if (strcmp(f->name, name) == 0) return f->size;
+  return 0;
+}
+
 /* --------------------------------------------------------------- the plan */
 
 typedef struct {
@@ -409,48 +474,37 @@ typedef struct {
   int assume_yes;
 } fetch_conf_t;
 
-#ifdef KYCG_HAVE_CURL
-
-/** Build the plan for an array platform. Costs one small manifest request. */
-static int build_plan_array(const kycg_array_reg_t *reg,
-                            const fetch_conf_t *conf, plan_t *plan) {
-  if (!reg->sums_sha256) {
-    fprintf(stderr, "kycg fetch: platform '%s' is not published at tag %s.\n",
-            reg->platform, conf->tag);
+/**
+ * Build the plan for a collection: one manifest request, then one item per
+ * file that survives the subset filter.
+ *
+ * This is the whole of what used to be two functions. Both channels publish a
+ * manifest of sha256 digests at a pinned tag, so "which files, and what should
+ * each one hash to" has one answer and one implementation.
+ */
+static int build_plan(const coll_t *c, const fetch_conf_t *conf, plan_t *plan) {
+  if (!c->anchor) {
+    fprintf(stderr, "kycg fetch: '%s' has no published manifest in this build.\n",
+            c->target);
     return -1;
   }
 
-  char url[4096];
-  snprintf(url, sizeof(url), "%s/%s/%s/KYCG/%s",
-           KYCG_IA_BASE_URL, conf->tag, reg->platform, KYCG_IA_SUMS_FILE);
-
-  if (kycg_ui_fancy())
+  if (kycg_ui_fancy() && !kycg_ui_panel_active())
     fprintf(stderr, "%s  reading %s manifest...%s\r",
-            kycg_ui_dim(), reg->platform, kycg_ui_reset());
+            kycg_ui_dim(), c->target, kycg_ui_reset());
 
   size_t len = 0;
-  char *sums = http_get_mem(url, &len);
+  char *sums = coll_manifest(c, &len, 1);
 
-  if (kycg_ui_fancy()) fputs("\r\033[2K", stderr);
+  if (kycg_ui_fancy() && !kycg_ui_panel_active()) fputs("\r\033[2K", stderr);
 
   if (!sums) {
-    fprintf(stderr, "kycg fetch: cannot reach %s\n", url);
-    return -1;
-  }
-
-  /* The anchor. Everything below is trusted only because this held. */
-  char got[65];
-  kycg_sha256_buf(sums, len, got);
-  if (!kycg_digest_equal(got, reg->sums_sha256)) {
     fprintf(stderr,
-            "%s%s%s SHA256SUMS for %s does not match the digest pinned in this "
-            "build (tag %s).\n"
-            "  expected %s\n  got      %s\n"
-            "Refusing to fetch. If upstream has moved, regenerate\n"
-            "src/registry.h with tools/make_registry.sh and rebuild.\n",
-            kycg_ui_red(), kycg_ui_cross(), kycg_ui_reset(),
-            reg->platform, conf->tag, reg->sums_sha256, got);
-    free(sums);
+            "%s%s%s cannot read the manifest for '%s'.\n"
+            "Either the network is unavailable, or its SHA256SUMS does not match\n"
+            "the digest pinned in this build. Refusing to fetch. If upstream has\n"
+            "moved, regenerate src/registry.h with tools/make_registry.sh.\n",
+            kycg_ui_red(), kycg_ui_cross(), kycg_ui_reset(), c->target);
     return -1;
   }
 
@@ -458,50 +512,24 @@ static int build_plan_array(const kycg_array_reg_t *reg,
   sums_ent_t *ent = parse_sums(sums, &n_ent);
   if (!ent) { free(sums); return -1; }
 
-  snprintf(plan->dir, sizeof(plan->dir), "%s/%s/KYCG",
-           kycg_store_root(conf->store), reg->platform);
-  snprintf(plan->target, sizeof(plan->target), "%s", reg->platform);
-  snprintf(plan->source, sizeof(plan->source), "InfiniumAnnotation %s",
-           conf->tag);
-  plan->sizes_known = 0;      /* this channel publishes no sizes */
+  snprintf(plan->dir, sizeof(plan->dir), "%s", c->dir);
+  snprintf(plan->target, sizeof(plan->target), "%s", c->target);
+  snprintf(plan->source, sizeof(plan->source), "%s", c->source);
   plan->sums_text = sums;
   plan->sums_len = len;
+  plan->sizes_known = (c->sizes != NULL);
 
   for (size_t i = 0; i < n_ent; ++i) {
     if (!passes_filter(ent[i].name, conf->only)) continue;
     plan_item_t *it = plan_add(plan);
     if (!it) break;
     snprintf(it->name, sizeof(it->name), "%s", ent[i].name);
-    snprintf(it->url, sizeof(it->url), "%s/%s/%s/KYCG/%s",
-             KYCG_IA_BASE_URL, conf->tag, reg->platform, ent[i].name);
+    snprintf(it->url, sizeof(it->url), "%s/%s", c->base, ent[i].name);
     snprintf(it->sha, sizeof(it->sha), "%s", ent[i].sha);
+    it->size = coll_size_of(c, ent[i].name);
   }
 
   free(ent);
-  return 0;
-}
-
-#endif /* KYCG_HAVE_CURL */
-
-/** Build the plan for a genome. Entirely offline: the list is compiled in. */
-static int build_plan_seq(const kycg_seq_reg_t *reg, const fetch_conf_t *conf,
-                          plan_t *plan) {
-  snprintf(plan->dir, sizeof(plan->dir), "%s/%s",
-           kycg_store_root(conf->store), reg->genome);
-  snprintf(plan->target, sizeof(plan->target), "%s", reg->genome);
-  snprintf(plan->source, sizeof(plan->source), "Zenodo %s", reg->record);
-  plan->sizes_known = 1;
-
-  for (const kycg_zfile_t *f = reg->files; f->name; ++f) {
-    if (!passes_filter(f->name, conf->only)) continue;
-    plan_item_t *it = plan_add(plan);
-    if (!it) break;
-    snprintf(it->name, sizeof(it->name), "%s", f->name);
-    snprintf(it->url, sizeof(it->url), "%s/%s/files/%s",
-             KYCG_ZENODO_BASE, reg->record, f->name);
-    snprintf(it->md5, sizeof(it->md5), "%s", f->md5);
-    it->size = f->size;
-  }
   return 0;
 }
 
@@ -725,10 +753,8 @@ int main_fetch(int argc, char *argv[]) {
     fetch_conf_t tc = conf;
     tc.only = only;
 
-    const kycg_array_reg_t *ar = find_array(target);
-    const kycg_seq_reg_t   *sr = find_seq(target);
-
-    if (!ar && !sr) {
+    coll_t coll;
+    if (coll_for(target, kycg_store_root(tc.store), &coll) != 0) {
       fprintf(stderr,
               "kycg fetch: '%s' is not a known platform or genome.\n"
               "Run `kycg list` to see what is available.\n", target);
@@ -737,8 +763,7 @@ int main_fetch(int argc, char *argv[]) {
     }
 
     plan_t plan = {0};
-    int prc = sr ? build_plan_seq(sr, &tc, &plan)
-                 : build_plan_array(ar, &tc, &plan);
+    int prc = build_plan(&coll, &tc, &plan);
     if (prc != 0) { plan_free(&plan); rc = 1; continue; }
 
     if (!plan.n) {
@@ -931,15 +956,14 @@ static void array_manifest_forget(void) {
   g_manifest_n = 0;
 }
 
-static char *array_manifest(const kycg_array_reg_t *ar, const char *store,
-                            size_t *len_out, int allow_fetch) {
+static char *coll_manifest(const struct coll_s *c, size_t *len_out,
+                           int allow_fetch) {
   if (len_out) *len_out = 0;
 
-  /* 1. The store's own copy, written when the platform was fetched. It is
+  /* 1. The store's own copy, written when the collection was fetched. It is
    *    authoritative and always current, so it is never memoized. */
   char sums[4400];
-  snprintf(sums, sizeof(sums), "%s/%s/KYCG/%s",
-           store, ar->platform, KYCG_IA_SUMS_FILE);
+  snprintf(sums, sizeof(sums), "%s/%s", c->dir, KYCG_IA_SUMS_FILE);
   FILE *fp = fopen(sums, "rb");
   if (fp) {
     fseek(fp, 0, SEEK_END);
@@ -957,7 +981,7 @@ static char *array_manifest(const kycg_array_reg_t *ar, const char *store,
 
   /* 2. Something this run already pulled. */
   for (size_t i = 0; i < g_manifest_n; ++i) {
-    if (g_manifest[i].plat != ar->platform) continue;
+    if (g_manifest[i].plat != c->target) continue;
     if (!g_manifest[i].text) return NULL;
     char *dup = malloc(g_manifest[i].len + 1);
     if (!dup) return NULL;
@@ -974,22 +998,21 @@ static char *array_manifest(const kycg_array_reg_t *ar, const char *store,
   char *text = NULL;
   size_t len = 0;
 
-  if (ar->sums_sha256) {
-    char url[4096];
-    snprintf(url, sizeof(url), "%s/%s/%s/KYCG/%s",
-             KYCG_IA_BASE_URL, KYCG_IA_TAG, ar->platform, KYCG_IA_SUMS_FILE);
+  if (c->anchor) {
+    char url[5200];
+    snprintf(url, sizeof(url), "%s/%s", c->base, KYCG_IA_SUMS_FILE);
     text = http_get_mem(url, &len);
     if (text) {
       char got[65];
       kycg_sha256_buf(text, len, got);
-      if (!kycg_digest_equal(got, ar->sums_sha256)) { free(text); text = NULL; }
+      if (!kycg_digest_equal(got, c->anchor)) { free(text); text = NULL; }
     }
   }
 
   /* Remember the outcome either way: a failed lookup memoized as NULL stops
    * a dead platform being retried on every redraw. */
   if (g_manifest_n < 16) {
-    g_manifest[g_manifest_n].plat = ar->platform;
+    g_manifest[g_manifest_n].plat = c->target;
     g_manifest[g_manifest_n].len = len;
     g_manifest[g_manifest_n].text = NULL;
     if (text) {
@@ -1005,10 +1028,10 @@ static char *array_manifest(const kycg_array_reg_t *ar, const char *store,
 #endif
 }
 
-/** How many sets a platform publishes, or 0 if the catalogue is not to hand. */
-static uint64_t array_set_total(const kycg_array_reg_t *ar, const char *store) {
+/** How many sets a collection publishes, or 0 if the catalogue is not to hand. */
+static uint64_t coll_set_total(const coll_t *c) {
   size_t len = 0;
-  char *text = array_manifest(ar, store, &len, 0);
+  char *text = coll_manifest(c, &len, 0);
   if (!text) return 0;
 
   size_t n_ent = 0;
@@ -1063,7 +1086,6 @@ static void refresh_overview(listctx_t *lc);
 
 static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
   listctx_t *lc = ctx;
-  const char *root = lc->root;
 
   char target[128];
   const char *tab = strchr(row, '\t');
@@ -1072,95 +1094,130 @@ static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
   memcpy(target, row, len);
   target[len] = '\0';
 
-  const kycg_seq_reg_t *sr = find_seq(target);
-  const kycg_array_reg_t *ar = find_array(target);
+  coll_t c;
+  if (coll_for(target, lc->root, &c) != 0) return;
 
-  if (sr) {
-    char dir[4096];
-    snprintf(dir, sizeof(dir), "%s/%s", root, sr->genome);
-    for (const kycg_zfile_t *fl = sr->files; fl->name; ++fl) {
-      size_t l = strlen(fl->name);
-      if (l <= 3 || strcmp(fl->name + l - 3, ".cm") != 0) continue;
-      char setn[256], path[4400], hb[24];
-      set_name_of(fl->name, setn, sizeof(setn));
-      snprintf(path, sizeof(path), "%s/%s", dir, fl->name);
-      int have = kycg_store_is_file(path);
-      kid_push(out, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING, fl->name,
-               "%-22.22s %-32.32s %9s  %s", setn, fl->name,
-               kycg_ui_human(fl->size, hb, sizeof(hb)),
-               have ? "cached" : "-");
-    }
+  /* The catalogue lives in the manifest. A collection with nothing fetched has
+   * no local copy, which used to make it look as though it published nothing
+   * at all -- so pull it (a couple of kilobytes, verified against the compiled
+   * anchor) to list what exists. Memoized for the run, never written to the
+   * store: writing it would claim files are present that are not. */
+  int had = (coll_set_total(&c) != 0);
+  size_t mlen = 0;
+  char *text = coll_manifest(&c, &mlen, 1);
+
+  /* The catalogue is what the overview needs to show a denominator, so the
+   * row above updates the moment it becomes knowable. */
+  if (text && !had) refresh_overview(lc);
+
+  if (!text) {
+    kid_push(out, KYCG_ROW_MISSING, NULL,
+             "catalogue unavailable - run: kycg fetch %s", c.target);
     return;
   }
 
-  if (ar) {
-    char dir[4096], sums[4400];
-    snprintf(dir, sizeof(dir), "%s/%s/KYCG", root, ar->platform);
-    snprintf(sums, sizeof(sums), "%s/%s", dir, KYCG_IA_SUMS_FILE);
+  size_t n_ent = 0;
+  sums_ent_t *ent = parse_sums(text, &n_ent);
+  for (size_t i = 0; ent && i < n_ent; ++i) {
+    const char *nm = ent[i].name;
+    size_t l = strlen(nm);
+    if (l < 4 || strcmp(nm + l - 3, ".cm") != 0) continue;
 
-    /* The catalogue lives in the manifest, and an unfetched platform has no
-     * local copy of it -- which made every array look as though it had no
-     * knowledgebases at all, when it simply had none *here*. So pull the
-     * manifest (a couple of kilobytes, verified against the compiled anchor)
-     * to list what exists. It is cached in memory for the session and never
-     * written to the store, because writing it would claim files are present
-     * that are not. */
-    size_t len = 0;
-    int had = (array_set_total(ar, root) != 0);
-    char *text = array_manifest(ar, root, &len, 1);
+    char setn[256], path[4400], hb[24];
+    set_name_of(nm, setn, sizeof(setn));
+    snprintf(path, sizeof(path), "%s/%s", c.dir, nm);
+    int have = kycg_store_is_file(path);
 
-    /* The catalogue we just pulled is what the overview needs to show a
-     * denominator, so the row above updates the moment it becomes knowable. */
-    if (text && !had) refresh_overview(lc);
-
-    if (!text) {
-      kid_push(out, KYCG_ROW_MISSING, NULL,
-               "catalogue unavailable - run: kycg fetch %s", ar->platform);
-      return;
-    }
-
-    size_t n_ent = 0;
-    sums_ent_t *ent = parse_sums(text, &n_ent);
-    for (size_t i = 0; ent && i < n_ent; ++i) {
-      const char *nm = ent[i].name;
-      size_t l = strlen(nm);
-      if (l < 4 || strcmp(nm + l - 3, ".cm") != 0) continue;
-      char setn[256], path[4400];
-      set_name_of(nm, setn, sizeof(setn));
-      snprintf(path, sizeof(path), "%s/%s", dir, nm);
-      int have = kycg_store_is_file(path);
-      kid_push(out, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING, nm,
-               "%-22.22s %-32.32s %9s  %s", setn, nm, "",
-               have ? "cached" : "-");
-    }
-    free(ent);
-    free(text);
+    uint64_t sz = coll_size_of(&c, nm);
+    kid_push(out, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING, nm,
+             "%-22.22s %-32.32s %9s  %s", setn, nm,
+             sz ? kycg_ui_human(sz, hb, sizeof(hb)) : "",
+             have ? "cached" : "-");
   }
+  free(ent);
+  free(text);
+}
+
+static uint64_t count_cached(const char *dir);
+
+/**
+ * Fill `rows` with one line per target, counting what the store holds.
+ *
+ * Called for the initial view and again after anything changes it -- a fetch,
+ * or a different store directory. Rebuilding is cheap: it stats files, and
+ * the target list is fixed and short.
+ */
+static void build_overview(const char *root, rows_t *rows) {
+  for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome; ++r) {
+    coll_t c;
+    if (coll_for(r->genome, root, &c) != 0) continue;
+
+    uint64_t have = count_cached(c.dir);
+    uint64_t nt = coll_set_total(&c);
+
+    char rb[32], cnt[64];
+    if (nt) snprintf(cnt, sizeof(cnt), "%" PRIu64 "/%" PRIu64, have, nt);
+    else    snprintf(cnt, sizeof(cnt), "%" PRIu64, have);
+
+    /* Green means "something here is usable", dim means "nothing yet". How
+     * much is in the count. */
+    rows_push(rows, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
+              "%s\twhole genome\t%s\t%s\t%s",
+              r->genome, commify(r->rows, rb, sizeof(rb)), c.source, cnt);
+  }
+
+  for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform; ++r) {
+    coll_t c;
+    if (coll_for(r->platform, root, &c) != 0) continue;
+
+    uint64_t nc = count_cached(c.dir);
+    /* The total comes from the manifest, which is the catalogue. Only counted
+     * when that is already to hand -- locally, or pulled earlier this run --
+     * because this runs on every redraw and must not touch the network.
+     * Unfolding a target, or pressing r, warms it. */
+    uint64_t nt = coll_set_total(&c);
+
+    char rb[32], cnt[64];
+    if (nt) snprintf(cnt, sizeof(cnt), "%" PRIu64 "/%" PRIu64, nc, nt);
+    else    snprintf(cnt, sizeof(cnt), "%" PRIu64, nc);
+    rows_push(rows, nc ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
+              "%s\tarray\t%s\t%s\t%s",
+              r->platform, commify(r->rows, rb, sizeof(rb)), c.source, cnt);
+  }
+}
+
+/**
+ * Rewrite the overview in place.
+ *
+ * The tree holds the addresses of the row and style arrays, so this refills
+ * them rather than replacing them. The target list is fixed, so the counts
+ * change but the row count never does.
+ */
+static void refresh_overview(listctx_t *lc) {
+  for (size_t i = 0; i < lc->rows->n; ++i) free(lc->rows->a[i]);
+  lc->rows->n = 0;
+  build_overview(lc->root, lc->rows);
 }
 
 /**
  * Fetch what the picker checked: one plan per target, confirmed once.
  *
- * The selection arrives as (target, file name) pairs, which is turned back
- * into the same comma-separated subset string the -o flag takes, so this path
- * and `kycg fetch hg38:CGI` build their plans through identical code. Index
+ * The selection arrives as (target, file name) pairs and is turned back into
+ * the same comma-separated subset string the -o flag takes, so this path and
+ * `kycg fetch hg38:CGI` build their plans through identical code. Index
  * sidecars are added alongside their .cm, since a set's index is part of the
  * set and picking one row should not leave half of it behind.
+ *
+ * Renders into the browser's panel rather than the normal screen, so the
+ * catalogue stays visible above the download.
  */
 static int fetch_picked(const picks_t *picks, const char *store) {
 #ifndef KYCG_HAVE_CURL
   (void)picks; (void)store;
-  fprintf(stderr,
-          "kycg: this build has no network support (compiled without "
-          "libcurl), so the selection cannot be fetched.\n");
+  fprintf(stderr, "kycg: this build has no network support.\n");
   return 1;
 #else
   curl_global_init(CURL_GLOBAL_DEFAULT);
-
-  /* Four lines at the foot of the browser: what is happening, the last file
-   * finished, the one in flight, and the prompt or tally. The catalogue stays
-   * visible above, so fetching reads as part of browsing rather than an
-   * errand it sent you on. */
   kycg_ui_panel_open(4);
 
   tally_t t = {0};
@@ -1169,7 +1226,6 @@ static int fetch_picked(const picks_t *picks, const char *store) {
   size_t n_done = 0;
 
   for (size_t i = 0; i < picks->n; ++i) {
-    /* One plan per distinct target. */
     int seen = 0;
     for (size_t d = 0; d < n_done; ++d)
       if (strcmp(done[d], picks->target[i]) == 0) { seen = 1; break; }
@@ -1198,12 +1254,10 @@ static int fetch_picked(const picks_t *picks, const char *store) {
     conf.store = store;
     conf.only = only;
 
-    const kycg_seq_reg_t   *sr = find_seq(picks->target[i]);
-    const kycg_array_reg_t *ar = find_array(picks->target[i]);
-
+    coll_t coll;
     plan_t plan = {0};
-    int prc = sr ? build_plan_seq(sr, &conf, &plan)
-                 : (ar ? build_plan_array(ar, &conf, &plan) : -1);
+    int prc = (coll_for(picks->target[i], kycg_store_root(store), &coll) == 0)
+              ? build_plan(&coll, &conf, &plan) : -1;
     free(only);
     if (prc != 0 || !plan.n) { plan_free(&plan); rc = 1; continue; }
 
@@ -1216,12 +1270,12 @@ static int fetch_picked(const picks_t *picks, const char *store) {
     if (!n_todo) { t.n_skip += plan.n; plan_free(&plan); continue; }
 
     char hb[24];
-    kycg_ui_panel_line(0, "  %s%s%s  %s  %zu file(s)%s%s%s  %s  %s%s%s",
+    kycg_ui_panel_line(0, "  %s%s%s  %s  %zu file(s)%s%s  %s  %s%s%s",
                        kycg_ui_bold(), plan.target, kycg_ui_reset(),
                        kycg_ui_bullet(), n_todo,
-                       plan.sizes_known ? ", " : "",
-                       plan.sizes_known ? kycg_ui_human(bytes, hb, sizeof(hb)) : "",
-                       "", kycg_ui_bullet(),
+                       bytes ? ", " : "",
+                       bytes ? kycg_ui_human(bytes, hb, sizeof(hb)) : "",
+                       kycg_ui_bullet(),
                        kycg_ui_dim(), plan.dir, kycg_ui_reset());
 
     if (!kycg_ui_panel_confirm(3, "Proceed?", 1)) {
@@ -1247,7 +1301,6 @@ static int fetch_picked(const picks_t *picks, const char *store) {
     if (t.n_fail)
       snprintf(line + o, sizeof(line) - (size_t)o,
                ", %" PRIu64 " FAILED", t.n_fail);
-
     kycg_ui_panel_line(0, "  %s%s%s %s%s",
                        t.n_fail ? kycg_ui_red() : kycg_ui_green(),
                        t.n_fail ? kycg_ui_cross() : kycg_ui_check(),
@@ -1261,71 +1314,6 @@ static int fetch_picked(const picks_t *picks, const char *store) {
 #endif
 }
 
-static uint64_t count_cached(const char *dir);
-
-/**
- * Fill `rows` with one line per target, counting what the store holds.
- *
- * Called for the initial view and again after anything changes it -- a fetch,
- * or a different store directory. Rebuilding is cheap: it stats files, and
- * the target list is fixed and short.
- */
-static void build_overview(const char *root, rows_t *rows) {
-  for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome; ++r) {
-    char dir[4096];
-    snprintf(dir, sizeof(dir), "%s/%s", root, r->genome);
-
-    uint64_t avail = 0, have = 0;
-    for (const kycg_zfile_t *f = r->files; f->name; ++f) {
-      size_t len = strlen(f->name);
-      if (len <= 3 || strcmp(f->name + len - 3, ".cm") != 0) continue;
-      ++avail;
-      char path[4400];
-      snprintf(path, sizeof(path), "%s/%s", dir, f->name);
-      if (kycg_store_is_file(path)) ++have;
-    }
-    /* Green means "something here is usable", dim means "nothing yet". How
-     * much is in the count. Distinguishing complete from partial by colour
-     * would read as a different meaning on the array rows below, where the
-     * total is unknowable by design -- anchoring on SHA256SUMS is what keeps
-     * the file list out of the binary -- so the rule stays the same for both. */
-    char rb[32];
-    rows_push(rows, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
-              "%s\twhole genome\t%s\tzenodo:%s\t%" PRIu64 "/%" PRIu64,
-              r->genome, commify(r->rows, rb, sizeof(rb)),
-              r->record, have, avail);
-  }
-
-  for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform; ++r) {
-    char dir[4096];
-    snprintf(dir, sizeof(dir), "%s/%s/KYCG", root, r->platform);
-    uint64_t nc = count_cached(dir);
-    /* The total comes from the platform's manifest, which is the catalogue.
-     * Only counted when that is already to hand -- locally, or pulled earlier
-     * this run -- because this runs on every redraw and must not touch the
-     * network. Unfolding a platform, or pressing r, warms it. */
-    uint64_t nt = array_set_total(r, root);
-    char rb[32], cnt[64];
-    if (nt) snprintf(cnt, sizeof(cnt), "%" PRIu64 "/%" PRIu64, nc, nt);
-    else    snprintf(cnt, sizeof(cnt), "%" PRIu64, nc);
-    rows_push(rows, nc ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
-              "%s\tarray\t%s\tInfiniumAnnotation@%s\t%s",
-              r->platform, commify(r->rows, rb, sizeof(rb)), KYCG_IA_TAG, cnt);
-  }
-}
-
-/**
- * Rewrite the overview in place.
- *
- * The tree holds the addresses of the row and style arrays, so this refills
- * them rather than replacing them. The target list is fixed, so the counts
- * change but the row count never does.
- */
-static void refresh_overview(listctx_t *lc) {
-  for (size_t i = 0; i < lc->rows->n; ++i) free(lc->rows->a[i]);
-  lc->rows->n = 0;
-  build_overview(lc->root, lc->rows);
-}
 
 /**
  * `f` in the browser: fetch everything checked, drawing into the panel so the
@@ -1356,14 +1344,23 @@ static int on_list_key(void *ctx, char key) {
 
     kycg_ui_panel_open(2);
     size_t n = 0, tot = 0;
+    for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome; ++r) ++tot;
     for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform; ++r) ++tot;
 
-    for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform; ++r) {
-      kycg_ui_panel_line(0, "  %srefreshing catalogues%s  %s%zu/%zu  %s%s",
-                         kycg_ui_bold(), kycg_ui_reset(), kycg_ui_dim(),
-                         ++n, tot, r->platform, kycg_ui_reset());
-      size_t len = 0;
-      free(array_manifest(r, lc->root, &len, 1));
+    for (size_t pass = 0; pass < 2; ++pass) {
+      for (size_t i = 0;; ++i) {
+        const char *name = pass == 0
+          ? (KYCG_SEQ_REGISTRY[i].genome ? KYCG_SEQ_REGISTRY[i].genome : NULL)
+          : (KYCG_ARRAY_REGISTRY[i].platform ? KYCG_ARRAY_REGISTRY[i].platform : NULL);
+        if (!name) break;
+        kycg_ui_panel_line(0, "  %srefreshing catalogues%s  %s%zu/%zu  %s%s",
+                           kycg_ui_bold(), kycg_ui_reset(), kycg_ui_dim(),
+                           ++n, tot, name, kycg_ui_reset());
+        coll_t c;
+        if (coll_for(name, lc->root, &c) != 0) continue;
+        size_t len = 0;
+        free(coll_manifest(&c, &len, 1));
+      }
     }
     kycg_ui_panel_close();
 
@@ -1433,61 +1430,31 @@ int main_list(int argc, char *argv[]) {
   if (optind < argc) {
     for (int j = optind; j < argc; ++j) {
       const char *target = argv[j];
-      const kycg_seq_reg_t *sr = find_seq(target);
-      const kycg_array_reg_t *ar = find_array(target);
 
-      if (sr) {
-        char dir[4096], title[256];
-        snprintf(dir, sizeof(dir), "%s/%s", root, sr->genome);
-        char rb[32];
-        snprintf(title, sizeof(title), "%s -- %s rows -- Zenodo %s (doi %s)",
-                 sr->genome, commify(sr->rows, rb, sizeof(rb)),
-                 sr->record, sr->doi);
+      coll_t c;
+      if (coll_for(target, root, &c) == 0) {
+        const kycg_seq_reg_t *sr = find_seq(target);
+        const kycg_array_reg_t *ar = find_array(target);
+        char title[512], rb[32];
+        (void)ar;
 
-        rows_t rows = {0};
-        for (const kycg_zfile_t *f = sr->files; f->name; ++f) {
-          char setn[256], path[4400], hb[24];
-          set_name_of(f->name, setn, sizeof(setn));
-          snprintf(path, sizeof(path), "%s/%s", dir, f->name);
-          int have = kycg_store_is_file(path);
-          rows_push(&rows, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
-                    "%s\t%s\t%s\t%s", setn, f->name,
-                    kycg_ui_human(f->size, hb, sizeof(hb)),
-                    have ? "yes" : "no");
-        }
-        rows_emit(&rows, title, "set\tfile\tsize\tcached");
-      } else if (ar) {
-        char dir[4096], title[256];
-        snprintf(dir, sizeof(dir), "%s/%s/KYCG", root, ar->platform);
-        char sums[4400];
-        snprintf(sums, sizeof(sums), "%s/%s", dir, KYCG_IA_SUMS_FILE);
-        char rb[32];
-        snprintf(title, sizeof(title), "%s -- %s rows -- InfiniumAnnotation %s",
-                 ar->platform, commify(ar->rows, rb, sizeof(rb)), KYCG_IA_TAG);
+        if (sr)
+          snprintf(title, sizeof(title), "%s -- %s rows -- %s (archive doi %s)",
+                   sr->genome, commify(sr->rows, rb, sizeof(rb)),
+                   c.source, sr->doi);
+        else
+          snprintf(title, sizeof(title), "%s -- %s rows -- %s",
+                   ar->platform, commify(ar->rows, rb, sizeof(rb)), c.source);
 
-        /* Read the local manifest if the platform is fetched. If it is not,
-         * pull the catalogue only when someone is watching -- a redirected
-         * stdout means a script is reading, and a script must not trigger a
-         * download it did not ask for. */
-        char *text = NULL;
+        /* Read the local manifest if fetched. If not, pull the catalogue only
+         * when someone is watching -- a redirected stdout means a script is
+         * reading, and a script must not trigger a download it did not ask
+         * for. */
         size_t tlen = 0;
-        FILE *fp = fopen(sums, "rb");
-        if (fp) {
-          fseek(fp, 0, SEEK_END);
-          long sz = ftell(fp);
-          fseek(fp, 0, SEEK_SET);
-          if (sz > 0) {
-            text = malloc((size_t)sz + 1);
-            if (text) { tlen = fread(text, 1, (size_t)sz, fp); text[tlen] = '\0'; }
-          }
-          fclose(fp);
-        } else if (isatty(STDOUT_FILENO)) {
-          text = array_manifest(ar, root, &tlen, 1);
-        }
-
+        char *text = coll_manifest(&c, &tlen, isatty(STDOUT_FILENO));
         if (!text) {
           printf("# %s\n# not fetched yet; run: kycg fetch %s\n",
-                 title, ar->platform);
+                 title, c.target);
           continue;
         }
 
@@ -1496,18 +1463,21 @@ int main_list(int argc, char *argv[]) {
         sums_ent_t *ent = parse_sums(text, &n_ent);
         for (size_t i = 0; ent && i < n_ent; ++i) {
           const char *nm = ent[i].name;
-          size_t len = strlen(nm);
-          if (len < 4 || strcmp(nm + len - 3, ".cm") != 0) continue;
-          char setn[256], path[4400];
+          size_t l = strlen(nm);
+          if (l < 4 || strcmp(nm + l - 3, ".cm") != 0) continue;
+          char setn[256], path[4400], hb[24];
           set_name_of(nm, setn, sizeof(setn));
-          snprintf(path, sizeof(path), "%s/%s", dir, nm);
+          snprintf(path, sizeof(path), "%s/%s", c.dir, nm);
           int have = kycg_store_is_file(path);
+          uint64_t sz = coll_size_of(&c, nm);
           rows_push(&rows, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
-                    "%s\t%s\t%s", setn, nm, have ? "yes" : "no");
+                    "%s\t%s\t%s\t%s", setn, nm,
+                    sz ? kycg_ui_human(sz, hb, sizeof(hb)) : "-",
+                    have ? "yes" : "no");
         }
         free(ent);
         free(text);
-        rows_emit(&rows, title, "set\tfile\tcached");
+        rows_emit(&rows, title, "set\tfile\tsize\tcached");
       } else {
         fprintf(stderr, "kycg list: '%s' is not a known platform or genome.\n",
                 target);

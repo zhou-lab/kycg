@@ -306,11 +306,11 @@ kycg <span class="sub">test</span> -m $D/ChromHMM.20220414.cm -m $D/CGI.20220904
     that is exactly why <code class="inl">kycg test</code> checks row counts.</p>
   <div class="cols">
     <div>
-      <h3>Whole genome — Zenodo, one record each</h3>
+      <h3>Whole genome — one repo each</h3>
       <div class="scroll"><table class="t">
         <tr><th>Target</th><th>Sets</th><th>Size</th><th>Source</th></tr>
-        <tr><td><code>hg38</code></td><td>33</td><td>363 MB</td><td>zenodo:18175838</td></tr>
-        <tr><td><code>mm10</code></td><td>29</td><td>266 MB</td><td>zenodo:18175656</td></tr>
+        <tr><td><code>hg38</code></td><td>32</td><td>363 MB</td><td>KYCGKB_hg38 v2</td></tr>
+        <tr><td><code>mm10</code></td><td>29</td><td>266 MB</td><td>KYCGKB_mm10 v1</td></tr>
       </table></div>
       <p style="font-size:.79rem;color:var(--muted);margin:8px 0 0">
         ChromHMM · CGI · TFBS · PMD · rmsk · HM (histone marks) · ABCompartment ·
@@ -334,9 +334,10 @@ kycg <span class="sub">test</span> -m $D/ChromHMM.20220414.cm -m $D/CGI.20220904
 
 <section class="full">
   <h2>Integrity <span class="m">— two channels, two publishers, two digests</span></h2>
-  <p>kycg verifies against the digest each publisher actually signs, rather than inventing
-    its own. Both are compiled into the binary by <code class="inl">tools/make_registry.sh</code>,
-    so in neither case is kycg trusting a digest it fetched at run time.</p>
+  <p>Both channels publish a <code class="inl">SHA256SUMS</code> at a pinned tag, and kycg
+    pins its digest at build time — so in neither case is kycg trusting a digest it fetched at
+    run time. Anchoring on the manifest rather than the file list is what lets upstream add a
+    set without a kycg rebuild.</p>
   <div class="cols3">
     <div>
       <h3>Arrays — a sha256 chain</h3>
@@ -347,13 +348,14 @@ kycg <span class="sub">test</span> -m $D/ChromHMM.20220414.cm -m $D/CGI.20220904
       <pre><code>{ "MSA", "cc63264354f71f43…" }</code></pre>
     </div>
     <div>
-      <h3>Whole genome — a pinned md5 list</h3>
-      <p style="font-size:.79rem;color:var(--muted);margin:0 0 8px">Zenodo has no manifest to
-        chain from and publishes only md5, so each file's size and md5 are pinned individually.
-        md5's collision weakness would matter if the digest travelled <i>with</i> the file —
-        it is compiled in, so it is a pin, not a claim the download makes about itself.</p>
-      <pre><code>{ "CGI.20220904.cm", 206746,
-  "741817a0082a3ced…" }</code></pre>
+      <h3>Whole genome — the same chain</h3>
+      <p style="font-size:.79rem;color:var(--muted);margin:0 0 8px">The
+        <code class="inl">KYCGKB_&lt;genome&gt;</code> repositories publish a
+        <code class="inl">SHA256SUMS</code> too, so both channels are one code path and one
+        digest. Zenodo keeps the DOI and remains the citable archive; it is no longer the
+        fetch path.</p>
+      <pre><code>{ "hg38", "KYCGKB_hg38", "v2",
+  "8e0594ade2936a7b…" }</code></pre>
     </div>
     <div>
       <h3>Verify it yourself</h3>

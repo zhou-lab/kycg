@@ -90,18 +90,24 @@ proceeds without asking, and a missing target is an error rather than a wait.
     -t TAG    InfiniumAnnotation tag, arrays only [v8]
 ```
 
-Nine collections: `hg38` (33 sets) and `mm10` (29) from Zenodo, plus
-`MSA` `EPICv2` `EPIC` `HM450` `HM27` `MM285` `Mammal40` from
+Nine collections: `hg38` (32 sets) and `mm10` (29) from `KYCGKB_<genome>`,
+plus `MSA` `EPICv2` `EPIC` `HM450` `HM27` `MM285` `Mammal40` from
 InfiniumAnnotation. Fetched sets are ordinary files — pass one to
 `kycg test -m`.
 
-Both channels verify against a digest compiled into the binary by
-`tools/make_registry.sh`. InfiniumAnnotation publishes `SHA256SUMS` per
-directory, so that channel is a sha256 chain anchored on `sha256(SHA256SUMS)`;
-Zenodo publishes only md5 and has no manifest to chain from, so each file's
-size and md5 are pinned individually. Downloads land on a `.part` sibling and
-are renamed only after the digest matches. Afterwards the store is
-re-verifiable with `shasum -a 256 -c SHA256SUMS` and no kycg code at all.
+**One trust model for both channels.** Each publishes a `SHA256SUMS` at a
+pinned tag; kycg pins `sha256(SHA256SUMS)` in the binary, verifies that file
+after downloading it, then trusts every digest listed inside. Downloads land on
+a `.part` sibling and are renamed only after their digest matches, so an
+interrupted fetch cannot leave a file that later reads as valid. Afterwards the
+store is re-verifiable with `shasum -a 256 -c SHA256SUMS` and no kycg code at
+all. Because the anchor is the manifest rather than the file list, sets can be
+added upstream without rebuilding kycg.
+
+The Zenodo deposits remain the citable archive and keep the DOIs
+([hg38](https://doi.org/10.5281/zenodo.18175837),
+[mm10](https://doi.org/10.5281/zenodo.18175655)); they are recorded in the
+registry as provenance and are no longer the fetch path.
 
 **libcurl is optional.** `test`, `info`, and `list` build and run without it;
 only `fetch` needs it, and it says so plainly if the build lacks it. `CURL=0`

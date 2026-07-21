@@ -5,8 +5,12 @@
  * Arrays: sha256(<PLATFORM>/KYCG/SHA256SUMS) at the pinned tag is the trust
  * anchor; every file digest chains from it. NULL anchor = not published.
  *
- * Sequencing: Zenodo publishes no manifest to anchor, so each file's size and
- * md5 are pinned individually, as reported by the record API.
+ * Whole genome: the same, anchored on sha256(SHA256SUMS) in KYCGKB_<genome>
+ * at its own tag. File sizes are pinned alongside for display only; nothing
+ * depends on them, so a set added upstream needs no rebuild.
+ *
+ * Zenodo keeps the DOI and remains the citable archive. It is recorded here as
+ * provenance and is no longer the fetch path.
  *
  * SPDX-License-Identifier: AGPL-3.0-or-later
  * Copyright (C) 2026-present Wanding Zhou
@@ -20,6 +24,7 @@
 #define KYCG_IA_BASE_URL   "https://github.com/zhou-lab/InfiniumAnnotation/raw"
 #define KYCG_IA_TAG        "v8"
 #define KYCG_IA_SUMS_FILE  "SHA256SUMS"
+#define KYCG_KB_BASE_URL   "https://github.com/zhou-lab"
 #define KYCG_ZENODO_BASE   "https://zenodo.org/records"
 
 /* One array platform's KYCG knowledgebase directory. */
@@ -40,116 +45,120 @@ static const kycg_array_reg_t KYCG_ARRAY_REGISTRY[] = {
     { NULL, 0, NULL }
 };
 
-/* One file inside a Zenodo record. */
+/* A published file size, for display only -- never for correctness. */
 typedef struct {
     const char *name;
     uint64_t    size;
-    const char *md5;
-} kycg_zfile_t;
+} kycg_fsize_t;
 
-static const kycg_zfile_t KYCG_ZFILES_hg38[] = {
-    { "ABCompartment.20220911.cm", 9763, "90f1f9dc9ebecbbaa7374578eb324193" },
-    { "Blacklist.20220304.cm", 3142, "5d48b97a5d98ac8533b8dc64ef2b5c19" },
-    { "CGI.20220904.cm", 206746, "741817a0082a3cedc3d0a729d826cfbb" },
-    { "CTCFbind.20220911.cm", 163001, "122772e0f91e0ca9b67ecdc980e1387b" },
-    { "Centromere.20221129.cm", 347, "eb50d3b6180c29ab8211e9ee71f562f0" },
-    { "ChromHMM.20220303.cm", 529428, "05b4eb34d1f150fe6b1392ac5f19bb6a" },
-    { "ChromHMMfullStack.20230515.cm", 7086738, "f84d7ece52eed5f83193824365b31fac" },
-    { "Chromosome.20221129.cm", 298, "9c9b292a1d735a6678735c023f2a6f9b" },
-    { "ChromosomeXY.20230901.cm", 99, "2022aa05b649669a8ceff11fc39b615b" },
-    { "HM.20221013.cm", 7540196, "0c03acdc3ece2646e4eeb93c01e5ef75" },
-    { "HM.20221013.cm.idx", 1741, "7f85db8f030ab9aed392b0466193dfef" },
-    { "ImprintingDMR.20220818.cm", 907, "18e8e6193490dcbfc7ebeb0861f34584" },
-    { "IntermediateMeth.20221121.cm", 26683, "42cc6b515ecefae9bf54c33d59db46ca" },
-    { "IntermediateMethS.20221121.cm", 18515, "28a5c318474b3b69525a07bb8488e0bf" },
-    { "MetagenePC.20220911.cm", 2971260, "009833d8a7bb18f46119f1978d91430b" },
-    { "MetagenePC.20220911.cm.idx", 712, "d229ad93b186b1ef25e6aa2c5e6ab10c" },
-    { "PMD.20220911.cm", 18325, "a826de908298e80a3dd89f86aca0bdb7" },
-    { "REMCChromHMM.20220911.cm", 490826, "aeb9de1f624ca7dd38cbaa547bcc4a62" },
-    { "RoadMapNegGeneExpCpG.20220814.cm", 463285, "cf2f707d1d4b80067ff614cb7ab8751d" },
-    { "RoadMapPosGeneExpCpG.20220814.cm", 570095, "f2783610e674103366a58f55ed899990" },
-    { "TFBS.20220921.Part1.cm", 48018534, "6a47951f90de4d33d051fca1dc7cad6a" },
-    { "TFBS.20220921.Part1.cm.idx", 13816, "aaeb4cd0c34e5bc12d21f1953256007a" },
-    { "TFBS.20220921.Part2.cm", 42967759, "a2f3e269313dc35d515499ef7a993d2d" },
-    { "TFBS.20220921.Part2.cm.idx", 12968, "107ade1ee5bbb3925ffa726bc139038d" },
-    { "TFBSrm.20221005.cm", 82231076, "6ef6168b7d52f71e7276910cbd0554da" },
-    { "TFBSrm.20221005.cm.idx", 23731, "8ab435b6d153f6fcd9cc343c17556c80" },
-    { "Tetranuc2.20220321.cm", 9086753, "cc1f47634c1cdd6e130d11c118d32dbe" },
-    { "TiSigBLUEPRINT.20221209.cm", 26949077, "e92e9d5be2471dc7335319e7200f4adc" },
-    { "TiSigBLUEPRINT.20221209.cm.idx", 22418, "342986b147135752133ef91364848788" },
-    { "TiSigBrain.20221209.cm", 52404903, "ac4868ae97a3fa0190279e6e7871d8e1" },
-    { "TiSigBrain.20221209.cm.idx", 13414, "d81a5f10dff90786e5298bbdcfe6745d" },
-    { "TiSigLoyfer.20221209.cm", 28806752, "ed694945023f072e798243880459bbad" },
-    { "TiSigLoyfer.20221209.cm.idx", 16421, "abeb6166698da4063a054dba57ade57e" },
-    { "Win100k.20220228.cm", 169101, "a211f4873295189178b2af294e9a348e" },
-    { "XCILinkedWGBS.20221121.cm", 12552, "990f6f305aadf8053d960004a6b79372" },
-    { "XCILinkedWGBSSorted.20221121.cm", 16744, "8e1b64ca0d4ef11ff3a92b8a5d32911c" },
-    { "cpg_nocontig.cr", 30318472, "a2b95dfe540c9a0d0c9b6a668d39a2fa" },
-    { "nFlankCG.20220321.cm", 11529528, "0a07b27eb1975b0c3c509ddbe26981bd" },
-    { "nFlankCG100.20231025.cm", 10120992, "506d2accb9175e9ab8b714bc2d9d7d49" },
-    { "nFlankCG50.20231025.cm", 7572753, "572fb0311f9bb13c3fd087b9804a771e" },
-    { "rmsk1.20220307.cm", 4645990, "975e3006fe3be9bc126a27bc31ccfe08" },
-    { "rmsk1.20220307.cm.idx", 361, "8bd4095d38d0100b168849b7a5f140e1" },
-    { "rmsk2.20220321.cm", 5749686, "4408ae42796acbd0bd39ca2eec160d56" },
-    { "rmsk2.20220321.cm.idx", 1212, "af07e45ef029f0bc74d1c1e180846bc0" },
-    { NULL, 0, NULL }
+static const kycg_fsize_t KYCG_SIZES_hg38[] = {
+    { "ABCompartment.20220911.cm", 9763 },
+    { "Blacklist.20220304.cm", 3142 },
+    { "CGI.20220904.cm", 206746 },
+    { "CTCFbind.20220911.cm", 163001 },
+    { "Centromere.20221129.cm", 347 },
+    { "ChromHMM.20220303.cm", 529428 },
+    { "ChromHMMfullStack.20230515.cm", 7086738 },
+    { "Chromosome.20221129.cm", 298 },
+    { "ChromosomeXY.20230901.cm", 99 },
+    { "HM.20221013.cm", 7540196 },
+    { "HM.20221013.cm.idx", 1741 },
+    { "ImprintingDMR.20220818.cm", 907 },
+    { "IntermediateMeth.20221121.cm", 26683 },
+    { "IntermediateMethS.20221121.cm", 18515 },
+    { "MetagenePC.20220911.cm", 2971260 },
+    { "MetagenePC.20220911.cm.idx", 712 },
+    { "PMD.20220911.cm", 18325 },
+    { "REMCChromHMM.20220911.cm", 490826 },
+    { "RoadMapNegGeneExpCpG.20220814.cm", 463285 },
+    { "RoadMapPosGeneExpCpG.20220814.cm", 570095 },
+    { "TFBS.20220921.cm", 90986293 },
+    { "TFBS.20220921.cm.idx", 27056 },
+    { "TFBSrm.20221005.cm", 82231076 },
+    { "TFBSrm.20221005.cm.idx", 23731 },
+    { "Tetranuc2.20220321.cm", 9086753 },
+    { "TiSigBLUEPRINT.20221209.cm", 26949077 },
+    { "TiSigBLUEPRINT.20221209.cm.idx", 22418 },
+    { "TiSigBrain.20221209.cm", 52404903 },
+    { "TiSigBrain.20221209.cm.idx", 13414 },
+    { "TiSigLoyfer.20221209.cm", 28806752 },
+    { "TiSigLoyfer.20221209.cm.idx", 16421 },
+    { "Win100k.20220228.cm", 169101 },
+    { "XCILinkedWGBS.20221121.cm", 12552 },
+    { "XCILinkedWGBSSorted.20221121.cm", 16744 },
+    { "cpg_nocontig.cr", 30318472 },
+    { "nFlankCG.20220321.cm", 11529528 },
+    { "nFlankCG100.20231025.cm", 10120992 },
+    { "nFlankCG50.20231025.cm", 7572753 },
+    { "rmsk1.20220307.cm", 4645990 },
+    { "rmsk1.20220307.cm.idx", 361 },
+    { "rmsk2.20220321.cm", 5749686 },
+    { "rmsk2.20220321.cm.idx", 1212 },
+    { NULL, 0 }
 };
 
-static const kycg_zfile_t KYCG_ZFILES_mm10[] = {
-    { "Blacklist.20220304.cm", 636, "00132568ac11fff1f6120bfa65b6b28f" },
-    { "CGI.20220904.cm", 122892, "9dc83c947b8e4e0cb1f34626ef1761b1" },
-    { "ChromHMM.20220318.cm", 878195, "ca06426c56115acc2c3a056836755fa8" },
-    { "ChromHMM.20220414.cm", 877986, "ae38cfa904ef1a5a8c09fbc4f2354d6b" },
-    { "ChromHMMfullStack.20231222.cm", 6409786, "2f99ae2926273a48140767fadb4a169d" },
-    { "Chromosome.20240119.cm", 269, "8ab4b4fd913fb1bf7300374985ed76ef" },
-    { "ChromosomeXY.20230901.cm", 95, "5d76574ee4f195c7d2d8f4cd7433c998" },
-    { "EnsRegBuild.20220710.cm", 1019167, "81b337a04dacecacbde06b4f2e9e2274" },
-    { "EnsRegBuild.20220710.cm.idx", 146, "efa88450646dbb13efc9965d150754e4" },
-    { "EvoCons.20220314.cm", 115742, "8b33cdb1489ed07d4b069d9b4b8f02ac" },
-    { "GCfrac.20220323.cm", 19989460, "b01be1cf12ae1233a0bc6c7159b8e4fa" },
-    { "GeneFeatures.20220710.cm", 1476841, "eed392355ee313fda2bf3ecab2c12ea0" },
-    { "GeneFeatures.20220710.cm.idx", 123, "b7e950d0bde019186146dd509788d7a9" },
-    { "HM.20221013.cm", 5896537, "a630eceec27fbe4557ff4030dfa2af09" },
-    { "HM.20221013.cm.idx", 1632, "173d72f07e14ea76e60ea89f7334a5b3" },
-    { "MetagenePC.20220911.cm", 2487844, "5000a77602b957ebc80c721d421c8ec6" },
-    { "MetagenePC.20220911.cm.idx", 709, "5d9420ce23f652e25d703230b19b64b4" },
-    { "PMD.20220911.cm", 16659, "a061eed474d53256cd44333d46fa7e6b" },
-    { "TFBS.20220922.cm", 56669024, "1bba80847bac38cfd798ac320076a27f" },
-    { "TFBS.20220922.cm.idx", 13700, "ec45849106d224b1bf6c6ad89f76e59f" },
-    { "TFBSFreq.20220922.cm", 3895475, "57ee98a4b9cf91312ee7d29e12351fe7" },
-    { "TFBSrm.20221005.cm", 53395935, "bc63f01560a9b273467c12c981dbec7d" },
-    { "TFBSrm.20221005.cm.idx", 12454, "06c0f44abc5e3113c0cf5ddc33eade6b" },
-    { "Tetranuc2.20220321.cm", 6838695, "156e9ae7c14f5da56cd8f289e505fd30" },
-    { "Tetranuc4.20220321.cm", 13157336, "0adfc3712c8a204b89ae8b8efa16aa44" },
-    { "UCSCEnsemblRegulatory.20220727.cm", 639680, "b4b76999271d85f22c034fe0dba0a7ac" },
-    { "Win100k.20220228.cm", 154709, "a5e575009bc63f88c222404032f5fb8f" },
-    { "Win1m.20230709.cm", 16962, "6534a8722a1fd1d0c0c74b0f9d4531b5" },
-    { "Win30k.20220228.cm", 513471, "6d19164607ca6c74dab1213528296e7e" },
-    { "cpg_nocontig.cr", 23825886, "202e27f4ad168601d63a9f1073811be6" },
-    { "kmer10.20231109.cm", 52445331, "bc0706314e280bafc807dc7546e8dbfb" },
-    { "nFlankCG.20220321.cm", 7763796, "5b6d629ab20ebc6af46e7a5c848369a9" },
-    { "nFlankCG100.20231025.cm", 6787893, "41d673b759840bb05e198d3c7c61d350" },
-    { "nFlankCG50.20231025.cm", 5037900, "d5d5e4b47b44c7766ad0479bc86d0e0a" },
-    { "rmsk1.20220321.cm", 3321298, "999977d4175d8cb9a980f47d814da21d" },
-    { "rmsk1.20220321.cm.idx", 374, "722e585a623a744b17f7764ac8efdacf" },
-    { "rmsk2.20220321.cm", 4623244, "69157385a1d38721a2f7305ff3f6553f" },
-    { "rmsk2.20220321.cm.idx", 1152, "8cc6eb976920b70354e545635f494260" },
-    { NULL, 0, NULL }
+static const kycg_fsize_t KYCG_SIZES_mm10[] = {
+    { "Blacklist.20220304.cm", 636 },
+    { "CGI.20220904.cm", 122892 },
+    { "ChromHMM.20220318.cm", 878195 },
+    { "ChromHMM.20220414.cm", 877986 },
+    { "ChromHMMfullStack.20231222.cm", 6409786 },
+    { "Chromosome.20240119.cm", 269 },
+    { "ChromosomeXY.20230901.cm", 95 },
+    { "EnsRegBuild.20220710.cm", 1019167 },
+    { "EnsRegBuild.20220710.cm.idx", 146 },
+    { "EvoCons.20220314.cm", 115742 },
+    { "GCfrac.20220323.cm", 19989460 },
+    { "GeneFeatures.20220710.cm", 1476841 },
+    { "GeneFeatures.20220710.cm.idx", 123 },
+    { "HM.20221013.cm", 5896537 },
+    { "HM.20221013.cm.idx", 1632 },
+    { "MetagenePC.20220911.cm", 2487844 },
+    { "MetagenePC.20220911.cm.idx", 709 },
+    { "PMD.20220911.cm", 16659 },
+    { "TFBS.20220922.cm", 56669024 },
+    { "TFBS.20220922.cm.idx", 13700 },
+    { "TFBSFreq.20220922.cm", 3895475 },
+    { "TFBSrm.20221005.cm", 53395935 },
+    { "TFBSrm.20221005.cm.idx", 12454 },
+    { "Tetranuc2.20220321.cm", 6838695 },
+    { "Tetranuc4.20220321.cm", 13157336 },
+    { "UCSCEnsemblRegulatory.20220727.cm", 639680 },
+    { "Win100k.20220228.cm", 154709 },
+    { "Win1m.20230709.cm", 16962 },
+    { "Win30k.20220228.cm", 513471 },
+    { "cpg_nocontig.cr", 23825886 },
+    { "kmer10.20231109.cm", 52445331 },
+    { "nFlankCG.20220321.cm", 7763796 },
+    { "nFlankCG100.20231025.cm", 6787893 },
+    { "nFlankCG50.20231025.cm", 5037900 },
+    { "rmsk1.20220321.cm", 3321298 },
+    { "rmsk1.20220321.cm.idx", 374 },
+    { "rmsk2.20220321.cm", 4623244 },
+    { "rmsk2.20220321.cm.idx", 1152 },
+    { NULL, 0 }
 };
 
-/* One genome's sequencing knowledgebase collection. */
+/* One genome's whole-genome knowledgebase collection.
+ *
+ * `sums_sha256` is the trust anchor, exactly as for arrays. `record` and `doi`
+ * point at the Zenodo deposit, which remains the citable archive but is no
+ * longer where kycg fetches from. */
 typedef struct {
     const char        *genome;
     uint64_t           rows;      /* CpGs in cpg_nocontig.cr */
-    const char        *record;    /* Zenodo record id */
+    const char        *repo;      /* GitHub repository name */
+    const char        *tag;       /* pinned tag */
+    const char        *sums_sha256;
+    const char        *record;    /* Zenodo record id, provenance only */
     const char        *doi;
-    const kycg_zfile_t *files;
+    const kycg_fsize_t *sizes;
 } kycg_seq_reg_t;
 
 static const kycg_seq_reg_t KYCG_SEQ_REGISTRY[] = {
-    { "hg38", 29401795, "18175838", "10.5281/zenodo.18175837", KYCG_ZFILES_hg38 },
-    { "mm10", 21867837, "18175656", "10.5281/zenodo.18175655", KYCG_ZFILES_mm10 },
-    { NULL, 0, NULL, NULL, NULL }
+    { "hg38", 29401795, "KYCGKB_hg38", "v2", "8e0594ade2936a7b837306cec8e4d29bb9028a6a3be5b2cdbd372af7c16f650a", "18175838", "10.5281/zenodo.18175837", KYCG_SIZES_hg38 },
+    { "mm10", 21867837, "KYCGKB_mm10", "v1", "0693eb6d7e173c04e083c48c41eedc593af96a8ac78c80e8cfd2b24b71c25d3a", "18175656", "10.5281/zenodo.18175655", KYCG_SIZES_mm10 },
+    { NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL }
 };
 
 #endif /* _KYCG_REGISTRY_H */
