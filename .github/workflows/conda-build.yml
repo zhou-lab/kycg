@@ -112,6 +112,7 @@ jobs:
           # labelled 0.2.0 ship a kycg whose --version says 0.1.0.
           version=$(sed -n 's/.*set version = "\(.*\)".*/\1/p' conda-recipe/meta.yaml)
           binver=$(sed -n 's/.*KYCG_VERSION "\(.*\)".*/\1/p' src/kycg.h)
+          docver=$(sed -n 's/.*badge-ver[^>]*>v\([0-9][^<]*\)<.*/\1/p' docs/index.html)
           tag="${GITHUB_REF_NAME#v}"
           if [ "$version" != "$tag" ]; then
             echo "tag v$tag does not match recipe version $version; bump conda-recipe/meta.yaml" >&2
@@ -119,6 +120,10 @@ jobs:
           fi
           if [ "$binver" != "$tag" ]; then
             echo "tag v$tag does not match KYCG_VERSION $binver; bump src/kycg.h" >&2
+            exit 1
+          fi
+          if [ "$docver" != "$tag" ]; then
+            echo "tag v$tag does not match the docs badge $docver; bump docs/index.html" >&2
             exit 1
           fi
 
@@ -132,15 +137,43 @@ jobs:
             echo "ANACONDA_TOKEN secret is not set; cannot publish." >&2
             exit 1
           fi
+          # Retry each upload. anaconda.org returned a 524 (gateway timeout)
+          # partway through v0.1.0 after a three-minute hang, which aborted the
+          # loop with linux-64 already published and osx-arm64 not -- the exact
+          # half-release this job is shaped to prevent, arriving at the upload
+          # step rather than the build step. --force makes a retry idempotent.
+          upload_with_retry() {
+            pkg=$1
+            n=1
+            while [ "$n" -le 4 ]; do
+              if conda run -n base anaconda upload \
+                   -u zhou-lab --label main --force "$pkg"; then
+                return 0
+              fi
+              echo "upload of $pkg failed (attempt $n); retrying in $((n * 30))s" >&2
+              sleep $((n * 30))
+              n=$((n + 1))
+            done
+            echo "upload of $pkg failed after 4 attempts" >&2
+            return 1
+          }
+
           found=0
+          failed=0
           for pkg in dist/**/*.conda dist/*.conda; do
             [ -f "$pkg" ] || continue
             found=$((found + 1))
             echo "uploading $pkg"
-            conda run -n base anaconda upload -u zhou-lab --label main --force "$pkg"
+            upload_with_retry "$pkg" || failed=$((failed + 1))
           done
           if [ "$found" -eq 0 ]; then
             echo "no .conda packages found in the downloaded artifacts" >&2
+            exit 1
+          fi
+          # Every platform is attempted even if one is unrecoverable, so the
+          # log names all of them rather than stopping at the first.
+          if [ "$failed" -gt 0 ]; then
+            echo "$failed of $found upload(s) failed; the release is incomplete" >&2
             exit 1
           fi
           echo "published $found package(s)"

@@ -27,6 +27,8 @@
   h1 b{font-weight:800}
   .badge{margin-left:9px;font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
      color:var(--accent);background:var(--accent-soft);border:1px solid var(--line);padding:2px 8px;border-radius:20px;vertical-align:middle}
+  .badge-ver{text-transform:none;letter-spacing:.02em;margin-left:5px;text-decoration:none}
+  .badge-ver:hover{background:var(--accent);color:#fff}
   .expand{color:var(--muted);margin:8px 0 12px;font-size:.9rem;max-width:82ch}
   .links{font-size:.85rem;color:var(--muted)}
   .links a{font-weight:600}.links span{opacity:.4;margin:0 8px}
@@ -85,7 +87,8 @@
 <div class="wrap">
 
 <header>
-  <h1><b>k</b>now <b>y</b>our <b>C</b>p<b>G</b></h1> <span class="badge">cli</span>
+  <h1><b>k</b>now <b>y</b>our <b>C</b>p<b>G</b></h1> <span class="badge">cli</span><a
+    class="badge badge-ver" href="https://github.com/zhou-lab/kycg/releases/tag/v0.1.0">v0.1.0</a>
   <p class="expand">Functional analysis of DNA methylation at CpG resolution.
     One C binary, one verified knowledgebase store, one implementation of every statistic.</p>
   <p class="links">
