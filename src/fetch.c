@@ -736,9 +736,9 @@ static int usage(void) {
           KYCG_H_KEY, "hg38", KYCG_H_OFF);
   fprintf(o, "    kycg fetch %s%-22s%s just those sets\n",
           KYCG_H_KEY, "hg38:CGI,ChromHMM", KYCG_H_OFF);
-  fprintf(o, "    kycg fetch %s%-22s%s list one target, download nothing\n",
+  fprintf(o, "    kycg fetch %s%-22s%s list what a target holds\n",
           KYCG_H_KEY, "-l hg38", KYCG_H_OFF);
-  fprintf(o, "    kycg fetch %s%-22s%s show the plan, download nothing\n\n",
+  fprintf(o, "    kycg fetch %s%-22s%s preview a download, fetch nothing\n\n",
           KYCG_H_KEY, "-n hg38", KYCG_H_OFF);
 
   fprintf(o, "%sIn the tree%s\n", KYCG_H_TITLE, KYCG_H_OFF);
@@ -771,8 +771,8 @@ static int usage(void) {
   struct { const char *f, *d; } opt[] = {
     {"-d DIR", "store directory [$KYCG_DATA_DIR, else ~/.cache/kycg]"},
     {"-o SETS", "subset by set name; same as the :SETS suffix"},
-    {"-l", "show the catalogue instead of downloading"},
-    {"-n", "dry run: show the plan, download nothing"},
+    {"-l", "list what a collection holds, and what you have"},
+    {"-n", "dry run: what this would download, and how much"},
     {"-y", "assume yes; do not ask to confirm"},
     {"-f", "re-download even if present and verified"},
     {"-t TAG", "InfiniumAnnotation tag, arrays only"},
@@ -1577,7 +1577,21 @@ int main_list(int argc, char *argv[]) {
 
   if (optind < argc) {
     for (int j = optind; j < argc; ++j) {
-      const char *target = argv[j];
+      /* Same target[:sets] syntax as a fetch, so `-l hg38:CGI` narrows the
+       * listing rather than failing on a name it does not recognize. */
+      char target[128];
+      const char *spec = argv[j];
+      const char *only = NULL;
+      const char *colon = strchr(spec, ':');
+      if (colon) {
+        size_t len = (size_t)(colon - spec);
+        if (len >= sizeof(target)) len = sizeof(target) - 1;
+        memcpy(target, spec, len);
+        target[len] = '\0';
+        if (colon[1]) only = colon + 1;
+      } else {
+        snprintf(target, sizeof(target), "%s", spec);
+      }
 
       coll_t c;
       if (coll_for(target, root, NULL, &c) == 0) {
@@ -1614,6 +1628,7 @@ int main_list(int argc, char *argv[]) {
         for (size_t i = 0; ent && i < n_ent; ++i) {
           const char *nm = ent[i].name;
           if (!is_selectable(nm)) continue;
+          if (!passes_filter(nm, only)) continue;
           char setn[256], path[4400], hb[24];
           set_name_of(nm, setn, sizeof(setn));
           snprintf(path, sizeof(path), "%s/%s", c.dir, nm);
