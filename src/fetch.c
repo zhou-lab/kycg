@@ -122,10 +122,21 @@ static int is_selectable(const char *name) {
   return 0;
 }
 
-/** Does this file pass the subset filter? A token matches the whole file name
- *  or its set name. NULL/empty filter passes everything. */
+/**
+ * Does this file pass the subset filter?
+ *
+ * Returns 0 for no, KYCG_MATCH_SET when a token matched the set name, and
+ * KYCG_MATCH_EXACT when it named the file outright. The distinction matters
+ * because a set name can cover several published versions -- mm10 carries
+ * ChromHMM.20220318 and ChromHMM.20220414 -- and those should collapse to one,
+ * while a file named in full must be taken at its word. NULL/empty passes
+ * everything, as a set-name match.
+ */
+#define KYCG_MATCH_SET   1
+#define KYCG_MATCH_EXACT 2
+
 static int passes_filter(const char *fname, const char *only) {
-  if (!only || !*only) return 1;
+  if (!only || !*only) return KYCG_MATCH_SET;
 
   char setn[256];
   set_name_of(fname, setn, sizeof(setn));
@@ -135,9 +146,10 @@ static int passes_filter(const char *fname, const char *only) {
     const char *comma = strchr(p, ',');
     size_t len = comma ? (size_t)(comma - p) : strlen(p);
     if (len) {
-      if ((strlen(fname) == len && strncasecmp(fname, p, len) == 0) ||
-          (strlen(setn)  == len && strncasecmp(setn,  p, len) == 0))
-        return 1;
+      if (strlen(fname) == len && strncasecmp(fname, p, len) == 0)
+        return KYCG_MATCH_EXACT;
+      if (strlen(setn) == len && strncasecmp(setn, p, len) == 0)
+        return KYCG_MATCH_SET;
     }
     if (!comma) break;
     p = comma + 1;
@@ -323,30 +335,72 @@ size_t kycg_resolve_spec(const char *spec, const char *store, char ***out) {
   if (!d) return 0;
 
   char **v = NULL;
+  unsigned char *how = NULL;
   size_t n = 0, m = 0;
   struct dirent *e;
   while ((e = readdir(d))) {
     size_t l = strlen(e->d_name);
     if (e->d_name[0] == '.') continue;
     if (l <= 3 || strcmp(e->d_name + l - 3, ".cm") != 0) continue;
-    if (!passes_filter(e->d_name, only)) continue;
+    int kind = passes_filter(e->d_name, only);
+    if (!kind) continue;
 
     if (n == m) {
       size_t want = m ? m * 2 : 16;
       char **nv = realloc(v, want * sizeof(char *));
-      if (!nv) break;
-      v = nv; m = want;
+      unsigned char *nh = realloc(how, want);
+      if (!nv || !nh) { free(nv); free(nh); break; }
+      v = nv; how = nh; m = want;
     }
     char path[4600];
     snprintf(path, sizeof(path), "%s/%s", c.dir, e->d_name);
     v[n] = strdup(path);
-    if (v[n]) ++n;
+    if (!v[n]) break;
+    how[n] = (unsigned char)kind;
+    ++n;
   }
   closedir(d);
 
-  /* Stable order, so a run is reproducible and its output diffable. */
-  if (n > 1) qsort(v, n, sizeof(char *), cmp_path);
+  /* Stable order, so a run is reproducible and its output diffable. Sorting
+   * by path also puts versions of a set next to each other, newest last,
+   * because the date is a fixed-width field in the name. */
+  if (n > 1) {
+    for (size_t i = 0; i + 1 < n; ++i)          /* keep `how` with its path */
+      for (size_t j = i + 1; j < n; ++j)
+        if (strcmp(v[i], v[j]) > 0) {
+          char *tp = v[i]; v[i] = v[j]; v[j] = tp;
+          unsigned char th = how[i]; how[i] = how[j]; how[j] = th;
+        }
+  }
 
+  /* One file per set name: a set that has been republished would otherwise be
+   * tested twice over, which reads as two independent knowledgebases and is
+   * corrected as two families. The newest wins; a file named in full is never
+   * dropped, so a version can always be pinned by writing it out. */
+  size_t k = 0;
+  for (size_t i = 0; i < n; ++i) {
+    if (how[i] == KYCG_MATCH_SET && k > 0) {
+      char a[256], b[256];
+      const char *pa = strrchr(v[k-1], '/'), *pb = strrchr(v[i], '/');
+      set_name_of(pa ? pa + 1 : v[k-1], a, sizeof(a));
+      set_name_of(pb ? pb + 1 : v[i],   b, sizeof(b));
+      if (strcmp(a, b) == 0 && how[k-1] == KYCG_MATCH_SET) {
+        fprintf(stderr,
+                "%skycg: %s has more than one version; using %s%s\n",
+                kycg_ui_dim(), b, pb ? pb + 1 : v[i], kycg_ui_reset());
+        free(v[k-1]);
+        v[k-1] = v[i];        /* the later one sorts newer */
+        how[k-1] = how[i];
+        continue;
+      }
+    }
+    v[k] = v[i];
+    how[k] = how[i];
+    ++k;
+  }
+  n = k;
+
+  free(how);
   *out = v;
   return n;
 }
