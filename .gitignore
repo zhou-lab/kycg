@@ -9,6 +9,10 @@
 /tests/test_args
 /tests/test_hypergeo
 
+# local working notes, not part of the published repo
+CLAUDE.md
+TODO.md
+
 # editor / OS
 .DS_Store
 *~
