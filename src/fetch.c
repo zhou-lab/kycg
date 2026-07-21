@@ -530,6 +530,7 @@ typedef struct {
   int dry_run;
   int force;
   int assume_yes;
+  int list_only;
 } fetch_conf_t;
 
 /**
@@ -717,12 +718,16 @@ static int usage(void) {
   fprintf(stderr, "\n");
   fprintf(stderr, "Usage: kycg fetch [options] [<target>[:<sets>] ...]\n");
   fprintf(stderr, "\n");
-  fprintf(stderr, "Download and verify knowledgebases into a local store.\n");
-  fprintf(stderr, "With no target on a terminal, opens the `kycg list` browser,\n");
-  fprintf(stderr, "where sets are checked with space and fetched with f.\n");
+  fprintf(stderr, "Browse, choose and download knowledgebases.\n");
+  fprintf(stderr, "\n");
+  fprintf(stderr, "With no target this shows the catalogue: an interactive tree on a\n");
+  fprintf(stderr, "terminal (arrows move, right unfolds, space checks a set, f fetches\n");
+  fprintf(stderr, "the checked ones, q quits), or plain TSV when stdout is redirected.\n");
+  fprintf(stderr, "Naming a target downloads it instead.\n");
   fprintf(stderr, "\n");
   fprintf(stderr, "Examples:\n");
   fprintf(stderr, "    kycg fetch                     browse and pick\n");
+  fprintf(stderr, "    kycg fetch -l hg38             list one target, no download\n");
   fprintf(stderr, "    kycg fetch hg38                every set for a target\n");
   fprintf(stderr, "    kycg fetch hg38:CGI,ChromHMM   just those sets\n");
   fprintf(stderr, "    kycg fetch -n hg38             show the plan, download nothing\n");
@@ -738,12 +743,15 @@ static int usage(void) {
   fprintf(stderr, "Options:\n");
   fprintf(stderr, "    -d DIR    store directory [$KYCG_DATA_DIR, else ~/.cache/kycg]\n");
   fprintf(stderr, "    -o SETS   subset by set name; same as the :SETS suffix\n");
+  fprintf(stderr, "    -l        show the catalogue instead of downloading\n");
   fprintf(stderr, "    -y        assume yes; do not ask to confirm\n");
   fprintf(stderr, "    -n        dry run: show the plan, download nothing\n");
   fprintf(stderr, "    -f        re-download even if present and verified\n");
   fprintf(stderr, "    -t TAG    InfiniumAnnotation tag, arrays only [%s]\n", KYCG_IA_TAG);
   fprintf(stderr, "    -h        this help\n");
   fprintf(stderr, "\n");
+  fprintf(stderr, "The reference row list (a genome's .cr, a platform's probe\n");
+  fprintf(stderr, "ordering) is always included; it is what gives a row its identity.\n");
   fprintf(stderr, "Fetched sets are ordinary files; pass one to `kycg test -m`.\n");
   fprintf(stderr, "kycg downloads here and nowhere else, and never asks anything\n");
   fprintf(stderr, "when stdin is not a terminal.\n");
@@ -758,7 +766,7 @@ int main_fetch(int argc, char *argv[]) {
   conf.tag = KYCG_IA_TAG;
 
   int c;
-  while ((c = getopt(argc, argv, "d:o:t:nfyh")) >= 0) {
+  while ((c = getopt(argc, argv, "d:o:t:nfylh")) >= 0) {
     switch (c) {
     case 'd': conf.store = optarg; break;
     case 'o': conf.only = optarg; break;
@@ -766,6 +774,7 @@ int main_fetch(int argc, char *argv[]) {
     case 'n': conf.dry_run = 1; break;
     case 'f': conf.force = 1; break;
     case 'y': conf.assume_yes = 1; break;
+    case 'l': conf.list_only = 1; break;
     case 'h': return usage();
     default: return usage();
     }
@@ -787,29 +796,24 @@ int main_fetch(int argc, char *argv[]) {
   const char *argv_targets[64];
   int n_targets = 0;
 
-  if (optind < argc) {
-    for (int j = optind; j < argc && n_targets < 64; ++j)
-      argv_targets[n_targets++] = argv[j];
-  } else if (kycg_ui_interactive()) {
-    /* No target on a terminal: hand over to the browser in `kycg list`, which
-     * is the interactive fetch surface -- browse, check, fetch, one screen.
-     * Keeping a second guided flow here would be a worse copy of it. */
-    char *lav[4];
+  /* No target, or -l: this is a request to see the catalogue rather than to
+   * download one. On a terminal that is the browser -- where checking a set
+   * and fetching it happen anyway -- and off one it is plain TSV, so
+   * `kycg fetch | cut -f1` still works. */
+  if (optind >= argc || conf.list_only) {
+    char *lav[8];
     int lac = 0;
-    lav[lac++] = "list";
+    lav[lac++] = "fetch";
     if (conf.store) { lav[lac++] = "-d"; lav[lac++] = (char *)conf.store; }
+    for (int j = optind; j < argc && lac < 7; ++j) lav[lac++] = argv[j];
     lav[lac] = NULL;
     optind = 1;
     curl_global_cleanup();
     return main_list(lac, lav);
-  } else {
-    usage();
-    fprintf(stderr,
-            "kycg fetch: no target given, and stdin is not a terminal so there\n"
-            "is nobody to ask. Name a target explicitly, e.g. `kycg fetch hg38`.\n");
-    curl_global_cleanup();
-    return 1;
   }
+
+  for (int j = optind; j < argc && n_targets < 64; ++j)
+    argv_targets[n_targets++] = argv[j];
 
   tally_t t = {0};
   int rc = 0;

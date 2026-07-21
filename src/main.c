@@ -27,9 +27,11 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "kycg.h"
 #include "registry.h"
+#include "store.h"
 
 /**
  * What this build is bound to.
@@ -40,6 +42,14 @@
  * nobody knows to type.
  */
 static void print_pins(FILE *out) {
+  /* Where the store is, and whether that was a choice. Every fetch and every
+   * -m path resolves against it, so a run that looks wrong is often just
+   * pointed somewhere unexpected. */
+  const char *env = getenv("KYCG_DATA_DIR");
+  fprintf(out, "Store: %s%s\n", kycg_store_root(NULL),
+          env && *env ? "  (from $KYCG_DATA_DIR)"
+                      : "  ($KYCG_DATA_DIR unset; -d overrides)");
+  fprintf(out, "\n");
   fprintf(out, "Knowledgebases pinned by this build:\n");
   for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome; ++r)
     fprintf(out, "    %-9s %s %s\n", r->genome, r->repo, r->tag);
@@ -54,8 +64,7 @@ static int usage(void) {
   fprintf(stderr, "Usage:   kycg <command> [options]\n");
   fprintf(stderr, "\n");
   fprintf(stderr, "Commands:\n");
-  fprintf(stderr, "    fetch     download and verify knowledgebases\n");
-  fprintf(stderr, "    list      show available and cached knowledgebases\n");
+  fprintf(stderr, "    fetch     browse, choose and download knowledgebases\n");
   fprintf(stderr, "    test      set enrichment against a knowledgebase\n");
   fprintf(stderr, "    info      describe the records in a .cg or .cm file\n");
   fprintf(stderr, "\n");
@@ -75,6 +84,8 @@ int main(int argc, char *argv[]) {
   if      (strcmp(argv[1], "test") == 0)  ret = main_test(argc - 1, argv + 1);
   else if (strcmp(argv[1], "info") == 0)  ret = main_info(argc - 1, argv + 1);
   else if (strcmp(argv[1], "fetch") == 0) ret = main_fetch(argc - 1, argv + 1);
+  /* `list` was a separate command before browsing and fetching became one
+   * screen. Kept working, deliberately undocumented. */
   else if (strcmp(argv[1], "list") == 0)  ret = main_list(argc - 1, argv + 1);
   else if (strcmp(argv[1], "-h") == 0 ||
            strcmp(argv[1], "--help") == 0) return usage();

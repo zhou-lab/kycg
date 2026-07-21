@@ -43,19 +43,20 @@ Dependencies are YAME's: vendored htslib, zlib, libm, pthreads. Nothing else.
 
 ## Usage
 
-### `kycg fetch` — build the knowledgebase store
+### `kycg fetch` — browse and build the knowledgebase store
 
 ```bash
-kycg list                     # browse, check what you want, fetch it
+kycg fetch                    # browse, check what you want, fetch it
 kycg fetch mm10               # every set for a target
 kycg fetch hg38:CGI,ChromHMM  # just those sets
-kycg list hg38                # the individual sets (works offline)
+kycg fetch -l hg38            # list one target, download nothing
 ```
 
-`kycg list` is the interactive surface: browsing the catalogue, choosing from
-it, and fetching are one activity on one screen. `→` unfolds a target, `space`
-checks a set, `f` fetches everything checked, `r` refreshes the catalogues,
-`d` points the browser at a different store. Sets already present show a green ✓ and cannot be checked —
+`kycg fetch` is one command because browsing the catalogue, choosing from it,
+and downloading are one activity. With no target it shows the catalogue — an
+interactive tree on a terminal, plain TSV when stdout is redirected, so
+`kycg fetch | cut -f1` still works. `→` unfolds a target, `space`
+checks a set, `f` fetches everything checked, `d` points the browser at a different store. Sets already present show a green ✓ and cannot be checked —
 there is nothing to ask for. `kycg fetch` with no target simply opens it.
 
 Fetching does not leave the browser. The plan, the confirmation and the
@@ -178,10 +179,10 @@ Knowledgebases matching 21,867,837 rows (29 of 35 in the store)
   / filter  enter accept  esc cancel
 ```
 
-The picker and `kycg list` both render in place: arrows or `j`/`k` to move,
+The picker and the catalogue both render in place: arrows or `j`/`k` to move,
 `/` to search, `q` to quit.
 
-`kycg list` is a tree — `→` unfolds a target to show the sets it holds, `←`
+The catalogue is a tree — `→` unfolds a target to show the sets it holds, `←`
 folds it back, so the `cached_sets` count and the sets it counts are one
 keystroke apart:
 
@@ -216,7 +217,7 @@ The picker, the browser and the tree are full-screen: they take the alternate
 screen buffer, scroll a fixed-height viewport, and hand the terminal back
 exactly as they found it. On a terminal that cannot support that — `NO_COLOR`,
 `TERM=dumb` — they are skipped entirely in favour of a numbered prompt and
-plain text carrying the same information. `kycg list` writes plain TSV whenever
+plain text carrying the same information. `kycg fetch` writes plain TSV whenever
 stdout is redirected, so piping into `cut` or `awk` is unaffected.
 
 ```
