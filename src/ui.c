@@ -1213,6 +1213,8 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
 
   const int picking = (spec->n_actions > 0);
   int accepted = 0;
+  int detail_open = 0;
+  kycg_ui_detail_t det = {0};
 
   /* Column widths over the root rows only; children arrive preformatted. */
   enum { MAXCOL = 8 };
@@ -1301,9 +1303,30 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
 
     if (cur >= nflat) cur = nflat ? nflat - 1 : 0;
 
+    /* Rebuild the detail pane before laying out, so its height is known and
+     * the list shrinks to fit rather than the pane running off the screen. */
+    for (size_t d = 0; d < det.n; ++d) free(det.rows[d]);
+    free(det.rows);
+    det.rows = NULL; det.n = 0;
+
     int rowsz = term_rows();
     int cols = term_cols();
     int avail = rowsz - 4;
+
+    if (detail_open && spec->detail && nflat) {
+      size_t dri = flat[cur].root;
+      long dci = flat[cur].child;
+      spec->detail(ctx, roots[dri],
+                   (dci >= 0 && node[dri].kids.keys)
+                     ? node[dri].kids.keys[dci] : NULL,
+                   cols - 2, &det);
+      /* Never let the pane crowd the list below a few rows: seeing which row
+       * the text describes is what makes it useful at all. */
+      int cap = rowsz / 2;
+      if (cap < 0) cap = 0;
+      if ((int)det.n > cap) det.n = (size_t)cap;
+      avail -= (int)det.n + 1;            /* +1 for the blank separator */
+    }
     if (avail < 3) avail = 3;
 
     if (avail > 0) {
@@ -1403,6 +1426,19 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
 
     const char *motion = ((size_t)avail < nflat) ? "arrows scroll"
                                                  : "arrows move";
+
+    /* The pane sits between the list and the footer, inside the same frame,
+     * so a cursor move redraws both together and never flickers. */
+    if (detail_open && det.n) {
+      frame_line(&f, "%s  %s%s", kycg_ui_dim(),
+                 "────────────────────────────────────────", kycg_ui_reset());
+      for (size_t d = 0; d < det.n; ++d) {
+        char cutd[1024];
+        fit(det.rows[d], cols - 2, cutd, sizeof(cutd));
+        frame_line(&f, "%s", cutd);
+      }
+    }
+
     if (picking) {
       size_t nsel = 0;
       for (size_t i = 0; i < n_roots; ++i)
@@ -1412,6 +1448,12 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
       size_t ao = 0;
       if (spec->recommend)
         ao += (size_t)snprintf(acts + ao, sizeof(acts) - ao, "r recommended  ");
+      if (spec->detail && spec->detail_key)
+        ao += (size_t)snprintf(acts + ao, sizeof(acts) - ao, "%c %s  ",
+                               spec->detail_key,
+                               detail_open ? "close"
+                                           : (spec->detail_verb
+                                              ? spec->detail_verb : "info"));
       for (size_t a = 0; a < spec->n_actions && ao + 24 < sizeof(acts); ++a)
         ao += (size_t)snprintf(acts + ao, sizeof(acts) - ao, "%c %s  ",
                                spec->actions[a].key, spec->actions[a].verb);
@@ -1555,10 +1597,16 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
     else if (key == K_PGUP) { cur = (cur > (size_t)avail) ? cur - (size_t)avail : 0; }
     else if (key == K_HOME) cur = 0;
     else if (key == K_END)  cur = nflat ? nflat - 1 : 0;
-    else if (key == K_ESC)  break;
+    /* ESC closes the pane first, then leaves the widget. */
+    else if (key == K_ESC)  { if (detail_open) detail_open = 0; else break; }
     else if (key == K_NONE) break;
     else if (key == K_CHAR) {
       if (ch == 'q') break;
+      /* The detail key toggles the pane and nothing else: the cursor keeps
+       * moving underneath it, which is the point -- comparing two sets used
+       * to mean closing the pane, moving, and reopening it. */
+      else if (spec->detail && spec->detail_key && ch == spec->detail_key)
+        detail_open = !detail_open;
       else if (picking && find_action(spec, ch) >= 0) { /* above */ }
       else if (ch == 'j') { if (cur + 1 < nflat) ++cur; }
       else if (ch == 'k') { if (cur) --cur; }
@@ -1625,5 +1673,8 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
   free(node);
   free(flat);
   raw_leave();
+  for (size_t d = 0; d < det.n; ++d) free(det.rows[d]);
+  free(det.rows);
+
   return accepted;
 }

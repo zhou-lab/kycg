@@ -77,11 +77,13 @@ void kycg_catalogue_free(kycg_catalogue_t *v, size_t n);
  * exactly the same thing in both trees -- a second implementation would be
  * free to drift, which is the failure this project exists to avoid.
  *
- * kycg_kb_recommended matches kycg_ui_preselect_fn; kycg_kb_show_info is
- * called from an on_key handler when the user presses `i`.
+ * kycg_kb_recommended matches kycg_ui_preselect_fn; kycg_kb_detail matches
+ * kycg_ui_detail_fn and backs the `i` pane, which stays open while the cursor
+ * moves.
  */
 int kycg_kb_recommended(void *ctx, const char *root, const char *key);
-int kycg_kb_show_info(const char *root, const char *child_key);
+void kycg_kb_detail(void *ctx, const char *root, const char *child_key,
+                    int cols, kycg_ui_detail_t *out);
 
 /* Subcommand entry points, dispatched from main() on argv[1]. */
 int main_test(int argc, char *argv[]);

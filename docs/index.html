@@ -181,7 +181,9 @@ $ kycg <span class="sub">fetch</span> hg38:CGI,ChromHMM
 $ kycg <span class="sub">fetch</span> -f hg38:CGI,ChromHMM</code></pre>
     <p style="margin-top:11px"><b>r</b> checks the recommended selection for that
       collection — the dozen sets worth having before you know what you are looking
-      for, instead of all forty. <b>i</b> answers what a set actually <i>is</i>:</p>
+      for, instead of all forty. <b>i</b> opens a pane answering what a set actually
+      <i>is</i>. It follows the cursor, so arrowing down walks you through the
+      catalogue with each set explained as you reach it:</p>
     <pre><code>  <b>TFBSrm</b>  Transcription factor binding sites, ReMap
 
   A larger, uniformly reprocessed TF binding compendium — around 1,188
@@ -223,7 +225,7 @@ Knowledgebases for 21,867,837 rows -- space to choose, t to test
    ├ [x] ChromHMM               ChromHMM.20220414.cm             cached
    ├ [ ] ChromHMMfullStack      ChromHMMfullStack…cm             cached
   <span class="cm">…</span>
-  <span class="cm">→ open  space select  r recommended  f fetch  t test  i info</span></code></pre>
+  <span class="cm">→ open  space select  r recommended  i info  f fetch  t test</span></code></pre>
     <p style="margin-top:11px">It is the same browser <code class="inl">fetch</code> uses,
       showing only the collections whose row count matches the query. A set you do not
       have yet is still listed: check it, <code class="inl">f</code> to fetch it, then

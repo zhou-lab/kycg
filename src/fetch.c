@@ -1794,6 +1794,7 @@ int kycg_kb_recommended(void *ctx, const char *root, const char *key) {
 typedef struct {
   char *line[INFO_MAX_LINES];
   int   n;
+  int   cols;      /* usable width; the pane is narrower than the terminal */
 } info_lay_t;
 
 static void lay_push(info_lay_t *L, const char *s) {
@@ -1827,7 +1828,7 @@ static void lay_wrap(info_lay_t *L, const char *label, const char *text) {
   if (!text || !*text) return;
 
   const int gutter = label ? 14 : 2;   /* "  processing  " is the widest */
-  int avail = kycg_ui_cols() - gutter - 2;
+  int avail = (L->cols > 0 ? L->cols : kycg_ui_cols()) - gutter - 2;
   if (avail < 20) avail = 20;
 
   const char *p = text;
@@ -1864,58 +1865,58 @@ static void lay_wrap(info_lay_t *L, const char *label, const char *text) {
 }
 
 /** `i` in the browser: what is this set, and where did it come from. */
-int kycg_kb_show_info(const char *root, const char *child_key) {
+/**
+ * The `i` pane: what the set under the cursor is, and where it came from.
+ *
+ * A detail callback rather than a modal panel, so the arrow keys keep working
+ * while it is open and the text follows the cursor. It runs on every redraw,
+ * which is affordable because kycg_kbinfo_find is a scan of a compiled-in
+ * table and the wrapping is a few hundred bytes of formatting.
+ */
+void kycg_kb_detail(void *ctx, const char *root, const char *child_key,
+                    int cols, kycg_ui_detail_t *out) {
+  (void)ctx;
   (void)root;                 /* the set name is enough to describe a set */
-  char setn[256];
+  out->rows = NULL;
+  out->n = 0;
 
-  /* On a set row describe the set; on a collection row describe nothing --
-   * the columns already say what a collection is. */
-  if (!child_key) return 0;
-  const char *file = strchr(child_key, ':');
-  file = file ? file + 1 : child_key;
-  set_name_of(file, setn, sizeof(setn));
-
-  const kycg_kbinfo_t *k = kycg_kbinfo_find(setn);
-  if (!k) {
-    kycg_ui_panel_open(3);
-    kycg_ui_panel_line(0, "  %s%s%s  %s(nothing recorded about this set)%s",
-                       kycg_ui_bold(), setn, kycg_ui_reset(),
-                       kycg_ui_dim(), kycg_ui_reset());
-    kycg_ui_panel_pause(2, "any key to return");
-    kycg_ui_panel_close();
-    return 0;
-  }
-
-  /* Lay the whole panel out before opening it: the height has to be known up
-   * front, and these fields are prose of no fixed length. */
   info_lay_t L = {0};
-  lay_head(&L, setn, k->title);
-  lay_wrap(&L, NULL, k->biology);
-  lay_wrap(&L, "source", k->source);
-  lay_wrap(&L, "citation", k->citation);
-  lay_wrap(&L, "processing", k->processing);
+  L.cols = cols > 20 ? cols : 20;
 
-  /* The panel cannot be taller than the terminal, and a line past its height
-   * is dropped silently -- which on a short terminal would drop the prompt
-   * rather than the prose, leaving the browser looking hung. So truncate the
-   * text ourselves and say that we did. */
-  int room = kycg_ui_rows() - 2;
-  int shown = L.n;
-  if (shown + 2 > room) {
-    shown = room - 3;
-    if (shown < 1) shown = 1;
+  if (!child_key) {
+    /* A collection row: the columns above already say what it is. */
+    lay_push(&L, "");
+    lay_wrap(&L, NULL, "Open this collection and put the cursor on a set to "
+                       "see what it is.");
+  } else {
+    char setn[256];
+    const char *file = strchr(child_key, ':');
+    file = file ? file + 1 : child_key;
+    set_name_of(file, setn, sizeof(setn));
+
+    const kycg_kbinfo_t *k = kycg_kbinfo_find(setn);
+    if (!k) {
+      char buf[512];
+      snprintf(buf, sizeof(buf), "  %s%s%s  %s(nothing recorded about this set)%s",
+               kycg_ui_bold(), setn, kycg_ui_reset(),
+               kycg_ui_dim(), kycg_ui_reset());
+      lay_push(&L, buf);
+    } else {
+      lay_head(&L, setn, k->title);
+      lay_wrap(&L, NULL, k->biology);
+      lay_wrap(&L, "source", k->source);
+      lay_wrap(&L, "citation", k->citation);
+      lay_wrap(&L, "processing", k->processing);
+    }
   }
 
-  kycg_ui_panel_open(shown + 2 + (shown < L.n ? 1 : 0));
-  for (int i = 0; i < shown; ++i) kycg_ui_panel_line(i, "%s", L.line[i]);
-  if (shown < L.n)
-    kycg_ui_panel_line(shown, "  %s... %d more line%s; see data/knowledgebases.tsv%s",
-                       kycg_ui_dim(), L.n - shown, L.n - shown == 1 ? "" : "s",
-                       kycg_ui_reset());
-  kycg_ui_panel_pause(shown + (shown < L.n ? 2 : 1), "any key to return");
-  kycg_ui_panel_close();
+  out->rows = malloc((size_t)(L.n ? L.n : 1) * sizeof(char *));
+  if (!out->rows) { lay_free(&L); return; }
+  for (int i = 0; i < L.n; ++i) out->rows[i] = L.line[i];
+  out->n = (size_t)L.n;
+  /* Ownership moves to the caller; do not free the strings here. */
+  L.n = 0;
   lay_free(&L);
-  return 0;
 }
 
 /** Which rows a named target arrives with already checked. */
@@ -1934,8 +1935,7 @@ static int on_preselect(void *ctx, const char *root, const char *key) {
 static int on_list_key(void *ctx, char key, const char *root,
                        const char *child_key) {
   listctx_t *lc = ctx;
-
-  if (key == 'i') return kycg_kb_show_info(root, child_key);
+  (void)root; (void)child_key;      /* d is about the store, not a row */
 
   if (key != 'd') return 0;
 
@@ -2209,7 +2209,10 @@ static int browse_catalogue(int argc, char *argv[]) {
     spec.n_actions = 1;
     spec.on_key = on_list_key;
     spec.recommend = kycg_kb_recommended;
-    spec.hint = "i info  d store";
+    spec.detail_key = 'i';
+    spec.detail_verb = "info";
+    spec.detail = kycg_kb_detail;
+    spec.hint = "d store";
     spec.ctx = &lc;
     if (open_target[0]) {
       spec.open_root = open_target;

@@ -185,6 +185,32 @@ typedef void (*kycg_ui_expand_fn)(void *ctx, const char *row,
  * Same contract as kycg_ui_browse: returns -1 when the terminal cannot support
  * it, and must not be used when stdout is redirected.
  */
+
+/* ------------------------------------------------------ inline detail pane */
+
+/**
+ * Lines describing the row under the cursor, rendered inside the tree's own
+ * frame rather than over it.
+ *
+ * The pane is part of the redraw, not a modal overlay, which is the whole
+ * point: the arrow keys keep moving the cursor while it is open and the pane
+ * follows. A blocking panel meant you had to close it, move, and reopen it to
+ * compare two sets -- which is the thing you most want to do with it.
+ *
+ * The callback owns nothing: it fills `rows` with malloc'd strings and sets
+ * `n`, and the widget frees them after drawing. `cols` is the usable width, so
+ * the callback can wrap; it is called on every redraw, so it must be cheap
+ * (a table lookup and some formatting, not a file read).
+ */
+typedef struct {
+  char **rows;
+  size_t n;
+} kycg_ui_detail_t;
+
+typedef void (*kycg_ui_detail_fn)(void *ctx, const char *root,
+                                  const char *child_key, int cols,
+                                  kycg_ui_detail_t *out);
+
 /* ------------------------------------------------- panel inside a widget */
 
 /**
@@ -298,6 +324,12 @@ typedef struct {
   size_t            n_actions;
 
   kycg_ui_key_fn    on_key;    /* may be NULL */
+
+  /* Inline detail pane. `detail_key` toggles it; while open it redraws for
+   * whatever the cursor is on. NULL `detail` disables the whole feature. */
+  char              detail_key;
+  const char       *detail_verb;   /* footer label, e.g. "info" */
+  kycg_ui_detail_fn detail;
   const char       *hint;      /* extra footer text for the caller's keys */
 
   /* Whether a row already present can still be checked. False for fetching,
