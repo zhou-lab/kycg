@@ -45,7 +45,7 @@ base=${KYCG_IA_BASE_URL:-https://github.com/zhou-lab/InfiniumAnnotation/raw}
 # needs *before* downloading anything: a .cm is only comparable to a query
 # with the same row count, so showing the dimension next to each target is
 # what makes it possible to pick the right one. Verified against the published
-# .cm files; see DESIGN.md section 2.
+# .cm files.
 #
 # platform | rows
 platforms="EPIC:866553 EPICv2:937690 HM27:27722 HM450:486427 \

@@ -2,7 +2,7 @@
 #
 # Links against YAME's libyame.a (git submodule under external/YAME), which
 # carries the bit-packed CpG formats and the bit-parallel `summary` counting.
-# kycg adds statistical inference on top; see DESIGN.md for the division.
+# kycg adds statistical inference on top; YAME stays a data engine.
 #
 # The submodule must be initialized before building:
 #   git submodule update --init --recursive

@@ -52,7 +52,7 @@
  *   a few kilobytes, and says so while it does.
  *
  * PROMPTING WITHOUT BREAKING AUTOMATION
- *   DESIGN.md originally said "never prompt", because a prompt hangs a
+ *   The original rule here was "never prompt", because a prompt hangs a
  *   Nextflow job or a Docker build forever with no indication of why. That
  *   guarantee is preserved exactly, by gating every question on an interactive
  *   terminal (see ui.c): off a TTY, an explicit target proceeds without asking

@@ -6,14 +6,13 @@ R/Bioconductor package, with [YAME](https://github.com/zhou-lab/YAME) as its
 computational backend.
 
 **Docs site:** [`docs/index.html`](docs/index.html) — a single self-contained
-page covering the whole workflow. See [DESIGN.md](DESIGN.md) for the
-architecture, the statistical formulas, and the phasing. This README covers
-what is implemented and how to run it.
+page covering the whole workflow. This README covers what is implemented and
+how to run it.
 
 ## Status
 
-Phase 0 (foundation) and Phase 1 (`kycg test`) are implemented and validated.
-`kycg test` supersedes the knowYourCG sequencing workflow.
+Phases 0-2 are implemented and validated. `kycg test` supersedes the
+knowYourCG sequencing workflow.
 
 | Phase | Scope | State |
 |---|---|---|
@@ -97,14 +96,14 @@ place with your folds and cursor where you left them. Only `q` exits.
 
 ```
     target    kind          source                 cached_sets
-❯ ▾ hg38      whole genome  zenodo:18175838        4/33
+❯ ▾ hg38      whole genome  KYCGKB_hg38 v2         4/32
    ├ [x] ABCompartment   ABCompartment.20220911.cm   9.5 KB  -
    ├  ✓  Blacklist       Blacklist.20220304.cm       3.1 KB  cached
    ├ [ ] CTCFbind        CTCFbind.20220911.cm        159 KB  -
   row 4 of 42  •  1 selected  •  → open  ← close  space select  r recommended  f fetch  i info  d store   q quit
 ```
 
-**Nothing is asked when nobody can answer.** DESIGN.md's original rule was
+**Nothing is asked when nobody can answer.** The original rule was
 "never prompt", because a prompt hangs a Nextflow job or a Docker build with no
 indication of why. That guarantee holds: off a TTY a named target downloads
 without asking, and a missing target prints the catalogue rather than waiting.
@@ -118,7 +117,7 @@ kycg still downloads in `fetch` and nowhere else.
     -t TAG    InfiniumAnnotation tag, arrays only [v8]
 ```
 
-Nine collections: `hg38` (32 sets) and `mm10` (29) from `KYCGKB_<genome>`,
+Nine collections: `hg38` (32 sets) and `mm10` (28) from `KYCGKB_<genome>`,
 plus `MSA` `EPICv2` `EPIC` `HM450` `HM27` `MM285` `Mammal40` from
 InfiniumAnnotation. Fetched sets are ordinary files — pass one to
 `kycg test -m`.
@@ -151,7 +150,7 @@ $ kycg --version
 kycg 0.1.0
 knowledgebases pinned by this build:
   hg38       KYCGKB_hg38 v2
-  mm10       KYCGKB_mm10 v1
+  mm10       KYCGKB_mm10 v2
   arrays     InfiniumAnnotation v8
 ```
 
@@ -206,7 +205,7 @@ refuse it anyway, so the list is one you cannot pick wrong from:
 ```
 Knowledgebases for 21,867,837 rows -- space to choose, t to test
     target  kind          rows        cached_sets
-❯ ▾ mm10    whole genome  21,867,837  29
+❯ ▾ mm10    whole genome  21,867,837  28
    ├ [x] CGI          CGI.20220904.cm            cached
    ├ [ ] EvoCons      EvoCons.20220314.cm        -
   row 3 of 30 · 1 selected · → open  ← close  space select  r recommended  f fetch  i info  t test  q quit
@@ -226,8 +225,8 @@ keystroke apart:
 
 ```
     target    kind          source                 cached_sets
-  ▸ hg38      whole genome  zenodo:18175838        3/33
-❯ ▾ mm10      whole genome  zenodo:18175656        29/29
+  ▸ hg38      whole genome  KYCGKB_hg38 v2         3/32
+❯ ▾ mm10      whole genome  KYCGKB_mm10 v2         28/28
     ├ CGI                CGI.20220904.cm            120 KB  cached
     ├ ChromHMM           ChromHMM.20220414.cm       857 KB  cached
     ├ PMD                PMD.20220911.cm           16.3 KB  cached
@@ -335,7 +334,7 @@ knowledgebase 'chromhmm.cm' record '1' has 21867837 rows.
 These files index different reference row lists and cannot be compared.
 ```
 
-It does no more than that, by design (DESIGN.md §2). kycg does not infer
+It does no more than that, by design. kycg does not infer
 platforms and cannot detect two files that share a row count but come from
 different row spaces — sequencing uses a whole-genome `.cr`, arrays use a
 per-platform `ordering.tsv.gz`, and a `.cm` from one is meaningless in the
@@ -367,8 +366,8 @@ Comparing 19 rows against R
 PASS: kycg agrees with R on every column.
 ```
 
-DESIGN.md sets ~1e-10 agreement on `log10.p.value` as the Phase 1 acceptance
-bar; the residual above is dominated by output text precision, not by the
+The acceptance bar is ~1e-10 agreement on `log10.p.value`; the residual above
+is dominated by output text precision, not by the
 computation. The counts themselves are byte-identical to `yame summary`.
 
 Regenerate the unit-test reference values with `Rscript tests/ref.R`.

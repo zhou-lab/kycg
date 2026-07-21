@@ -42,8 +42,8 @@
  *   The obvious implementation of the point mass is a difference of three
  *   lgamma() calls. For a 29M-row universe those terms are each ~5e8, so
  *   cancellation leaves roughly 1e-7 absolute error in the natural log — which
- *   is far coarser than the ~1e-10 agreement with knowYourCG that DESIGN.md
- *   sets as the acceptance bar for `kycg test`.
+ *   is far coarser than the ~1e-10 agreement with knowYourCG that is the
+ *   acceptance bar for `kycg test`.
  *
  *   So we use Catherine Loader's saddle-point formulation (Loader 2000,
  *   "Fast and Accurate Computation of Binomial Probabilities"), which is what

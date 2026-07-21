@@ -4,7 +4,7 @@
 #
 # Reads a kycg TSV, recomputes every statistic with the same R calls
 # knowYourCG uses (phyper / p.adjust), and reports the worst disagreement.
-# DESIGN.md sets agreement on log10.p.value at ~1e-10 as the bar for Phase 1.
+# Agreement on log10.p.value at ~1e-10 is the acceptance bar for Phase 1.
 #
 #   ./kycg test -m chromhmm.cm onecell.cg > res.tsv
 #   Rscript tests/validate_vs_R.R res.tsv

@@ -45,7 +45,7 @@
  *   record lengths agree and fails loudly otherwise. It deliberately does no
  *   more than that: it does not infer platforms and does not try to detect
  *   two files that happen to share a row count but come from different row
- *   spaces. Per DESIGN.md section 2, keeping the row spaces matched is the
+ *   spaces. By design, keeping the row spaces matched is the
  *   user's responsibility, and the machinery to police it costs more than it
  *   is worth.
  *
@@ -178,7 +178,7 @@ static int usage(void) {
  *
  * The count has to come from prepare_mask() rather than from the raw header:
  * cdata_t.n means bytes for some formats and units for others, and reconciling
- * that by hand is exactly the trap DESIGN.md flags around cdata_nbytes().
+ * that by hand is exactly the trap around cdata_nbytes().
  */
 static uint64_t first_record_rows(const char *path) {
   /* open_cfile() exits the process on a file it cannot open, which would be a
