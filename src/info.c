@@ -46,15 +46,24 @@
 #include "wzmisc.h"
 
 static int usage(void) {
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Usage: kycg info [options] <file.cg|file.cm> [...]\n");
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Report the format, row count, and set size of each record.\n");
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Options:\n");
-  fprintf(stderr, "    -H        suppress the header line\n");
-  fprintf(stderr, "    -h        this help\n");
-  fprintf(stderr, "\n");
+  FILE *o = stderr;
+  fprintf(o, "\n");
+  fprintf(o, "  %skycg info%s  %s— describe the records in a .cg or .cm file%s\n\n",
+          KYCG_H_TITLE, KYCG_H_OFF, KYCG_H_NOTE, KYCG_H_OFF);
+
+  fprintf(o, "%sUsage%s\n", KYCG_H_TITLE, KYCG_H_OFF);
+  fprintf(o, "    kycg info [options] %s<file.cg|file.cm>%s [...]\n\n",
+          KYCG_H_KEY, KYCG_H_OFF);
+  fprintf(o, "    %sReports the format, row count and set size of each record, as TSV.%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %sUse it to confirm two files index the same row space before%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %stesting them: n_rows must agree.%s\n\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+
+  fprintf(o, "%sOptions%s\n", KYCG_H_TITLE, KYCG_H_OFF);
+  fprintf(o, "    %s%-8s%s suppress the header line\n", KYCG_H_KEY, "-H", KYCG_H_OFF);
+  fprintf(o, "    %s%-8s%s this help\n\n", KYCG_H_KEY, "-h", KYCG_H_OFF);
   return 1;
 }
 

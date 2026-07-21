@@ -32,6 +32,7 @@
 #include "kycg.h"
 #include "registry.h"
 #include "store.h"
+#include "ui.h"
 
 /**
  * What this build is bound to.
@@ -41,38 +42,68 @@
  * with a fixed answer. It belongs in the help text rather than behind a flag
  * nobody knows to type.
  */
+/*
+ * The help text is styled, but only when someone is looking: every colour
+ * below comes from ui.c, which returns an empty string off a TTY, under
+ * NO_COLOR, or on a dumb terminal. So `kycg 2>&1 | less` stays readable and
+ * the bytes are identical to what they were before any of this.
+ */
+#define H_TITLE  kycg_ui_bold()
+#define H_KEY    kycg_ui_cyan()
+#define H_NOTE   kycg_ui_dim()
+#define H_OFF    kycg_ui_reset()
+
+/**
+ * Where the store is, and what this build is bound to.
+ *
+ * Every fetch and every -m path resolves against that directory, and a build
+ * can verify only the tags whose digests it carries -- neither is trivia, and
+ * neither was visible in any output before.
+ */
 static void print_pins(FILE *out) {
-  /* Where the store is, and whether that was a choice. Every fetch and every
-   * -m path resolves against it, so a run that looks wrong is often just
-   * pointed somewhere unexpected. */
   const char *env = getenv("KYCG_DATA_DIR");
-  fprintf(out, "Store: %s%s\n", kycg_store_root(NULL),
-          env && *env ? "  (from $KYCG_DATA_DIR)"
-                      : "  ($KYCG_DATA_DIR unset; -d overrides)");
+
+  fprintf(out, "%sStore%s\n", H_TITLE, H_OFF);
+  fprintf(out, "    %s%s%s   %s%s%s\n",
+          H_KEY, kycg_store_root(NULL), H_OFF,
+          H_NOTE, env && *env ? "(from $KYCG_DATA_DIR)"
+                              : "($KYCG_DATA_DIR unset; -d overrides)", H_OFF);
   fprintf(out, "\n");
-  fprintf(out, "Knowledgebases pinned by this build:\n");
+
+  fprintf(out, "%sKnowledgebases pinned by this build%s\n", H_TITLE, H_OFF);
   for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome; ++r)
-    fprintf(out, "    %-9s %s %s\n", r->genome, r->repo, r->tag);
-  fprintf(out, "    %-9s InfiniumAnnotation %s\n", "arrays", KYCG_IA_TAG);
+    fprintf(out, "    %-9s %s %s%s%s\n", r->genome, r->repo,
+            H_KEY, r->tag, H_OFF);
+  fprintf(out, "    %-9s InfiniumAnnotation %s%s%s\n", "arrays",
+          H_KEY, KYCG_IA_TAG, H_OFF);
+  fprintf(out, "    %sonly these tags can be verified; to follow a newer one,%s\n",
+          H_NOTE, H_OFF);
+  fprintf(out, "    %sregenerate src/registry.h (tools/make_registry.sh) and rebuild%s\n",
+          H_NOTE, H_OFF);
+}
+
+static void cmd(FILE *out, const char *name, const char *what) {
+  fprintf(out, "    %s%-8s%s %s\n", H_KEY, name, H_OFF, what);
 }
 
 static int usage(void) {
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Program: kycg (functional analysis of DNA methylation)\n");
-  fprintf(stderr, "Version: %s\n", KYCG_VERSION);
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Usage:   kycg <command> [options]\n");
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Commands:\n");
-  fprintf(stderr, "    fetch     browse, choose and download knowledgebases\n");
-  fprintf(stderr, "    test      set enrichment against a knowledgebase\n");
-  fprintf(stderr, "    info      describe the records in a .cg or .cm file\n");
-  fprintf(stderr, "\n");
-  print_pins(stderr);
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Only these tags can be verified; following a newer one means\n");
-  fprintf(stderr, "regenerating src/registry.h (tools/make_registry.sh) and rebuilding.\n");
-  fprintf(stderr, "\n");
+  FILE *o = stderr;
+  fprintf(o, "\n");
+  fprintf(o, "  %skycg%s %s%s%s  %s— functional analysis of DNA methylation "
+             "at CpG resolution%s\n\n",
+          H_TITLE, H_OFF, H_KEY, KYCG_VERSION, H_OFF, H_NOTE, H_OFF);
+
+  fprintf(o, "%sUsage%s\n", H_TITLE, H_OFF);
+  fprintf(o, "    kycg %s<command>%s [options]\n\n", H_KEY, H_OFF);
+
+  fprintf(o, "%sCommands%s\n", H_TITLE, H_OFF);
+  cmd(o, "fetch", "browse, choose and download knowledgebases");
+  cmd(o, "test",  "set enrichment against a knowledgebase");
+  cmd(o, "info",  "describe the records in a .cg or .cm file");
+  fprintf(o, "\n");
+
+  print_pins(o);
+  fprintf(o, "\n");
   return 1;
 }
 

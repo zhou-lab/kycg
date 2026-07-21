@@ -715,51 +715,82 @@ static int execute_plan(const plan_t *plan, tally_t *t) {
 /* ------------------------------------------------------------------ usage */
 
 static int usage(void) {
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Usage: kycg fetch [options] [<target>[:<sets>] ...]\n");
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Browse, choose and download knowledgebases.\n");
-  fprintf(stderr, "\n");
-  fprintf(stderr, "With no target this shows the catalogue: an interactive tree on a\n");
-  fprintf(stderr, "terminal (arrows move, right unfolds, space checks a set, f fetches\n");
-  fprintf(stderr, "the checked ones, q quits), or plain TSV when stdout is redirected.\n");
-  fprintf(stderr, "Naming a target downloads it instead.\n");
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Examples:\n");
-  fprintf(stderr, "    kycg fetch                     browse and pick\n");
-  fprintf(stderr, "    kycg fetch -l hg38             list one target, no download\n");
-  fprintf(stderr, "    kycg fetch hg38                every set for a target\n");
-  fprintf(stderr, "    kycg fetch hg38:CGI,ChromHMM   just those sets\n");
-  fprintf(stderr, "    kycg fetch -n hg38             show the plan, download nothing\n");
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Targets:\n");
-  fprintf(stderr, "    genomes   ");
+  FILE *o = stderr;
+  fprintf(o, "\n");
+  fprintf(o, "  %skycg fetch%s  %s— browse, choose and download knowledgebases%s\n\n",
+          KYCG_H_TITLE, KYCG_H_OFF, KYCG_H_NOTE, KYCG_H_OFF);
+
+  fprintf(o, "%sUsage%s\n", KYCG_H_TITLE, KYCG_H_OFF);
+  fprintf(o, "    kycg fetch [options] [%s<target>%s[:%s<sets>%s] ...]\n\n",
+          KYCG_H_KEY, KYCG_H_OFF, KYCG_H_KEY, KYCG_H_OFF);
+
+  fprintf(o, "    %sWith no target this shows the catalogue: an interactive tree on a%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %sterminal, or plain TSV when stdout is redirected. Naming a target%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %sdownloads it instead.%s\n\n", KYCG_H_NOTE, KYCG_H_OFF);
+
+  fprintf(o, "%sExamples%s\n", KYCG_H_TITLE, KYCG_H_OFF);
+  fprintf(o, "    kycg fetch %-22s browse and pick\n", "");
+  fprintf(o, "    kycg fetch %s%-22s%s every set for a target\n",
+          KYCG_H_KEY, "hg38", KYCG_H_OFF);
+  fprintf(o, "    kycg fetch %s%-22s%s just those sets\n",
+          KYCG_H_KEY, "hg38:CGI,ChromHMM", KYCG_H_OFF);
+  fprintf(o, "    kycg fetch %s%-22s%s list one target, download nothing\n",
+          KYCG_H_KEY, "-l hg38", KYCG_H_OFF);
+  fprintf(o, "    kycg fetch %s%-22s%s show the plan, download nothing\n\n",
+          KYCG_H_KEY, "-n hg38", KYCG_H_OFF);
+
+  fprintf(o, "%sIn the tree%s\n", KYCG_H_TITLE, KYCG_H_OFF);
+  {
+    /* Two fixed columns; padding the keys and the descriptions separately is
+     * what keeps the right column from drifting with the text on the left. */
+    struct { const char *k, *d; } key[] = {
+      {"arrows, j k", "move"},          {"space", "check a set"},
+      {"right, l",    "unfold"},        {"f",     "fetch what is checked"},
+      {"left, h",     "fold"},          {"d",     "change the store"},
+      {"home, end",   "jump"},          {"q",     "quit"},
+    };
+    for (size_t i = 0; i < sizeof(key)/sizeof(key[0]); i += 2)
+      fprintf(o, "    %s%-12s%s %-10s  %s%-6s%s %s\n",
+              KYCG_H_KEY, key[i].k,   KYCG_H_OFF, key[i].d,
+              KYCG_H_KEY, key[i+1].k, KYCG_H_OFF, key[i+1].d);
+  }
+  fprintf(o, "\n");
+
+  fprintf(o, "%sTargets%s\n", KYCG_H_TITLE, KYCG_H_OFF);
+  fprintf(o, "    %-9s ", "genomes");
   for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome; ++r)
-    fprintf(stderr, "%s ", r->genome);
-  fprintf(stderr, "\n    arrays    ");
+    fprintf(o, "%s%s%s ", KYCG_H_KEY, r->genome, KYCG_H_OFF);
+  fprintf(o, "\n    %-9s ", "arrays");
   for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform; ++r)
-    fprintf(stderr, "%s ", r->platform);
-  fprintf(stderr, "\n\n");
-  fprintf(stderr, "Options:\n");
-  fprintf(stderr, "    -d DIR    store directory [$KYCG_DATA_DIR, else ~/.cache/kycg]\n");
-  fprintf(stderr, "    -o SETS   subset by set name; same as the :SETS suffix\n");
-  fprintf(stderr, "    -l        show the catalogue instead of downloading\n");
-  fprintf(stderr, "    -y        assume yes; do not ask to confirm\n");
-  fprintf(stderr, "    -n        dry run: show the plan, download nothing\n");
-  fprintf(stderr, "    -f        re-download even if present and verified\n");
-  fprintf(stderr, "    -t TAG    InfiniumAnnotation tag, arrays only [%s]\n", KYCG_IA_TAG);
-  fprintf(stderr, "    -h        this help\n");
-  fprintf(stderr, "\n");
-  fprintf(stderr, "The reference row list (a genome's .cr, a platform's probe\n");
-  fprintf(stderr, "ordering) is always included; it is what gives a row its identity.\n");
-  fprintf(stderr, "Fetched sets are ordinary files; pass one to `kycg test -m`.\n");
-  fprintf(stderr, "kycg downloads here and nowhere else, and never asks anything\n");
-  fprintf(stderr, "when stdin is not a terminal.\n");
-  fprintf(stderr, "\n");
+    fprintf(o, "%s%s%s ", KYCG_H_KEY, r->platform, KYCG_H_OFF);
+  fprintf(o, "\n\n");
+
+  fprintf(o, "%sOptions%s\n", KYCG_H_TITLE, KYCG_H_OFF);
+  struct { const char *f, *d; } opt[] = {
+    {"-d DIR", "store directory [$KYCG_DATA_DIR, else ~/.cache/kycg]"},
+    {"-o SETS", "subset by set name; same as the :SETS suffix"},
+    {"-l", "show the catalogue instead of downloading"},
+    {"-n", "dry run: show the plan, download nothing"},
+    {"-y", "assume yes; do not ask to confirm"},
+    {"-f", "re-download even if present and verified"},
+    {"-t TAG", "InfiniumAnnotation tag, arrays only"},
+    {"-h", "this help"},
+  };
+  for (size_t i = 0; i < sizeof(opt)/sizeof(opt[0]); ++i)
+    fprintf(o, "    %s%-8s%s %s\n", KYCG_H_KEY, opt[i].f, KYCG_H_OFF, opt[i].d);
+  fprintf(o, "\n");
+
+  fprintf(o, "    %sThe reference row list -- a genome's .cr, a platform's probe%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %sordering -- always comes too; it is what gives a row its identity.%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %sNothing is downloaded outside this command, and nothing is asked%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %swhen stdin is not a terminal.%s\n\n", KYCG_H_NOTE, KYCG_H_OFF);
   return 1;
 }
-
-/* ------------------------------------------------------------------ driver */
 
 int main_fetch(int argc, char *argv[]) {
   fetch_conf_t conf = {0};

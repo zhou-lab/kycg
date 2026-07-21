@@ -21,7 +21,19 @@
 #ifndef _KYCG_H
 #define _KYCG_H
 
+#include "ui.h"
+
 #define KYCG_VERSION "0.1.0"
+
+/*
+ * Shared styling for help text. Each expands to an empty string off a TTY (see
+ * ui.c), so a redirected --help is byte-identical to plain text.
+ */
+#define KYCG_H_TITLE kycg_ui_bold()
+#define KYCG_H_KEY   kycg_ui_cyan()
+#define KYCG_H_NOTE  kycg_ui_dim()
+#define KYCG_H_WARN  kycg_ui_yellow()
+#define KYCG_H_OFF   kycg_ui_reset()
 
 /* Subcommand entry points, dispatched from main() on argv[1]. */
 int main_test(int argc, char *argv[]);

@@ -107,28 +107,53 @@ typedef struct {
 } mask_src_t;
 
 static int usage(void) {
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Usage: kycg test [options] -m <knowledgebase.cm> <query.cg> [...]\n");
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Test each query sample for enrichment against each record of a\n");
-  fprintf(stderr, "knowledgebase, using a one-sided hypergeometric tail test.\n");
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Options:\n");
-  fprintf(stderr, "    -m FILE   knowledgebase (.cm) to test against [required];\n");
-  fprintf(stderr, "              repeatable -- pass a whole store to test them all\n");
-  fprintf(stderr, "    -a STR    alternative: greater|less|two.sided [greater]\n");
-  fprintf(stderr, "    -G        correct FDR globally instead of within knowledgebase\n");
-  fprintf(stderr, "    -s FILE   sample names for the query\n");
-  fprintf(stderr, "    -M        load the knowledgebase into memory\n");
-  fprintf(stderr, "    -F        report full file paths instead of basenames\n");
-  fprintf(stderr, "    -H        suppress the header line\n");
-  fprintf(stderr, "    -o FILE   write to FILE instead of stdout\n");
-  fprintf(stderr, "    -h        this help\n");
-  fprintf(stderr, "\n");
-  fprintf(stderr, "The query and the knowledgebase must index the same reference row\n");
-  fprintf(stderr, "list; kycg checks that their lengths agree but cannot verify that\n");
-  fprintf(stderr, "they describe the same row space.\n");
-  fprintf(stderr, "\n");
+  FILE *o = stderr;
+  fprintf(o, "\n");
+  fprintf(o, "  %skycg test%s  %s— set enrichment of a CpG query against a "
+             "knowledgebase%s\n\n",
+          KYCG_H_TITLE, KYCG_H_OFF, KYCG_H_NOTE, KYCG_H_OFF);
+
+  fprintf(o, "%sUsage%s\n", KYCG_H_TITLE, KYCG_H_OFF);
+  fprintf(o, "    kycg test [options] -m %s<knowledgebase.cm>%s %s<query.cg>%s [...]\n\n",
+          KYCG_H_KEY, KYCG_H_OFF, KYCG_H_KEY, KYCG_H_OFF);
+  fprintf(o, "    %sOne row per (query sample, knowledgebase record): the 2x2 counts,%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %sa one-sided hypergeometric tail in log10, six effect sizes, and a%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %sfalse discovery rate corrected within knowledgebase.%s\n\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+
+  fprintf(o, "%sOptions%s\n", KYCG_H_TITLE, KYCG_H_OFF);
+  struct { const char *f, *d; } opt[] = {
+    {"-m FILE", "knowledgebase (.cm) [required]; repeatable"},
+    {"-a STR",  "alternative: greater|less|two.sided [greater]"},
+    {"-G",      "correct FDR globally instead of within knowledgebase"},
+    {"-s FILE", "sample names for the query"},
+    {"-M",      "load the knowledgebase into memory"},
+    {"-F",      "report full file paths instead of basenames"},
+    {"-H",      "suppress the header line"},
+    {"-o FILE", "write to FILE instead of stdout"},
+    {"-h",      "this help"},
+  };
+  for (size_t i = 0; i < sizeof(opt)/sizeof(opt[0]); ++i)
+    fprintf(o, "    %s%-8s%s %s\n", KYCG_H_KEY, opt[i].f, KYCG_H_OFF, opt[i].d);
+  fprintf(o, "\n");
+
+  fprintf(o, "    %sOmit -m on a terminal to pick from the store, filtered to the%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %ssets whose row count matches the query.%s\n\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+
+  fprintf(o, "    %s%s p_value and fdr underflow to 0 for strong results. Sort and%s\n",
+          KYCG_H_WARN, kycg_ui_unicode() ? "!" : "!", KYCG_H_OFF);
+  fprintf(o, "      %sthreshold on log10_p and neglog10_fdr, which stay in log space.%s\n\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+
+  fprintf(o, "    %sQuery and knowledgebase must index the same reference row list;%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %skycg checks their lengths agree but cannot verify they describe%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %sthe same row space.%s\n\n", KYCG_H_NOTE, KYCG_H_OFF);
   return 1;
 }
 
@@ -137,7 +162,7 @@ static int usage(void) {
  *
  * Only the first record is touched. A knowledgebase's records all index the
  * same row list by construction, so one is enough to identify the row space,
- * and the cost is proportional to that record rather than to the file — a
+ * and the cost is proportional to that record rather than to the file -- a
  * 54 MB multi-record .cm is probed as cheaply as a 3 KB one.
  *
  * The count has to come from prepare_mask() rather than from the raw header:
