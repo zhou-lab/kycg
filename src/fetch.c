@@ -26,13 +26,17 @@
  *   sets were scattered across three channels with three access patterns and
  *   no verification. This command is the tie.
  *
- * THREE WAYS IN
+ * TWO WAYS IN
  *   kycg fetch hg38                 everything for a target
  *   kycg fetch hg38:CGI,ChromHMM    a named subset, no questions asked
- *   kycg fetch                      guided: location, target, sets, confirm
+ *   kycg list                       browse, check what you want, fetch it
  *
  *   The colon form exists so a pipeline can name exactly what it wants on one
- *   line. The guided form exists because nobody memorizes 33 set names.
+ *   line. The browser exists because nobody memorizes 33 set names -- and
+ *   since browsing the catalogue and choosing from it are the same activity,
+ *   `kycg list` is where both happen. `kycg fetch` with no target simply opens
+ *   it; there is no second guided flow to drift out of step with the first.
+ *   See main_list() and fetch_picked() below.
  *
  * PLAN, CONFIRM, EXECUTE
  *   Nothing downloads until a plan has been built and shown: which files, how
@@ -581,146 +585,6 @@ static int execute_plan(const plan_t *plan, tally_t *t) {
 
 /* ----------------------------------------------------------- the guided run */
 
-/** Distinct set names in a plan, with a size note per set. Caller frees. */
-static size_t collect_sets(const plan_t *plan, char ***names_out,
-                           char ***notes_out) {
-  char **names = calloc(plan->n, sizeof(char *));
-  uint64_t *sz = calloc(plan->n, sizeof(uint64_t));
-  size_t *cnt = calloc(plan->n, sizeof(size_t));
-  size_t n = 0;
-  if (!names || !sz || !cnt) { free(names); free(sz); free(cnt); return 0; }
-
-  for (size_t i = 0; i < plan->n; ++i) {
-    char s[256];
-    set_name_of(plan->a[i].name, s, sizeof(s));
-
-    size_t k;
-    for (k = 0; k < n; ++k) if (strcmp(names[k], s) == 0) break;
-    if (k == n) { names[n] = strdup(s); ++n; }
-    sz[k] += plan->a[i].size;
-    cnt[k] += 1;
-  }
-
-  char **notes = calloc(n, sizeof(char *));
-  for (size_t k = 0; k < n; ++k) {
-    char buf[128], hb[24];
-    if (sz[k]) kycg_ui_human(sz[k], hb, sizeof(hb));
-    else snprintf(hb, sizeof(hb), "size n/a");
-    snprintf(buf, sizeof(buf), "%s", hb);
-    notes[k] = strdup(buf);
-  }
-
-  free(sz); free(cnt);
-  *names_out = names;
-  *notes_out = notes;
-  return n;
-}
-
-/**
- * The guided run: where, what, which sets.
- *
- * Only reachable on an interactive terminal; main_fetch() checks before
- * calling. Writes the chosen target into `target_out` and the chosen set list
- * into a malloc'd string returned through `only_out` (NULL meaning all).
- */
-static int wizard(fetch_conf_t *conf, char *target_out, size_t target_sz,
-                  char **only_out) {
-  fprintf(stderr, "\n%s%skycg fetch%s %s- guided setup%s\n",
-          kycg_ui_bold(), kycg_ui_cyan(), kycg_ui_reset(),
-          kycg_ui_dim(), kycg_ui_reset());
-
-  /* 1. Where. */
-  char *dir = kycg_ui_ask("\nWhere should knowledgebases be stored?",
-                          kycg_store_root(conf->store));
-  if (!dir) return -1;
-  conf->store = dir;   /* leaked deliberately: lives until process exit */
-
-  /* 2. What. */
-  const char *items[32];
-  const char *notes[32];
-  char notebuf[32][64];
-  size_t n = 0;
-
-  for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome && n < 32; ++r) {
-    size_t sets = 0;
-    uint64_t bytes = 0;
-    for (const kycg_zfile_t *f = r->files; f->name; ++f) {
-      size_t l = strlen(f->name);
-      if (l > 3 && strcmp(f->name + l - 3, ".cm") == 0) ++sets;
-      bytes += f->size;
-    }
-    char hb[24];
-    snprintf(notebuf[n], sizeof(notebuf[n]), "whole genome  %zu sets, %s",
-             sets, kycg_ui_human(bytes, hb, sizeof(hb)));
-    items[n] = r->genome;
-    notes[n] = notebuf[n];
-    ++n;
-  }
-  for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform && n < 32; ++r) {
-    snprintf(notebuf[n], sizeof(notebuf[n]), "array");
-    items[n] = r->platform;
-    notes[n] = notebuf[n];
-    ++n;
-  }
-
-  long pick = kycg_ui_choose("Which collection?", items, notes, n);
-  if (pick < 0) return -1;
-  snprintf(target_out, target_sz, "%s", items[pick]);
-
-  /* 3. Which sets. Requires a plan, which for arrays means the manifest. */
-  plan_t probe = {0};
-  const kycg_seq_reg_t *sr = find_seq(target_out);
-  const kycg_array_reg_t *ar = find_array(target_out);
-
-  fetch_conf_t probe_conf = *conf;
-  probe_conf.only = NULL;
-
-  int rc = sr ? build_plan_seq(sr, &probe_conf, &probe)
-              : build_plan_array(ar, &probe_conf, &probe);
-  if (rc != 0) { plan_free(&probe); return -1; }
-
-  char **snames = NULL, **snotes = NULL;
-  size_t n_sets = collect_sets(&probe, &snames, &snotes);
-  plan_free(&probe);
-
-  if (!n_sets) return -1;
-
-  int *flags = kycg_ui_multiselect("Which sets?",
-                                   (const char **)snames,
-                                   (const char **)snotes, n_sets, 1);
-  if (!flags) {
-    for (size_t i = 0; i < n_sets; ++i) { free(snames[i]); free(snotes[i]); }
-    free(snames); free(snotes);
-    return -1;
-  }
-
-  /* All selected -> no filter at all, which keeps the plan honest about
-   * files (like .idx sidecars) whose set name never appears in the menu. */
-  size_t chosen = 0;
-  for (size_t i = 0; i < n_sets; ++i) chosen += (size_t)(flags[i] != 0);
-
-  if (chosen == n_sets) {
-    *only_out = NULL;
-  } else {
-    size_t cap = 1;
-    for (size_t i = 0; i < n_sets; ++i)
-      if (flags[i]) cap += strlen(snames[i]) + 1;
-    char *only = malloc(cap);
-    only[0] = '\0';
-    for (size_t i = 0; i < n_sets; ++i) {
-      if (!flags[i]) continue;
-      if (only[0]) strcat(only, ",");
-      strcat(only, snames[i]);
-    }
-    *only_out = only;
-  }
-
-  free(flags);
-  for (size_t i = 0; i < n_sets; ++i) { free(snames[i]); free(snotes[i]); }
-  free(snames); free(snotes);
-  return 0;
-}
-
 #endif /* KYCG_HAVE_CURL */
 
 /* ------------------------------------------------------------------ usage */
@@ -730,10 +594,11 @@ static int usage(void) {
   fprintf(stderr, "Usage: kycg fetch [options] [<target>[:<sets>] ...]\n");
   fprintf(stderr, "\n");
   fprintf(stderr, "Download and verify knowledgebases into a local store.\n");
-  fprintf(stderr, "With no target on a terminal, asks where, what, and which sets.\n");
+  fprintf(stderr, "With no target on a terminal, opens the `kycg list` browser,\n");
+  fprintf(stderr, "where sets are checked with space and fetched with f.\n");
   fprintf(stderr, "\n");
   fprintf(stderr, "Examples:\n");
-  fprintf(stderr, "    kycg fetch                     guided setup\n");
+  fprintf(stderr, "    kycg fetch                     browse and pick\n");
   fprintf(stderr, "    kycg fetch hg38                every set for a target\n");
   fprintf(stderr, "    kycg fetch hg38:CGI,ChromHMM   just those sets\n");
   fprintf(stderr, "    kycg fetch -n hg38             show the plan, download nothing\n");
@@ -795,8 +660,6 @@ int main_fetch(int argc, char *argv[]) {
   curl_global_init(CURL_GLOBAL_DEFAULT);
 
   /* Collect targets, either from argv or from the guided run. */
-  char wiz_target[128];
-  char *wiz_only = NULL;
   const char *argv_targets[64];
   int n_targets = 0;
 
@@ -804,13 +667,17 @@ int main_fetch(int argc, char *argv[]) {
     for (int j = optind; j < argc && n_targets < 64; ++j)
       argv_targets[n_targets++] = argv[j];
   } else if (kycg_ui_interactive()) {
-    if (wizard(&conf, wiz_target, sizeof(wiz_target), &wiz_only) != 0) {
-      fprintf(stderr, "\nNothing to do.\n");
-      curl_global_cleanup();
-      return 1;
-    }
-    if (wiz_only) conf.only = wiz_only;
-    argv_targets[n_targets++] = wiz_target;
+    /* No target on a terminal: hand over to the browser in `kycg list`, which
+     * is the interactive fetch surface -- browse, check, fetch, one screen.
+     * Keeping a second guided flow here would be a worse copy of it. */
+    char *lav[4];
+    int lac = 0;
+    lav[lac++] = "list";
+    if (conf.store) { lav[lac++] = "-d"; lav[lac++] = (char *)conf.store; }
+    lav[lac] = NULL;
+    optind = 1;
+    curl_global_cleanup();
+    return main_list(lac, lav);
   } else {
     usage();
     fprintf(stderr,
@@ -904,7 +771,6 @@ int main_fetch(int argc, char *argv[]) {
     fprintf(stderr, ".\n");
   }
 
-  free(wiz_only);
   curl_global_cleanup();
   return (rc || t.n_fail) ? 1 : 0;
 #endif
@@ -916,8 +782,11 @@ static int list_usage(void) {
   fprintf(stderr, "\n");
   fprintf(stderr, "Usage: kycg list [options] [target ...]\n");
   fprintf(stderr, "\n");
-  fprintf(stderr, "Show available knowledgebase collections and what is cached.\n");
-  fprintf(stderr, "With a target, list the individual sets it carries.\n");
+  fprintf(stderr, "Browse knowledgebase collections and fetch from them.\n");
+  fprintf(stderr, "On a terminal this is an interactive tree: arrows move,\n");
+  fprintf(stderr, "right unfolds a target, space checks a set, f fetches the\n");
+  fprintf(stderr, "checked ones, q quits. Redirect stdout for plain TSV.\n");
+  fprintf(stderr, "With a target named, lists the individual sets it carries.\n");
   fprintf(stderr, "\n");
   fprintf(stderr, "Options:\n");
   fprintf(stderr, "    -d DIR    store directory [$KYCG_DATA_DIR, else ~/.cache/kycg]\n");
@@ -933,15 +802,20 @@ static int list_usage(void) {
  * caller wants data, and turning that into a full-screen widget would break
  * every script that pipes this into cut or awk.
  */
-typedef struct { char **a; size_t n, m; } rows_t;
+typedef struct { char **a; unsigned char *st; size_t n, m; } rows_t;
 
-static void rows_push(rows_t *r, const char *fmt, ...) {
+static void rows_push(rows_t *r, unsigned char style, const char *fmt, ...) {
   if (r->n == r->m) {
     size_t want = r->m ? r->m * 2 : 64;
     char **v = realloc(r->a, want * sizeof(char *));
     if (!v) return;
-    r->a = v; r->m = want;
+    r->a = v;
+    unsigned char *sv = realloc(r->st, want);
+    if (!sv) return;
+    r->st = sv;
+    r->m = want;
   }
+  r->st[r->n] = style;
   char buf[2048];
   va_list ap;
   va_start(ap, fmt);
@@ -953,6 +827,7 @@ static void rows_push(rows_t *r, const char *fmt, ...) {
 static void rows_free(rows_t *r) {
   for (size_t i = 0; i < r->n; ++i) free(r->a[i]);
   free(r->a);
+  free(r->st);
   memset(r, 0, sizeof(*r));
 }
 
@@ -961,7 +836,7 @@ static void rows_free(rows_t *r) {
 static void rows_emit(rows_t *r, const char *comment, const char *header) {
   if (isatty(STDOUT_FILENO) &&
       kycg_ui_browse(comment ? comment : "kycg list", header,
-                     (const char **)r->a, r->n) == 0) {
+                     (const char **)r->a, r->st, r->n) == 0) {
     rows_free(r);
     return;
   }
@@ -971,11 +846,66 @@ static void rows_emit(rows_t *r, const char *comment, const char *header) {
   rows_free(r);
 }
 
+/*
+ * `kycg list` is also the fetch picker, so its expand and accept callbacks
+ * share one context: the store root they read, and the selection they build.
+ */
+typedef struct {
+  char **target;   /* parallel arrays, one entry per checked set */
+  char **file;
+  size_t n, m;
+} picks_t;
+
+typedef struct {
+  const char *root;
+  picks_t picks;
+} listctx_t;
+
+static void picks_add(picks_t *p, const char *target, const char *file) {
+  if (p->n == p->m) {
+    size_t want = p->m ? p->m * 2 : 32;
+    char **t = realloc(p->target, want * sizeof(char *));
+    char **f = realloc(p->file, want * sizeof(char *));
+    if (!t || !f) { free(t); free(f); return; }
+    p->target = t; p->file = f; p->m = want;
+  }
+  p->target[p->n] = strdup(target);
+  p->file[p->n] = strdup(file);
+  ++p->n;
+}
+
+static void picks_free(picks_t *p) {
+  for (size_t i = 0; i < p->n; ++i) { free(p->target[i]); free(p->file[i]); }
+  free(p->target); free(p->file);
+  memset(p, 0, sizeof(*p));
+}
+
+/** Records one checked row; the target is the first field of its parent. */
+static void on_pick(void *ctx, const char *root, const char *key) {
+  listctx_t *lc = ctx;
+  char target[128];
+  const char *tab = strchr(root, '\t');
+  size_t len = tab ? (size_t)(tab - root) : strlen(root);
+  if (len >= sizeof(target)) len = sizeof(target) - 1;
+  memcpy(target, root, len);
+  target[len] = '\0';
+  picks_add(&lc->picks, target, key);
+}
+
 /* Append one preformatted child line to an expansion. */
-static void kid_push(kycg_ui_kids_t *k, const char *fmt, ...) {
+static void kid_push(kycg_ui_kids_t *k, unsigned char style, const char *key,
+                     const char *fmt, ...) {
   char **v = realloc(k->rows, (k->n + 1) * sizeof(char *));
   if (!v) return;
   k->rows = v;
+  char **kv = realloc(k->keys, (k->n + 1) * sizeof(char *));
+  if (!kv) return;
+  k->keys = kv;
+  k->keys[k->n] = key ? strdup(key) : NULL;
+  unsigned char *sv = realloc(k->styles, k->n + 1);
+  if (!sv) return;
+  k->styles = sv;
+  k->styles[k->n] = style;
 
   char buf[1024];
   va_list ap;
@@ -999,7 +929,7 @@ static void kid_push(kycg_ui_kids_t *k, const char *fmt, ...) {
  * add a set without a kycg rebuild, so the set list only exists once fetched.
  */
 static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
-  const char *root = ctx;
+  const char *root = ((listctx_t *)ctx)->root;
 
   char target[128];
   const char *tab = strchr(row, '\t');
@@ -1020,9 +950,11 @@ static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
       char setn[256], path[4400], hb[24];
       set_name_of(fl->name, setn, sizeof(setn));
       snprintf(path, sizeof(path), "%s/%s", dir, fl->name);
-      kid_push(out, "%-22.22s %-32.32s %9s  %s", setn, fl->name,
+      int have = kycg_store_is_file(path);
+      kid_push(out, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING, fl->name,
+               "%-22.22s %-32.32s %9s  %s", setn, fl->name,
                kycg_ui_human(fl->size, hb, sizeof(hb)),
-               kycg_store_is_file(path) ? "cached" : "-");
+               have ? "cached" : "-");
     }
     return;
   }
@@ -1034,7 +966,8 @@ static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
 
     FILE *fp = fopen(sums, "rb");
     if (!fp) {
-      kid_push(out, "not fetched yet - run: kycg fetch %s", ar->platform);
+      kid_push(out, KYCG_ROW_MISSING, NULL,
+               "not fetched yet - run: kycg fetch %s", ar->platform);
       return;
     }
     char line[1024];
@@ -1048,11 +981,113 @@ static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
       char setn[256], path[4400];
       set_name_of(nm, setn, sizeof(setn));
       snprintf(path, sizeof(path), "%s/%s", dir, nm);
-      kid_push(out, "%-22.22s %-32.32s %9s  %s", setn, nm, "",
-               kycg_store_is_file(path) ? "cached" : "-");
+      int have = kycg_store_is_file(path);
+      kid_push(out, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING, nm,
+               "%-22.22s %-32.32s %9s  %s", setn, nm, "",
+               have ? "cached" : "-");
     }
     fclose(fp);
   }
+}
+
+/**
+ * Fetch what the picker checked: one plan per target, confirmed once.
+ *
+ * The selection arrives as (target, file name) pairs, which is turned back
+ * into the same comma-separated subset string the -o flag takes, so this path
+ * and `kycg fetch hg38:CGI` build their plans through identical code. Index
+ * sidecars are added alongside their .cm, since a set's index is part of the
+ * set and picking one row should not leave half of it behind.
+ */
+static int fetch_picked(const picks_t *picks, const char *store) {
+#ifndef KYCG_HAVE_CURL
+  (void)picks; (void)store;
+  fprintf(stderr,
+          "kycg: this build has no network support (compiled without "
+          "libcurl), so the selection cannot be fetched.\n");
+  return 1;
+#else
+  curl_global_init(CURL_GLOBAL_DEFAULT);
+
+  tally_t t = {0};
+  int rc = 0;
+  char **done = calloc(picks->n, sizeof(char *));
+  size_t n_done = 0;
+
+  for (size_t i = 0; i < picks->n; ++i) {
+    /* One plan per distinct target. */
+    int seen = 0;
+    for (size_t d = 0; d < n_done; ++d)
+      if (strcmp(done[d], picks->target[i]) == 0) { seen = 1; break; }
+    if (seen) continue;
+    done[n_done++] = picks->target[i];
+
+    size_t cap = 1;
+    for (size_t j = 0; j < picks->n; ++j)
+      if (strcmp(picks->target[j], picks->target[i]) == 0)
+        cap += strlen(picks->file[j]) * 2 + 12;
+
+    char *only = malloc(cap);
+    if (!only) { rc = 1; break; }
+    only[0] = '\0';
+    for (size_t j = 0; j < picks->n; ++j) {
+      if (strcmp(picks->target[j], picks->target[i]) != 0) continue;
+      if (only[0]) strcat(only, ",");
+      strcat(only, picks->file[j]);
+      strcat(only, ",");
+      strcat(only, picks->file[j]);
+      strcat(only, ".idx");
+    }
+
+    fetch_conf_t conf = {0};
+    conf.tag = KYCG_IA_TAG;
+    conf.store = store;
+    conf.only = only;
+
+    const kycg_seq_reg_t   *sr = find_seq(picks->target[i]);
+    const kycg_array_reg_t *ar = find_array(picks->target[i]);
+
+    plan_t plan = {0};
+    int prc = sr ? build_plan_seq(sr, &conf, &plan)
+                 : (ar ? build_plan_array(ar, &conf, &plan) : -1);
+    free(only);
+    if (prc != 0 || !plan.n) { plan_free(&plan); rc = 1; continue; }
+
+    plan_check_present(&plan, 0);
+    plan_show(&plan);
+
+    size_t n_todo = 0;
+    for (size_t k = 0; k < plan.n; ++k) if (!plan.a[k].have) ++n_todo;
+    if (!n_todo) { t.n_skip += plan.n; plan_free(&plan); continue; }
+
+    if (kycg_ui_interactive() && !kycg_ui_confirm("Proceed?", 1)) {
+      fprintf(stderr, "Cancelled.\n");
+      plan_free(&plan);
+      continue;
+    }
+    fputc('\n', stderr);
+
+    if (execute_plan(&plan, &t) != 0) rc = 1;
+    plan_free(&plan);
+  }
+
+  free(done);
+
+  if (t.n_got || t.n_skip || t.n_fail) {
+    char hb[24];
+    fprintf(stderr, "\n%s%s%s %" PRIu64 " fetched (%s)",
+            kycg_ui_green(), kycg_ui_check(), kycg_ui_reset(),
+            t.n_got, kycg_ui_human(t.bytes_got, hb, sizeof(hb)));
+    if (t.n_skip) fprintf(stderr, ", %" PRIu64 " already current", t.n_skip);
+    if (t.n_fail)
+      fprintf(stderr, ", %s%" PRIu64 " FAILED%s",
+              kycg_ui_red(), t.n_fail, kycg_ui_reset());
+    fprintf(stderr, ".\n");
+  }
+
+  curl_global_cleanup();
+  return (rc || t.n_fail) ? 1 : 0;
+#endif
 }
 
 static uint64_t count_cached(const char *dir) {
@@ -1110,9 +1145,11 @@ int main_list(int argc, char *argv[]) {
           char setn[256], path[4400], hb[24];
           set_name_of(f->name, setn, sizeof(setn));
           snprintf(path, sizeof(path), "%s/%s", dir, f->name);
-          rows_push(&rows, "%s\t%s\t%s\t%s", setn, f->name,
+          int have = kycg_store_is_file(path);
+          rows_push(&rows, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
+                    "%s\t%s\t%s\t%s", setn, f->name,
                     kycg_ui_human(f->size, hb, sizeof(hb)),
-                    kycg_store_is_file(path) ? "yes" : "no");
+                    have ? "yes" : "no");
         }
         rows_emit(&rows, title, "set\tfile\tsize\tcached");
       } else if (ar) {
@@ -1141,8 +1178,9 @@ int main_list(int argc, char *argv[]) {
           char setn[256], path[4400];
           set_name_of(nm, setn, sizeof(setn));
           snprintf(path, sizeof(path), "%s/%s", dir, nm);
-          rows_push(&rows, "%s\t%s\t%s", setn, nm,
-                    kycg_store_is_file(path) ? "yes" : "no");
+          int have = kycg_store_is_file(path);
+          rows_push(&rows, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
+                    "%s\t%s\t%s", setn, nm, have ? "yes" : "no");
         }
         fclose(fp);
         rows_emit(&rows, title, "set\tfile\tcached");
@@ -1171,29 +1209,48 @@ int main_list(int argc, char *argv[]) {
       snprintf(path, sizeof(path), "%s/%s", dir, f->name);
       if (kycg_store_is_file(path)) ++have;
     }
-    rows_push(&rows, "%s\twhole genome\tzenodo:%s\t%" PRIu64 "/%" PRIu64,
+    /* Green means "something here is usable", dim means "nothing yet". How
+     * much is in the count. Distinguishing complete from partial by colour
+     * would read as a different meaning on the array rows below, where the
+     * total is unknowable by design -- anchoring on SHA256SUMS is what keeps
+     * the file list out of the binary -- so the rule stays the same for both. */
+    rows_push(&rows, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
+              "%s\twhole genome\tzenodo:%s\t%" PRIu64 "/%" PRIu64,
               r->genome, r->record, have, avail);
   }
 
   for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform; ++r) {
     char dir[4096];
     snprintf(dir, sizeof(dir), "%s/%s/KYCG", root, r->platform);
-    rows_push(&rows, "%s\tarray\tInfiniumAnnotation@%s\t%" PRIu64,
-              r->platform, KYCG_IA_TAG, count_cached(dir));
+    uint64_t nc = count_cached(dir);
+    rows_push(&rows, nc ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
+              "%s\tarray\tInfiniumAnnotation@%s\t%" PRIu64,
+              r->platform, KYCG_IA_TAG, nc);
   }
 
   char title[4200];
   snprintf(title, sizeof(title), "store: %s", root);
 
-  /* On a terminal the overview unfolds: the cached_sets column says how many
-   * a target holds, and the obvious next question is which ones. Answering it
-   * in place beats making the user re-run with the target named. */
-  if (isatty(STDOUT_FILENO) &&
-      kycg_ui_tree(title, "target\tkind\tsource\tcached_sets",
-                   (const char **)rows.a, rows.n,
-                   expand_target, (void *)ctx_root) == 0) {
-    rows_free(&rows);
-    return 0;
+  /* On a terminal the overview unfolds and doubles as the fetch picker: the
+   * cached_sets column says how many a target holds, the obvious next question
+   * is which ones, and the one after that is "get me those". Answering all
+   * three in one screen beats re-running with a target named and a -o list
+   * typed from memory. */
+  if (isatty(STDOUT_FILENO)) {
+    listctx_t lc = {0};
+    lc.root = ctx_root;
+
+    int rc = kycg_ui_tree(title, "target\tkind\tsource\tcached_sets",
+                          (const char **)rows.a, rows.st, rows.n,
+                          expand_target, on_pick, &lc);
+
+    if (rc >= 0) {          /* the widget ran; plain output is not wanted */
+      rows_free(&rows);
+      int frc = (rc == 1 && lc.picks.n) ? fetch_picked(&lc.picks, store) : 0;
+      picks_free(&lc.picks);
+      return frc;
+    }
+    picks_free(&lc.picks);  /* -1: terminal cannot host it, print plainly */
   }
 
   rows_emit(&rows, title, "target\tkind\tsource\tcached_sets");

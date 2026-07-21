@@ -46,15 +46,30 @@ Dependencies are YAME's: vendored htslib, zlib, libm, pthreads. Nothing else.
 ### `kycg fetch` — build the knowledgebase store
 
 ```bash
-kycg fetch                    # guided: location, collection, sets, confirm
+kycg list                     # browse, check what you want, fetch it
 kycg fetch mm10               # every set for a target
 kycg fetch hg38:CGI,ChromHMM  # just those sets
-kycg list                     # what exists, what is cached
 kycg list hg38                # the individual sets (works offline)
 ```
 
-Nothing downloads until a plan has been shown — which files, how large, where
-they land, and what is already present — followed by a `Proceed?` confirmation.
+`kycg list` is the interactive surface: browsing the catalogue and choosing
+from it are the same activity, so they happen on one screen. `→` unfolds a
+target, `space` checks a set, `f` fetches everything checked. Sets already in
+the store show a green ✓ and cannot be checked — there is nothing to ask for.
+`kycg fetch` with no target simply opens it.
+
+```
+    target    kind          source                 cached_sets
+❯ ▾ hg38      whole genome  zenodo:18175838        4/33
+   ├ [x] ABCompartment   ABCompartment.20220911.cm   9.5 KB  -
+   ├  ✓  Blacklist       Blacklist.20220304.cm       3.1 KB  cached
+   ├ [ ] CTCFbind        CTCFbind.20220911.cm        159 KB  -
+  row 4 of 42  •  1 selected  •  → open  ← close  space select  f fetch  q quit
+```
+
+Either way, nothing downloads until a plan has been shown — which files, how
+large, where they land, and what is already present — followed by a `Proceed?`
+confirmation.
 
 **Every prompt is gated on an interactive terminal.** DESIGN.md's original rule
 was "never prompt", because a prompt hangs a Nextflow job or a Docker build with

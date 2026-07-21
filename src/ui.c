@@ -820,6 +820,17 @@ int *kycg_ui_multiselect(const char *title, const char **items,
   }
 }
 
+/* Colour for a row's style. Applied around already-measured text, so it can
+ * never disturb the column arithmetic. */
+static const char *style_color(const unsigned char *styles, size_t i) {
+  if (!styles) return "";
+  switch (styles[i]) {
+  case KYCG_ROW_HAVE:    return kycg_ui_green();
+  case KYCG_ROW_MISSING: return kycg_ui_dim();
+  default:               return "";
+  }
+}
+
 /* ---------------------------------------------------------- the browser */
 
 /**
@@ -830,7 +841,7 @@ int *kycg_ui_multiselect(const char *title, const char **items,
  * unreadable for tabular data.
  */
 int kycg_ui_browse(const char *title, const char *header,
-                   const char **rows, size_t n) {
+                   const char **rows, const unsigned char *styles, size_t n) {
   if (!n || !kycg_ui_fancy()) return -1;
   if (raw_enter() != 0) return -1;
 
@@ -939,12 +950,13 @@ int kycg_ui_browse(const char *title, const char *header,
       char cut[1024];
       fit(buf, cols - 4, cut, sizeof(cut));
 
+      const char *col = style_color(styles, view[vi]);
       if (vi == cur)
-        frame_line(&f, "%s%s%s %s%s%s", kycg_ui_cyan(),
+        frame_line(&f, "%s%s%s %s%s%s%s", kycg_ui_cyan(),
                    kycg_ui_unicode() ? "❯" : ">", kycg_ui_reset(),
-                   kycg_ui_bold(), cut, kycg_ui_reset());
+                   kycg_ui_bold(), col, cut, kycg_ui_reset());
       else
-        frame_line(&f, "  %s", cut);
+        frame_line(&f, "  %s%s%s", col, cut, kycg_ui_reset());
     }
 
     /* Say "scroll" only when there is something off screen to scroll to. */
@@ -1008,6 +1020,7 @@ int kycg_ui_browse(const char *title, const char *header,
 
 typedef struct {
   kycg_ui_kids_t kids;
+  unsigned char *checked;   /* one per child, when the tree is a picker */
   int expanded;
   int loaded;
 } treenode_t;
@@ -1019,10 +1032,14 @@ typedef struct {
 } flatrow_t;
 
 int kycg_ui_tree(const char *title, const char *header,
-                 const char **roots, size_t n_roots,
-                 kycg_ui_expand_fn expand, void *ctx) {
+                 const char **roots, const unsigned char *root_styles,
+                 size_t n_roots, kycg_ui_expand_fn expand,
+                 kycg_ui_accept_fn accept, void *ctx) {
   if (!n_roots || !kycg_ui_fancy()) return -1;
   if (raw_enter() != 0) return -1;
+
+  const int picking = (accept != NULL);
+  int accepted = 0;
 
   /* Column widths over the root rows only; children arrive preformatted. */
   enum { MAXCOL = 8 };
@@ -1139,31 +1156,62 @@ int kycg_ui_tree(const char *title, const char *header,
         char cut[1024];
         fit(buf, cols - 6, cut, sizeof(cut));
 
-        frame_line(&f, "%s%s%s %s%s%s %s%s%s",
+        frame_line(&f, "%s%s%s %s%s%s %s%s%s%s",
                    kycg_ui_cyan(), arrow, kycg_ui_reset(),
                    kycg_ui_cyan(), fold, kycg_ui_reset(),
-                   is_cur ? kycg_ui_bold() : "", cut, kycg_ui_reset());
+                   is_cur ? kycg_ui_bold() : "",
+                   style_color(root_styles, fr->root), cut, kycg_ui_reset());
       } else {
         /* A child: preformatted, indented under its parent. */
         const treenode_t *nd = &node[fr->root];
         int last = ((size_t)fr->child + 1 == nd->kids.n);
         const char *stem = kycg_ui_unicode() ? (last ? "└" : "├") : "|";
         char cut[1024];
-        fit(nd->kids.rows[fr->child], cols - 10, cut, sizeof(cut));
-        frame_line(&f, "%s%s%s   %s%s%s %s%s%s",
+        fit(nd->kids.rows[fr->child], cols - 14, cut, sizeof(cut));
+
+        /* A row already present needs no checkbox: there is nothing to ask
+         * for, so it shows the mark it earned instead. */
+        int have = nd->kids.styles &&
+                   nd->kids.styles[fr->child] == KYCG_ROW_HAVE;
+        /* Every marker is four cells wide so the text after it lines up, and
+         * the check sits where the x would be in "[x]". */
+        const char *box = "";
+        if (picking) {
+          if (have) box = kycg_ui_unicode() ? " ✓  " : " ok ";
+          else if (nd->kids.keys && nd->checked)
+            box = nd->checked[fr->child] ? "[x] " : "[ ] ";
+          else box = "    ";
+        }
+
+        frame_line(&f, "%s%s%s  %s%s%s %s%s%s%s%s",
                    kycg_ui_cyan(), arrow, kycg_ui_reset(),
                    kycg_ui_dim(), stem, kycg_ui_reset(),
-                   is_cur ? kycg_ui_bold() : "", cut, kycg_ui_reset());
+                   is_cur ? kycg_ui_bold() : "",
+                   style_color(nd->kids.styles, (size_t)fr->child),
+                   box, cut, kycg_ui_reset());
       }
     }
 
     const char *motion = ((size_t)avail < nflat) ? "arrows scroll"
                                                  : "arrows move";
-    frame_line(&f, "%s  row %zu of %zu   %s  %s open  %s close  q quit%s",
-               kycg_ui_dim(), nflat ? cur + 1 : 0, nflat, motion,
-               kycg_ui_unicode() ? "→" : "right",
-               kycg_ui_unicode() ? "←" : "left",
-               kycg_ui_reset());
+    if (picking) {
+      size_t nsel = 0;
+      for (size_t i = 0; i < n_roots; ++i)
+        for (size_t j = 0; j < node[i].kids.n; ++j)
+          if (node[i].checked && node[i].checked[j]) ++nsel;
+      frame_line(&f, "%s  row %zu of %zu  %s  %zu selected  %s  %s open  "
+                     "%s close  space select  f fetch  q quit%s",
+                 kycg_ui_dim(), nflat ? cur + 1 : 0, nflat,
+                 kycg_ui_bullet(), nsel, kycg_ui_bullet(),
+                 kycg_ui_unicode() ? "→" : "right",
+                 kycg_ui_unicode() ? "←" : "left", kycg_ui_reset());
+    } else {
+      frame_line(&f, "%s  row %zu of %zu   %s  %s open  %s close  q quit%s",
+                 kycg_ui_dim(), nflat ? cur + 1 : 0, nflat, motion,
+                 kycg_ui_unicode() ? "→" : "right",
+                 kycg_ui_unicode() ? "←" : "left",
+                 kycg_ui_reset());
+    }
 
     frame_finish(&f);
     fflush(stderr);
@@ -1184,6 +1232,7 @@ int kycg_ui_tree(const char *title, const char *header,
       treenode_t *nd = &node[ri];
       if (!nd->loaded) {
         if (expand) expand(ctx, roots[ri], &nd->kids);
+        if (picking && nd->kids.n) nd->checked = calloc(nd->kids.n, 1);
         nd->loaded = 1;
       }
       nd->expanded = nd->kids.n ? 1 : 0;
@@ -1202,6 +1251,45 @@ int kycg_ui_tree(const char *title, const char *header,
         node[ri].expanded = 0;
       }
     }
+    else if (picking && key == K_SPACE && nflat) {
+      treenode_t *nd = &node[ri];
+      if (ci >= 0) {
+        int have = nd->kids.styles && nd->kids.styles[ci] == KYCG_ROW_HAVE;
+        if (nd->checked && nd->kids.keys && !have)
+          nd->checked[ci] = !nd->checked[ci];
+        if (cur + 1 < nflat) ++cur;
+      } else {
+        /* Space on a parent takes everything under it that is not already
+         * present, opening it first so the effect is visible. */
+        if (!nd->loaded) {
+          if (expand) expand(ctx, roots[ri], &nd->kids);
+          if (nd->kids.n) nd->checked = calloc(nd->kids.n, 1);
+          nd->loaded = 1;
+        }
+        if (nd->kids.n) nd->expanded = 1;
+        int any = 0;
+        for (size_t j = 0; j < nd->kids.n; ++j)
+          if (nd->checked && nd->checked[j]) any = 1;
+        for (size_t j = 0; j < nd->kids.n; ++j) {
+          int have = nd->kids.styles && nd->kids.styles[j] == KYCG_ROW_HAVE;
+          if (nd->checked && nd->kids.keys && !have) nd->checked[j] = !any;
+        }
+      }
+    }
+    else if (picking && key == K_CHAR && ch == 'f') {
+      size_t nsel = 0;
+      for (size_t i = 0; i < n_roots; ++i)
+        for (size_t j = 0; j < node[i].kids.n; ++j)
+          if (node[i].checked && node[i].checked[j]) ++nsel;
+      if (nsel) {
+        for (size_t i = 0; i < n_roots; ++i)
+          for (size_t j = 0; j < node[i].kids.n; ++j)
+            if (node[i].checked && node[i].checked[j] && node[i].kids.keys)
+              accept(ctx, roots[i], node[i].kids.keys[j]);
+        accepted = 1;
+        break;
+      }
+    }
     else if (key == K_DOWN) { if (cur + 1 < nflat) ++cur; }
     else if (key == K_UP)   { if (cur) --cur; }
     else if (key == K_PGDN) { cur += (size_t)avail; if (cur >= nflat) cur = nflat ? nflat-1 : 0; }
@@ -1218,11 +1306,17 @@ int kycg_ui_tree(const char *title, const char *header,
   }
 
   for (size_t i = 0; i < n_roots; ++i) {
-    for (size_t j = 0; j < node[i].kids.n; ++j) free(node[i].kids.rows[j]);
+    for (size_t j = 0; j < node[i].kids.n; ++j) {
+      free(node[i].kids.rows[j]);
+      if (node[i].kids.keys) free(node[i].kids.keys[j]);
+    }
     free(node[i].kids.rows);
+    free(node[i].kids.keys);
+    free(node[i].kids.styles);
+    free(node[i].checked);
   }
   free(node);
   free(flat);
   raw_leave();
-  return 0;
+  return accepted;
 }

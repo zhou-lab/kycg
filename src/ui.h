@@ -121,22 +121,45 @@ int *kycg_ui_multiselect(const char *title, const char **items,
                          const char **notes, size_t n, int default_all);
 
 /**
+ * Per-row emphasis.
+ *
+ * Passed alongside the rows rather than embedded in them: the widgets measure
+ * and truncate row text to fit the terminal, and escape sequences inside that
+ * text would be counted as visible cells and wreck the alignment.
+ */
+typedef enum {
+  KYCG_ROW_PLAIN = 0,
+  KYCG_ROW_HAVE,      /* present locally -- green */
+  KYCG_ROW_MISSING,   /* not present -- dimmed */
+} kycg_row_style_t;
+
+/**
  * Scrollable in-place viewer for tabular output.
  *
  * `header` is a column header held fixed above the rows; it and `rows` are
- * tab-separated and rendered into aligned columns. Returns 0 when the viewer
- * ran, -1 when the terminal cannot support it and the caller should print
- * plainly instead. Never call this when stdout is redirected: piped output
- * must stay machine-readable.
+ * tab-separated and rendered into aligned columns. `styles` may be NULL, or
+ * one kycg_row_style_t per row. Returns 0 when the viewer ran, -1 when the
+ * terminal cannot support it and the caller should print plainly instead.
+ * Never call this when stdout is redirected: piped output must stay
+ * machine-readable.
  */
 int kycg_ui_browse(const char *title, const char *header,
-                   const char **rows, size_t n);
+                   const char **rows, const unsigned char *styles, size_t n);
 
 /** Child rows of one expanded node, owned by the caller of the expand fn. */
 typedef struct {
-  char **rows;   /* preformatted lines; the tree indents but does not align */
+  char **rows;            /* preformatted lines; the tree indents, not aligns */
+  char **keys;            /* optional; opaque, handed back on accept */
+  unsigned char *styles;  /* optional, one per row */
   size_t n;
 } kycg_ui_kids_t;
+
+/**
+ * Called once per checked row when the user accepts, before the tree returns.
+ * `root` is the parent's row text, `key` the child's key from kycg_ui_kids_t.
+ */
+typedef void (*kycg_ui_accept_fn)(void *ctx, const char *root,
+                                  const char *key);
 
 /**
  * Fill `out` with the children of the node whose row is `row`. Called at most
@@ -161,8 +184,21 @@ typedef void (*kycg_ui_expand_fn)(void *ctx, const char *row,
  * Same contract as kycg_ui_browse: returns -1 when the terminal cannot support
  * it, and must not be used when stdout is redirected.
  */
+/**
+ * When `accept` is non-NULL the tree is also a picker: rows carrying a key
+ * and not already marked KYCG_ROW_HAVE get a checkbox, space toggles one,
+ * space on a parent toggles all of its children, and `f` accepts.
+ *
+ * Rows styled KYCG_ROW_HAVE are shown as already present and cannot be
+ * checked — there is nothing to ask for.
+ *
+ * Returns 1 if the user accepted a non-empty selection (every checked row
+ * having been passed to `accept`), 0 if they quit, -1 if the terminal cannot
+ * support the widget.
+ */
 int kycg_ui_tree(const char *title, const char *header,
-                 const char **roots, size_t n_roots,
-                 kycg_ui_expand_fn expand, void *ctx);
+                 const char **roots, const unsigned char *root_styles,
+                 size_t n_roots, kycg_ui_expand_fn expand,
+                 kycg_ui_accept_fn accept, void *ctx);
 
 #endif /* _KYCG_UI_H */
