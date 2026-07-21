@@ -206,6 +206,11 @@ Omitting `-m` on a terminal opens the same browser `fetch` and `test` use,
 listing the array platforms: check what you want, `f` to fetch anything
 missing, `a` to annotate. Off a terminal it stays an error rather than a wait.
 
+Naming a set that exists but is not downloaded opens that browser too, with the
+set already checked — `f` to fetch it, `q` to carry on. A name that matches
+nothing is a typo and stays an error. Both `annotate` and `test` behave this
+way, and both refuse rather than prompt off a terminal.
+
 ```
     -m SPEC   path or platform[:sets]; repeatable [required]
     -p PLAT   platform, when -m is a plain path

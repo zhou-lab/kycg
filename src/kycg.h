@@ -125,7 +125,19 @@ typedef struct {
  */
 size_t kycg_pick_sets(const kycg_pick_target_t *targets, size_t n_targets,
                       const char *title, char verb_key, const char *verb,
+                      const char *open_target, const char *preselect,
                       char ***out);
+
+/**
+ * Resolve a spec, offering to fetch what it names but the store lacks.
+ *
+ * A name matching nothing is a typo and stays an error; a name matching
+ * something published but not downloaded opens the catalogue with those sets
+ * already checked, since the fetcher is right there. Off a terminal both are
+ * errors. Returns paths (free with kycg_free_specs), or 0 with the reason
+ * already reported.
+ */
+size_t kycg_resolve_or_offer(const char *spec, const char *verb, char ***out);
 
 int main_test(int argc, char *argv[]);
 int main_info(int argc, char *argv[]);

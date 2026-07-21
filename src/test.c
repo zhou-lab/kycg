@@ -325,26 +325,11 @@ int main_test(int argc, char *argv[]) {
        * does, and resolves against the store. An existing file is taken
        * literally, so plain paths are unaffected. */
       char **paths = NULL;
-      char *missing = NULL;
-      size_t n = kycg_resolve_spec_ex(optarg, NULL, &paths, &missing);
-      if (missing) {
-        /* Testing against fewer knowledgebases than were named changes every
-         * FDR in the table, and the output gives no sign it happened. */
-        char tgt[128];
-        const char *cn = strchr(optarg, ':');
-        size_t tl = cn ? (size_t)(cn - optarg) : strlen(optarg);
-        if (tl >= sizeof(tgt)) tl = sizeof(tgt) - 1;
-        memcpy(tgt, optarg, tl);
-        tgt[tl] = '\0';
-        wzfatal("No set named '%s' in '%s'. Fetch it with: "
-                "kycg fetch -f %s:%s\n", missing, tgt, tgt, missing);
-      }
-      if (!n) {
-        usage();
-        wzfatal("No knowledgebase matches '%s'.\n"
-                "Give a path, or a target like mm10:CGI -- and fetch it first "
-                "if it is not in the store.\n", optarg);
-      }
+      size_t n = kycg_resolve_or_offer(optarg, "test", &paths);
+      /* resolve_or_offer has already said what went wrong and, on a terminal,
+       * already offered to fix it. Repeating that with a usage dump would
+       * bury the one line that matters. */
+      if (!n) return 1;
       mask_names = realloc(mask_names, (n_masks + n) * sizeof(char *));
       if (!mask_names) wzfatal("[%s:%d] Cannot allocate.\n", __func__, __LINE__);
       for (size_t i = 0; i < n; ++i) mask_names[n_masks++] = paths[i];
@@ -418,7 +403,7 @@ int main_test(int argc, char *argv[]) {
              commify(qrows, qb, sizeof(qb)));
 
     char **chosen = NULL;
-    size_t n_chosen = kycg_pick_sets(tg, n_tg, title, 't', "test", &chosen);
+    size_t n_chosen = kycg_pick_sets(tg, n_tg, title, 't', "test", NULL, NULL, &chosen);
     if (n_chosen == (size_t)-1 || !n_chosen) {
       kycg_free_specs(chosen, n_chosen == (size_t)-1 ? 0 : n_chosen);
       wzfatal("No knowledgebase selected.\n");

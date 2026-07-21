@@ -2012,6 +2012,7 @@ void kycg_kb_detail(void *ctx, const char *root, const char *child_key,
  */
 typedef struct {
   const char *root;        /* store root */
+  const char *preselect;   /* comma-separated set names to arrive checked */
 
   char        **rows;      /* root row text, tab-separated */
   unsigned char *styles;
@@ -2138,14 +2139,26 @@ static void pk_free(pickctx_t *p) {
  * user quit without choosing, and (size_t)-1 when the terminal cannot host
  * the browser at all.
  */
+static int pk_preselect(void *ctx, const char *root, const char *key) {
+  (void)root;
+  pickctx_t *p = ctx;
+  /* This picker keys children "target:file" so the caller can resolve them
+   * later; passes_filter wants the bare filename. */
+  const char *file = key ? strchr(key, ':') : NULL;
+  file = file ? file + 1 : key;
+  return passes_filter(file, p->preselect) ? 1 : 0;
+}
+
 size_t kycg_pick_sets(const kycg_pick_target_t *targets, size_t n_targets,
                       const char *title, char verb_key, const char *verb,
+                      const char *open_target, const char *preselect,
                       char ***out) {
   *out = NULL;
   if (!n_targets) return 0;
 
   pickctx_t pc = {0};
   pc.root = kycg_store_root(NULL);
+  pc.preselect = preselect;
   for (size_t i = 0; i < n_targets; ++i)
     pk_add_target(&pc, targets[i].name, targets[i].kind, targets[i].rows);
 
@@ -2177,6 +2190,12 @@ size_t kycg_pick_sets(const kycg_pick_target_t *targets, size_t n_targets,
   spec.detail_verb = "info";
   spec.detail = kycg_kb_detail;
   spec.ctx = &pc;
+  /* Open on the collection the caller cares about, with the sets it is
+   * waiting for already checked, so the only thing left to do is press f. */
+  if (open_target && *open_target) {
+    spec.open_root = open_target;
+    if (preselect && *preselect) spec.preselect = pk_preselect;
+  }
 
   int rc = kycg_ui_tree(&spec);
   if (rc < 0) { pk_free(&pc); return (size_t)-1; }
@@ -2189,6 +2208,136 @@ size_t kycg_pick_sets(const kycg_pick_target_t *targets, size_t n_targets,
   pc.n_chosen = 0;
   pk_free(&pc);
   return n;
+}
+
+
+/**
+ * Resolve a spec, offering to fetch anything it names that exists upstream but
+ * is not here yet.
+ *
+ * A name that matches nothing and a name that matches something not yet
+ * downloaded are different mistakes and deserve different answers. The first
+ * is a typo and can only be an error. The second is the normal way of
+ * discovering you need a set -- and the store, the catalogue and the fetcher
+ * are all right here, so making the user quit, run `kycg fetch`, and retype
+ * their command is a worse answer than opening the browser on exactly those
+ * sets with them already checked.
+ *
+ * Off a terminal this stays an error: nothing may block where nobody can
+ * answer. `verb` names the calling command for the messages.
+ *
+ * Returns the number of paths (0 on failure, with the reason already printed).
+ */
+size_t kycg_resolve_or_offer(const char *spec, const char *verb, char ***out) {
+  *out = NULL;
+
+  char *missing = NULL;
+  size_t np = kycg_resolve_spec_ex(spec, NULL, out, &missing);
+  if (!missing) return np;
+
+  /* Split the spec so the catalogue can be consulted for the target. */
+  char target[128];
+  const char *colon = strchr(spec, ':');
+  size_t tl = colon ? (size_t)(colon - spec) : strlen(spec);
+  if (tl >= sizeof(target)) tl = sizeof(target) - 1;
+  memcpy(target, spec, tl);
+  target[tl] = '\0';
+
+  size_t n_cat = 0;
+  kycg_catalogue_t *cat = kycg_catalogue(target, NULL, &n_cat);
+
+  /* Sort the missing names into "published upstream" and "no such set". */
+  char publishable[1024] = {0}, unknown[1024] = {0};
+  size_t pn = 0, un = 0;
+  for (const char *p = missing; *p; ) {
+    const char *comma = strchr(p, ',');
+    size_t len = comma ? (size_t)(comma - p) : strlen(p);
+    char tok[256];
+    size_t k = len < sizeof(tok) - 1 ? len : sizeof(tok) - 1;
+    memcpy(tok, p, k); tok[k] = '\0';
+
+    int published = 0;
+    for (size_t i = 0; i < n_cat && !published; ++i)
+      if (passes_filter(cat[i].name, tok)) published = 1;
+
+    char *dst = published ? publishable : unknown;
+    size_t *dn = published ? &pn : &un;
+    size_t cap = 1024;
+    if (*dn + k + 2 < cap) {
+      if (*dn) dst[(*dn)++] = ',';
+      memcpy(dst + *dn, tok, k);
+      *dn += k;
+      dst[*dn] = '\0';
+    }
+
+    if (!comma) break;
+    p = comma + 1;
+  }
+  kycg_catalogue_free(cat, n_cat);
+  free(missing);
+
+  /* A name nothing publishes can only be a typo. */
+  if (un) {
+    fprintf(stderr, "kycg %s: no set named '%s' in '%s'.\n", verb, unknown, target);
+    if (pn)
+      fprintf(stderr, "  ('%s' does exist there but is not downloaded.)\n", publishable);
+    kycg_free_specs(*out, np);
+    *out = NULL;
+    return 0;
+  }
+
+  if (!kycg_ui_interactive()) {
+    fprintf(stderr,
+            "kycg %s: '%s' is published for %s but not in the store.\n"
+            "  fetch it with:  kycg fetch -f %s:%s\n",
+            verb, publishable, target, target, publishable);
+    kycg_free_specs(*out, np);
+    *out = NULL;
+    return 0;
+  }
+
+  fprintf(stderr,
+          "kycg %s: '%s' is not in the store yet. Opening the catalogue with "
+          "it checked -- press f to fetch, then q to carry on.\n",
+          verb, publishable);
+
+  kycg_pick_target_t tg;
+  tg.name = target;
+  tg.kind = "";
+  tg.rows = 0;
+  for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome; ++r)
+    if (strcmp(r->genome, target) == 0) { tg.kind = "whole genome"; tg.rows = r->rows; }
+  for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform; ++r)
+    if (strcmp(r->platform, target) == 0) { tg.kind = "array"; tg.rows = r->rows; }
+
+  char title[256];
+  /* q, not the caller's verb: fetching clears the checkboxes, so the verb
+   * would have nothing selected and do nothing. Leaving the browser is what
+   * continues, because the spec is re-resolved either way. */
+  snprintf(title, sizeof(title),
+           "%s is not in the store -- f to fetch it, then q to carry on",
+           publishable);
+
+  char **ignored = NULL;
+  size_t nig = kycg_pick_sets(&tg, 1, title, verb[0], verb, target,
+                              publishable, &ignored);
+  kycg_free_specs(ignored, nig == (size_t)-1 ? 0 : nig);
+
+  /* Whatever they checked, what matters is whether the original spec now
+   * resolves in full. Re-resolving is also what makes a partial fetch report
+   * honestly rather than silently proceeding with less. */
+  kycg_free_specs(*out, np);
+  *out = NULL;
+  char *still = NULL;
+  np = kycg_resolve_spec_ex(spec, NULL, out, &still);
+  if (still) {
+    fprintf(stderr, "kycg %s: '%s' is still not in the store.\n", verb, still);
+    free(still);
+    kycg_free_specs(*out, np);
+    *out = NULL;
+    return 0;
+  }
+  return np;
 }
 
 /** Which rows a named target arrives with already checked. */
