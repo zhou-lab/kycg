@@ -158,7 +158,12 @@ static double stirlerr(double n) {
 
   if (n <= 15.0) {
     double nn = n + n;
-    if (nn == (double)(int)nn) return sferr_halves[(int)nn];
+    /* Bound the table index explicitly. Every caller today passes a positive
+     * n, so a negative index is unreachable -- but this is the only unchecked
+     * array index in the file, and the guard above (n <= 15.0) does not stop
+     * one on its own. R's nmath has the same shape and the same latent hole. */
+    if (nn >= 0.0 && nn <= 30.0 && nn == (double)(int)nn)
+      return sferr_halves[(int)nn];
     return lgamma(n + 1.0) - (n + 0.5) * log(n) + n - KYCG_LN_SQRT_2PI;
   }
 
@@ -396,7 +401,15 @@ void kycg_bh_log10(const double *log10p, const size_t *idx, size_t n_idx,
   if (!n_idx) return;
 
   bh_pair_t *ord = malloc(n_idx * sizeof(bh_pair_t));
-  if (!ord) return;
+  if (!ord) {
+    /* Fill what we promised rather than leaving the caller's buffer as we
+     * found it. kycg_apply_fdr pre-fills NaN so today this changes nothing,
+     * but the header documents that this function writes every index, and a
+     * caller with an uninitialized buffer would otherwise read garbage and
+     * report it as an FDR. */
+    for (size_t j = 0; j < n_idx; ++j) log10_fdr[idx[j]] = NAN;
+    return;
+  }
 
   /* Only finite p-values take part; NaN rows get NaN FDR. */
   size_t m = 0;

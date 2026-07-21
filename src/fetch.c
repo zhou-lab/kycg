@@ -75,9 +75,11 @@
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <inttypes.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <time.h>
 
 #include "kycg.h"
 #include "args.h"
@@ -556,11 +558,30 @@ static CURL *new_handle(const char *url) {
   CURL *h = curl_easy_init();
   if (!h) return NULL;
   curl_easy_setopt(h, CURLOPT_URL, url);
-  curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 1L);
   curl_easy_setopt(h, CURLOPT_FAILONERROR, 1L);
   curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
   curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT, 30L);
   curl_easy_setopt(h, CURLOPT_USERAGENT, "kycg/" KYCG_VERSION);
+
+  /* Redirects have to be followed: github.com/<repo>/raw/... legitimately
+   * lands on raw.githubusercontent.com. But they are confined to https and
+   * bounded in number.
+   *
+   * Every byte is digest-checked against a compiled-in anchor, so a downgrade
+   * could not substitute content -- what it could do is move the transfer to
+   * cleartext, exposing which knowledgebases are being fetched, and an
+   * unbounded chain is a way to waste a client's time. Every runtime URL is
+   * built from compiled-in https constants (KYCG_IA_BASE_URL,
+   * KYCG_KB_BASE_URL), so nothing legitimate ever needs another scheme. */
+  curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 1L);
+  curl_easy_setopt(h, CURLOPT_MAXREDIRS, 10L);
+#if defined(CURLOPT_REDIR_PROTOCOLS_STR) && LIBCURL_VERSION_NUM >= 0x075500
+  curl_easy_setopt(h, CURLOPT_REDIR_PROTOCOLS_STR, "https");
+#elif defined(CURLOPT_REDIR_PROTOCOLS)
+  /* Pre-7.85 spelling; the bitmask form is deprecated but is what older
+   * libcurl understands, and bioconda still builds against those. */
+  curl_easy_setopt(h, CURLOPT_REDIR_PROTOCOLS, (long)CURLPROTO_HTTPS);
+#endif
   return h;
 }
 
@@ -589,9 +610,23 @@ static int on_xfer(void *ud, curl_off_t dltotal, curl_off_t dlnow,
   return 0;
 }
 
+/*
+ * Download to `path`, which is a temporary name the caller renames on success.
+ *
+ * O_EXCL, and the caller makes the name unique per process: the temp name used
+ * to be a fixed "<file>.part", so two concurrent fetches into one store wrote
+ * the same file. The likely outcome was a digest mismatch on both sides, but
+ * there was a window where one process verified the digest, the other
+ * truncated and rewrote the file, and the first renamed the other's partial
+ * content into place as verified. Both are fetching identical bytes from the
+ * same origin so the practical risk was nil, but a temp file that cannot
+ * collide costs nothing.
+ */
 static int http_get_file(const char *url, const char *path, kycg_prog_t *pr) {
-  FILE *fp = fopen(path, "wb");
-  if (!fp) return -1;
+  int fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0644);
+  if (fd < 0) return -1;
+  FILE *fp = fdopen(fd, "wb");
+  if (!fp) { close(fd); unlink(path); return -1; }
 
   CURL *h = new_handle(url);
   if (!h) { fclose(fp); return -1; }
@@ -754,11 +789,41 @@ typedef struct {
 
 #ifdef KYCG_HAVE_CURL
 
+/*
+ * Remove temp files a previous run left behind.
+ *
+ * A failed download unlinks its own temp file, so these only appear when a
+ * process was killed outright. The name carries a pid to keep concurrent
+ * fetches apart, which means they would otherwise accumulate one per killed
+ * run instead of being overwritten. Only files older than a day are swept, so
+ * a fetch running right now in another process is never touched.
+ */
+static void sweep_stale_parts(const char *dir) {
+  DIR *d = opendir(dir);
+  if (!d) return;
+
+  time_t now = time(NULL);
+  struct dirent *e;
+  while ((e = readdir(d))) {
+    size_t l = strlen(e->d_name);
+    if (l < 6 || strcmp(e->d_name + l - 5, ".part") != 0) continue;
+
+    char p[4800];
+    snprintf(p, sizeof(p), "%s/%s", dir, e->d_name);
+    struct stat st;
+    if (stat(p, &st) == 0 && S_ISREG(st.st_mode) &&
+        now - st.st_mtime > 24 * 60 * 60)
+      unlink(p);
+  }
+  closedir(d);
+}
+
 static int execute_plan(const plan_t *plan, tally_t *t) {
   if (kycg_store_mkdir_p(plan->dir) != 0) {
     fprintf(stderr, "kycg fetch: cannot create %s\n", plan->dir);
     return -1;
   }
+  sweep_stale_parts(plan->dir);
 
   for (size_t i = 0; i < plan->n; ++i) {
     const plan_item_t *it = &plan->a[i];
@@ -768,9 +833,11 @@ static int execute_plan(const plan_t *plan, tally_t *t) {
       continue;
     }
 
-    char path[4600], part[4700];
+    char path[4600], part[4750];
     snprintf(path, sizeof(path), "%s/%s", plan->dir, it->name);
-    snprintf(part, sizeof(part), "%s.part", path);
+    /* Per-process temp name; see http_get_file. Still ends in ".part", which
+     * is what keeps it invisible to the store's ".cm" enumeration. */
+    snprintf(part, sizeof(part), "%s.%ld.part", path, (long)getpid());
 
     kycg_prog_t pr;
     kycg_prog_begin(&pr, it->name, it->size);
@@ -1341,6 +1408,15 @@ static int coll_companion_sha(const struct coll_s *c, char sha_out[65], int mode
   if (c->comp_anchor) {          /* a manifest of its own */
     snprintf(src.base, sizeof(src.base), "%s", c->comp_base);
     src.anchor = c->comp_anchor;
+    /* dir has to move with base. It did not, so coll_manifest's write-back of
+     * a re-verified copy put the *platform* manifest at the *KYCG* directory's
+     * SHA256SUMS -- self-healing, since the next run rejects it against the
+     * anchor and re-downloads, but in the meantime `shasum -c SHA256SUMS` in
+     * that directory failed for no visible reason and count_cached lost its
+     * catalogue. The companion lives one level up from KYCG/. */
+    size_t dl = strlen(src.dir);
+    if (dl > 5 && strcmp(src.dir + dl - 5, "/KYCG") == 0)
+      src.dir[dl - 5] = '\0';
   }
 
   size_t len = 0;
@@ -1572,6 +1648,7 @@ static int fetch_picked(const picks_t *picks, const char *store) {
   tally_t t = {0};
   int rc = 0;
   char **done = calloc(picks->n, sizeof(char *));
+  if (!done) return 1;
   size_t n_done = 0;
 
   for (size_t i = 0; i < picks->n; ++i) {
@@ -1916,6 +1993,7 @@ kycg_catalogue_t *kycg_catalogue(const char *target, const char *store,
   size_t n_ent = 0;
   sums_ent_t *ent = parse_sums(text, &n_ent);
   kycg_catalogue_t *v = calloc(n_ent ? n_ent : 1, sizeof(kycg_catalogue_t));
+  if (!v) { free(ent); free(text); *n = 0; return NULL; }
   size_t k = 0;
 
   for (size_t i = 0; ent && v && i < n_ent; ++i) {
