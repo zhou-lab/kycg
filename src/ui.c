@@ -294,14 +294,40 @@ static keycode_t read_key(char *out) {
     case 'F': return K_END;
     default: break;
     }
-    if (b >= '0' && b <= '9') {        /* ESC [ n ~ */
-      unsigned char t;
-      if (read(STDIN_FILENO, &t, 1) != 1) return K_NONE;
-      switch (b) {
-      case '5': return K_PGUP;
-      case '6': return K_PGDN;
-      case '1': case '7': return K_HOME;
-      case '4': case '8': return K_END;
+    if (b >= '0' && b <= '9') {        /* ESC [ params... final */
+      /* Consume the whole parameter list, up to the final byte (0x40-0x7E).
+       * Reading exactly one more byte was right for ESC [ 5 ~ but wrong for a
+       * modified key: Ctrl-Up is ESC [ 1 ; 5 A, so "5A" was left in the buffer
+       * and delivered as two stray keypresses -- the cursor jumped and a
+       * stray 'A' reached the action dispatch. */
+      unsigned char params[16];
+      size_t np = 0;
+      params[np++] = b;
+      unsigned char t = 0;
+      for (;;) {
+        if (read(STDIN_FILENO, &t, 1) != 1) return K_NONE;
+        if (t >= 0x40 && t <= 0x7E) break;          /* final byte */
+        if (np < sizeof(params)) params[np++] = t;
+      }
+
+      if (t == '~') {
+        switch (params[0]) {
+        case '5': return K_PGUP;
+        case '6': return K_PGDN;
+        case '1': case '7': return K_HOME;
+        case '4': case '8': return K_END;
+        default: return K_NONE;
+        }
+      }
+      /* A modified arrow ends in the same final byte as the plain one, so
+       * treat it as the unmodified key rather than discarding it. */
+      switch (t) {
+      case 'A': return K_UP;
+      case 'B': return K_DOWN;
+      case 'C': return K_RIGHT;
+      case 'D': return K_LEFT;
+      case 'H': return K_HOME;
+      case 'F': return K_END;
       default: return K_NONE;
       }
     }
@@ -1554,8 +1580,10 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
                      node[i].kids.styles[j] == KYCG_ROW_REQUIRED);
           if (!req && node[i].checked && node[i].kids.keys &&
               node[i].kids.keys[j])
+            /* Normalize to 0/1: checked[] is a flag, and a predicate that
+             * returned, say, 256 to mean "yes" would truncate to 0 here. */
             node[i].checked[j] = spec->recommend(ctx, roots[i],
-                                                 node[i].kids.keys[j]);
+                                                 node[i].kids.keys[j]) ? 1 : 0;
         }
       }
       else if (on_key && on_key(ctx, ch, nflat ? roots[ri] : NULL,

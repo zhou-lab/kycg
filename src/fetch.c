@@ -296,10 +296,6 @@ static uint64_t coll_size_of(const coll_t *c, const char *name) {
 
 /* --------------------------------------------------- spec -> store paths */
 
-static int cmp_path(const void *a, const void *b) {
-  return strcmp(*(char *const *)a, *(char *const *)b);
-}
-
 void kycg_free_specs(char **v, size_t n) {
   if (!v) return;
   for (size_t i = 0; i < n; ++i) free(v[i]);
@@ -1869,12 +1865,8 @@ static void lay_wrap(info_lay_t *L, const char *label, const char *text) {
 
 /** `i` in the browser: what is this set, and where did it come from. */
 int kycg_kb_show_info(const char *root, const char *child_key) {
-  char target[128], setn[256];
-  const char *tab = root ? strchr(root, '\t') : NULL;
-  size_t len = root ? (tab ? (size_t)(tab - root) : strlen(root)) : 0;
-  if (len >= sizeof(target)) len = sizeof(target) - 1;
-  if (root) memcpy(target, root, len);
-  target[len] = '\0';
+  (void)root;                 /* the set name is enough to describe a set */
+  char setn[256];
 
   /* On a set row describe the set; on a collection row describe nothing --
    * the columns already say what a collection is. */

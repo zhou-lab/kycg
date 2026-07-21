@@ -1,7 +1,8 @@
 #!/bin/sh
 # Compile data/knowledgebases.tsv into src/kbinfo.h.
 #
-#   tools/make_kbinfo.sh > src/kbinfo.h
+#   tools/make_kbinfo.sh -o src/kbinfo.h     (atomic; recommended)
+#   tools/make_kbinfo.sh > src/kbinfo.h      (truncates on failure)
 #
 # Same reasoning as the registry: the browser has to describe a set and know
 # whether it is recommended while drawing a frame, so neither can involve
@@ -12,8 +13,28 @@
 # Needs no network. Run it after editing the TSV, then rebuild.
 set -eu
 
+# With -o, write to a temp file and move it into place only on success. The
+# shell truncates the target of a `>` redirect before the script runs, so a
+# mid-run failure would leave a broken header and the previous contents
+# recoverable only from git.
+out=""
+if [ "${1:-}" = "-o" ]; then
+    out=${2:?-o needs a path}
+    shift 2
+fi
+
 cd "$(dirname "$0")/.."
 src=data/knowledgebases.tsv
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT INT TERM
+if [ -n "$out" ]; then
+    case "$out" in
+        /*) ;;                       # absolute: use as given
+        *) out="$PWD/$out" ;;        # relative: we just cd'd, so anchor it
+    esac
+    exec > "$work/out.h"
+fi
 
 if [ ! -f "$src" ]; then
     echo "make_kbinfo.sh: missing $src" >&2
@@ -64,7 +85,10 @@ with open(path) as fh:
     for line in fh:
         if line.startswith("#") or not line.strip():
             continue
-        parts = line.rstrip("\n").split("\t")
+        # rstrip("\r\n"), not just "\n": a TSV saved with CRLF would otherwise
+        # carry a trailing CR into the last field of every row, and c() escapes
+        # only backslash and quote, so it would land raw inside a C string.
+        parts = line.rstrip("\r\n").split("\t")
         if parts and parts[0] == "set":      # the header row
             continue
         while len(parts) < 8:
@@ -72,6 +96,7 @@ with open(path) as fh:
         rows.append(parts[:8])
 
 def c(s):
+    # .strip() removes an interior-field CR too, for the same reason.
     s = (s or "").strip()
     # "?" is an acknowledged gap, not an empty field. Rendering it rather than
     # dropping it is the difference between "nobody knows" and "nobody looked"
@@ -138,3 +163,9 @@ static inline int kycg_kbinfo_recommended(const char *set,
 
 #endif /* _KYCG_KBINFO_H */
 EOF
+
+if [ -n "$out" ]; then
+    exec >&2
+    mv "$work/out.h" "$out"
+    echo "make_kbinfo.sh: wrote $out"
+fi

@@ -1,6 +1,7 @@
 # kycg — functional analysis of DNA methylation at CpG resolution.
 #
-# Links against YAME's libyame.a (git submodule under external/YAME), which
+# Links against YAME's libyame.a (git submodule under external/YAME, with
+# htslib vendored inside it rather than as a submodule of its own), which
 # carries the bit-packed CpG formats and the bit-parallel `summary` counting.
 # kycg adds statistical inference on top; YAME stays a data engine.
 #
@@ -8,7 +9,13 @@
 #   git submodule update --init --recursive
 # `make` drives YAME's own `make lib` target, so no manual step is needed.
 
-CC ?= gcc
+# ?= does not work here: make predefines CC, so its origin is `default` rather
+# than `undefined` and ?= never fires. Override only that case, leaving an
+# explicit CC from the environment or the command line (which is how conda
+# builds set it) untouched.
+ifeq ($(origin CC),default)
+  CC = cc
+endif
 CFLAGS = -W -Wall -finline-functions -std=gnu99 -Wno-unused-result -O3
 CLIB = -lpthread -lz -lm
 

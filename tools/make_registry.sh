@@ -49,8 +49,60 @@ sha256_of() {
     fi
 }
 
+# python3 builds the per-genome size tables. Without it those tables come back
+# empty, registry.h still compiles, and the browser silently shows no download
+# sizes -- so check up front rather than degrading quietly.
+command -v python3 >/dev/null 2>&1 || {
+    echo "make_registry.sh: need python3" >&2
+    exit 1
+}
+command -v curl >/dev/null 2>&1 || {
+    echo "make_registry.sh: need curl" >&2
+    exit 1
+}
+
+# Anything that could not be fetched. The script must not report success with
+# NULL anchors in the output: that compiles, and the collection then simply
+# cannot be verified at run time.
+failures=0
+note_failure() {
+    failures=$((failures + 1))
+    echo "make_registry.sh: FAILED to fetch $1" >&2
+}
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT INT TERM
+
+# Fetch a URL to a temp file and print its sha256. Prints nothing and returns
+# 1 if the fetch fails.
+#
+# The digest is taken from the bytes on disk, not from $(curl ...): command
+# substitution strips every trailing newline and printf adds exactly one back,
+# so a manifest served with zero or two trailing newlines would be pinned to a
+# digest kycg never reproduces, and every fetch from that collection would fail
+# verification with no clue why.
+fetch_to() {
+    curl -sfL -o "$2" "$1" 2>/dev/null || return 1
+    [ -s "$2" ] || return 1
+    return 0
+}
+
+out=""
+if [ "${1:-}" = "-o" ]; then
+    out=${2:?-o needs a path}
+    shift 2
+fi
+
 tag=${1:-v8}
 base=${KYCG_IA_BASE_URL:-https://github.com/zhou-lab/InfiniumAnnotation/raw}
+
+# With -o, write to a temp file and move it into place only on success. The
+# documented `make_registry.sh > src/registry.h` truncates the header before
+# the script runs, so any mid-run failure leaves a broken file and the previous
+# contents recoverable only from git.
+if [ -n "$out" ]; then
+    exec > "$work/out.h"
+fi
 
 # Platforms carrying a KYCG/ directory in InfiniumAnnotation, with the size of
 # the row space each one indexes -- the number of probes in its ordering.
@@ -122,22 +174,22 @@ for entry in $platforms; do
     plat=$(echo "$entry" | cut -d: -f1)
     nrow=$(echo "$entry" | cut -d: -f2)
     url="$base/$tag/$plat/KYCG/SHA256SUMS"
-    # Fetch once: the manifest yields both the anchor and the set count.
-    body=$(curl -sfL "$url" 2>/dev/null || true)
-    # Fetch the platform manifest ONCE and hash what we actually got. Fetching
-    # twice and hashing the first result while validating the second meant a
-    # transient failure on the first request pinned sha256("") --
-    # e3b0c442...b855 -- against a non-empty second body, which compiles fine
-    # and permanently breaks verification for that platform.
-    pbody=$(curl -sfL "$base/$tag/$plat/SHA256SUMS" 2>/dev/null || true)
-    if [ -n "$pbody" ]; then
-        psha=$(printf '%s\n' "$pbody" | sha256_of)
+    # One fetch each, hashed from disk. Fetching twice and hashing the first
+    # result while validating the second meant a transient failure on the first
+    # request pinned sha256("") -- e3b0c442...b855 -- against a non-empty second
+    # body, which compiles fine and permanently breaks verification.
+    kf="$work/$plat.kycg.sums"
+    pf="$work/$plat.plat.sums"
+    if fetch_to "$url" "$kf"; then body=1; else body=""; note_failure "$url"; fi
+    if fetch_to "$base/$tag/$plat/SHA256SUMS" "$pf"; then
+        psha=$(sha256_of < "$pf")
     else
         psha=""
+        note_failure "$base/$tag/$plat/SHA256SUMS"
     fi
     if [ -n "$body" ]; then
-        sha=$(printf '%s\n' "$body" | sha256_of)
-        nset=$(printf '%s\n' "$body" | grep -c '\.cm$' || true)
+        sha=$(sha256_of < "$kf")
+        nset=$(grep -c '\.cm$' < "$kf" || true)
         if [ -n "$psha" ]; then
             printf '    { "%s", %s, %s, "%s", "%s" },\n' \
                 "$plat" "$nrow" "$nset" "$sha" "$psha"
@@ -169,8 +221,12 @@ for g in $genomes; do
     repo=$(echo "$g" | cut -d: -f2)
     gtag=$(echo "$g" | cut -d: -f3)
     printf 'static const kycg_fsize_t KYCG_SIZES_%s[] = {\n' "$genome"
-    curl -sfL "https://api.github.com/repos/zhou-lab/$repo/contents/?ref=$gtag" \
-        2>/dev/null | python3 -c '
+    lf="$work/$genome.listing.json"
+    if ! fetch_to "https://api.github.com/repos/zhou-lab/$repo/contents/?ref=$gtag" "$lf"; then
+        note_failure "listing for $repo@$gtag (sizes will be absent)"
+        : > "$lf"
+    fi
+    python3 -c '
 import sys, json
 try:
     d = json.load(sys.stdin)
@@ -184,7 +240,7 @@ for f in sorted(d, key=lambda x: x["name"]):
     if f["name"] in ("README.md", "SHA256SUMS"):
         continue
     print("    { \"%s\", %d }," % (f["name"], f["size"]))
-' || true
+' < "$lf"
     printf '    { NULL, 0 }\n};\n\n'
 done
 
@@ -217,10 +273,11 @@ for g in $genomes; do
     doi=$(echo "$g" | cut -d: -f5)
     nrow=$(echo "$g" | cut -d: -f6)
     url="https://github.com/zhou-lab/$repo/raw/$gtag/SHA256SUMS"
-    body=$(curl -sfL "$url" 2>/dev/null || true)
+    gf="$work/$genome.sums"
+    if fetch_to "$url" "$gf"; then body=1; else body=""; note_failure "$url"; fi
     if [ -n "$body" ]; then
-        sha=$(printf '%s\n' "$body" | sha256_of)
-        nset=$(printf '%s\n' "$body" | grep -c '\.cm$' || true)
+        sha=$(sha256_of < "$gf")
+        nset=$(grep -c '\.cm$' < "$gf" || true)
         printf '    { "%s", %s, %s, "%s", "%s", "%s", "%s", "%s", KYCG_SIZES_%s },\n' \
             "$genome" "$nrow" "$nset" "$repo" "$gtag" "$sha" "$record" "$doi" "$genome"
     else
@@ -235,3 +292,16 @@ cat <<'EOF'
 
 #endif /* _KYCG_REGISTRY_H */
 EOF
+
+# A registry with NULL anchors compiles perfectly and simply cannot verify the
+# collections it dropped. Refuse to look successful.
+if [ "$failures" -gt 0 ]; then
+    echo "make_registry.sh: $failures fetch(es) failed; registry NOT written" >&2
+    exit 1
+fi
+
+if [ -n "$out" ]; then
+    exec >&2
+    mv "$work/out.h" "$out"
+    echo "make_registry.sh: wrote $out"
+fi

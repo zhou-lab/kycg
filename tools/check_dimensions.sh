@@ -31,23 +31,6 @@ fi
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-fail=0
-
-check() {
-    target=$1 url=$2 want=$3
-    if ! curl -sfL "$url" -o "$tmp/probe.cm" 2>/dev/null; then
-        printf '  %-12s %-12s could not fetch probe\n' "$target" "SKIP"
-        return
-    fi
-    got=$(./kycg info "$tmp/probe.cm" 2>/dev/null | sed -n '2p' | cut -f5)
-    if [ "$got" = "$want" ]; then
-        printf '  %-12s %-12s %s\n' "$target" "OK" "$got"
-    else
-        printf '  %-12s %-12s pinned %s, actual %s\n' "$target" "MISMATCH" "$want" "$got"
-        fail=1
-    fi
-}
-
 # Parse what the registry claims, so this checks the file rather than a copy
 # of the file's contents kept in this script.
 echo "Verifying row-space dimensions in src/registry.h"

@@ -26,12 +26,15 @@ jobs:
 
   build:
     name: ${{ matrix.name }}
-    # Gate on the unit tests. Without this the two jobs run in parallel and a
-    # v* tag publishes to anaconda.org whether or not `make test` passed --
-    # which is exactly the drift the selftest job exists to catch.
+    # Gate on the unit tests. Without this the jobs run in parallel and a v*
+    # tag publishes to anaconda.org whether or not `make test` passed -- which
+    # is exactly the drift the selftest job exists to catch.
     needs: selftest
     runs-on: ${{ matrix.os }}
     strategy:
+      # Every platform is built even if one fails, so a single failure gives a
+      # complete picture rather than one error. Publishing is a separate job
+      # that requires them all, so this cannot half-release a version.
       fail-fast: false
       matrix:
         include:
@@ -45,7 +48,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive          # YAME + its nested htslib
+          # YAME. Its htslib is vendored in-tree rather than being a submodule
+          # of its own, so `recursive` is harmless but has nothing to recurse
+          # into.
+          submodules: recursive
 
       - uses: conda-incubator/setup-miniconda@v3
         with:
@@ -54,7 +60,9 @@ jobs:
           channel-priority: strict
 
       - name: Install conda-build
-        run: conda install -n base -y conda-build anaconda-client
+        # Pinned: both globs below assume .conda output, which is the current
+        # default but has changed before.
+        run: conda install -n base -y "conda-build>=24.9" anaconda-client
 
       - name: Build package
         run: conda build -c conda-forge --output-folder "$RUNNER_TEMP/bld" conda-recipe/
@@ -66,18 +74,42 @@ jobs:
           path: ${{ runner.temp }}/bld/**/*.conda
           if-no-files-found: error
 
-      - name: Publish to zhou-lab (tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
+  # Publishing is its own job so that a version is released for every platform
+  # or for none. When each matrix leg uploaded for itself, a macOS failure next
+  # to a Linux success left v0.1.0 on the channel for linux-64 only, and the
+  # re-run after a fix overwrote it with --force.
+  publish:
+    name: publish to zhou-lab
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          channels: conda-forge
+          channel-priority: strict
+
+      - name: Install anaconda-client
+        run: conda install -n base -y anaconda-client
+
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: conda-*
+          merge-multiple: true
+
+      - name: Check the tag against both versions
         run: |
-          if [ -z "${ANACONDA_TOKEN:-}" ]; then
-            echo "ANACONDA_TOKEN secret is not set; cannot publish." >&2
-            exit 1
-          fi
-          # guard: the pushed tag must match BOTH the recipe version and the
-          # version compiled into the binary. Checking only meta.yaml would let
-          # a package labelled 0.2.0 ship a kycg whose --version says 0.1.0.
+          # The tag must match BOTH the recipe version and the version compiled
+          # into the binary. Checking only meta.yaml would let a package
+          # labelled 0.2.0 ship a kycg whose --version says 0.1.0.
           version=$(sed -n 's/.*set version = "\(.*\)".*/\1/p' conda-recipe/meta.yaml)
           binver=$(sed -n 's/.*KYCG_VERSION "\(.*\)".*/\1/p' src/kycg.h)
           tag="${GITHUB_REF_NAME#v}"
@@ -89,7 +121,26 @@ jobs:
             echo "tag v$tag does not match KYCG_VERSION $binver; bump src/kycg.h" >&2
             exit 1
           fi
-          for pkg in "$RUNNER_TEMP"/bld/*/*.conda; do
+
+      - name: Upload
+        env:
+          # ANACONDA_API_TOKEN is anaconda-client's own variable. Passing the
+          # token as `-t <token>` instead put it in the runner's process table.
+          ANACONDA_API_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
+        run: |
+          if [ -z "${ANACONDA_API_TOKEN:-}" ]; then
+            echo "ANACONDA_TOKEN secret is not set; cannot publish." >&2
+            exit 1
+          fi
+          found=0
+          for pkg in dist/**/*.conda dist/*.conda; do
+            [ -f "$pkg" ] || continue
+            found=$((found + 1))
             echo "uploading $pkg"
-            conda run -n base anaconda -t "$ANACONDA_TOKEN" upload -u zhou-lab --label main --force "$pkg"
+            conda run -n base anaconda upload -u zhou-lab --label main --force "$pkg"
           done
+          if [ "$found" -eq 0 ]; then
+            echo "no .conda packages found in the downloaded artifacts" >&2
+            exit 1
+          fi
+          echo "published $found package(s)"

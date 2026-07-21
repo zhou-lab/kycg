@@ -331,8 +331,15 @@ typedef struct {
  * callback runs on the normal screen, and the tree resumes with its children
  * reloaded so the results are visible. Only `q` leaves.
  *
- * Returns 1 if the user committed at least once, 0 if they simply quit, -1 if
- * the terminal cannot support the widget and the caller should print plainly.
+ * Returns:
+ *   -1  the terminal cannot host the widget; the caller should print plainly
+ *    0  the user quit without invoking an action
+ *   >0  the 1-based index into `actions` of the action they invoked, so a
+ *       caller with several verbs can tell which one ended the session
+ *       (kycg test checks for 2 to distinguish `t test` from `f fetch`)
+ *
+ * An action with a `commit` does not end the session, so it never becomes the
+ * return value -- only an action whose commit is NULL does.
  */
 int kycg_ui_tree(const kycg_ui_tree_t *spec);
 

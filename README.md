@@ -67,14 +67,16 @@ kycg fetch                    # browse everything
 kycg fetch hg38               # open with hg38 checked; press f to start
 kycg fetch hg38:CGI,ChromHMM  # open with just those checked
 kycg fetch -f hg38            # download it, no browser, no questions
-kycg fetch | cut -f1          # TSV catalogue, for scripts
+kycg fetch | grep -v '^#'     # TSV catalogue, for scripts
 ```
 
 There is one interactive path and one scripted one. On a terminal, naming a
 target opens the catalogue with that target already checked — you see exactly
 what will be downloaded and how large it is, can narrow it in the same screen,
 and press `f` to start. `-f` skips all of that, and so does a redirected
-stdout, which is what keeps scripts working unchanged. `→` unfolds a target, `space`
+stdout, which is what keeps scripts working unchanged. The redirected form
+leads with a `# store: <path>` comment naming the store it described, so
+strip comment lines before parsing. `→` unfolds a target, `space`
 checks a set, `f` fetches everything checked, `d` points the browser at a different store. Sets already present show a green ✓ and cannot be checked —
 there is nothing to ask for. `kycg fetch` with no target simply opens it.
 
