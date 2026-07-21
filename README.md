@@ -202,6 +202,10 @@ cg99999999  0.1   NA       NA
 `-i` gives an indicator matrix instead — one 0/1 column per set, which is what
 you want feeding a model rather than reading.
 
+Omitting `-m` on a terminal opens the same browser `fetch` and `test` use,
+listing the array platforms: check what you want, `f` to fetch anything
+missing, `a` to annotate. Off a terminal it stays an error rather than a wait.
+
 ```
     -m SPEC   path or platform[:sets]; repeatable [required]
     -p PLAT   platform, when -m is a plain path

@@ -393,8 +393,42 @@ int main_annotate(int argc, char *argv[]) {
     }
   }
 
-  if (!n_specs) { usage(); wzfatal("Please supply -m.\n"); }
   if (optind >= argc) { usage(); wzfatal("Please supply an input TSV.\n"); }
+
+  /* No -m on a terminal: offer the store, exactly as `kycg test` does. Only
+   * array platforms are listed -- a probe ID has no meaning without the
+   * ordering that gives it a row, so a whole genome is not a choice that
+   * could work. Off a terminal this stays an error rather than a wait. */
+  char **picked = NULL;
+  size_t n_picked = 0;
+  if (!n_specs) {
+    if (!kycg_ui_interactive()) {
+      usage();
+      wzfatal("Please supply -m.\n");
+    }
+
+    kycg_pick_target_t tg[32];
+    size_t n_tg = 0;
+    for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY;
+         r->platform && n_tg < 32; ++r) {
+      tg[n_tg].name = r->platform;
+      tg[n_tg].kind = "array";
+      tg[n_tg].rows = r->rows;
+      ++n_tg;
+    }
+
+    n_picked = kycg_pick_sets(tg, n_tg,
+                              "Knowledgebases to annotate with -- "
+                              "space to choose, a to annotate",
+                              'a', "annotate", &picked);
+    if (n_picked == (size_t)-1) {
+      wzfatal("This terminal cannot host the browser; name a set with -m.\n");
+    }
+    if (!n_picked) wzfatal("No knowledgebase selected.\n");
+
+    for (size_t i = 0; i < n_picked && n_specs < 64; ++i)
+      specs[n_specs++] = picked[i];
+  }
 
   /* The platform comes from the spec when it names one, so `-m MSA:CGI` needs
    * nothing further. A plain path carries no platform and cannot be guessed
@@ -443,10 +477,14 @@ int main_annotate(int argc, char *argv[]) {
     char **paths = NULL;
     size_t np = kycg_resolve_spec(specs[i], NULL, &paths);
     if (!np) {
-      fprintf(stderr, "kycg annotate: '%s' matched nothing in the store.\n",
-              specs[i]);
-      ordering_free(&ord);
-      return 1;
+      /* A set the collection publishes but the store does not have. Warn and
+       * carry on rather than failing outright: the browser lists everything a
+       * platform offers, so checking one that is not downloaded yet is an
+       * easy and recoverable mistake, and the other choices are still good. */
+      fprintf(stderr,
+              "kycg annotate: '%s' is not in the store; skipping it.\n"
+              "  fetch it with:  kycg fetch -f %s\n", specs[i], specs[i]);
+      continue;
     }
     for (size_t j = 0; j < np; ++j) {
       if (n_kb == kb_cap) {
@@ -465,6 +503,14 @@ int main_annotate(int argc, char *argv[]) {
       ++n_kb;
     }
     kycg_free_specs(paths, np);
+  }
+
+  if (!n_kb) {
+    fprintf(stderr, "kycg annotate: none of the requested sets are in the "
+                    "store; nothing to annotate with.\n");
+    ordering_free(&ord);
+    kycg_free_specs(picked, n_picked);
+    return 1;
   }
 
   FILE *in = strcmp(argv[optind], "-") == 0 ? stdin : fopen(argv[optind], "r");
@@ -603,11 +649,13 @@ int main_annotate(int argc, char *argv[]) {
   for (size_t k = 0; k < n_kb; ++k) kb_free(&kbs[k]);
   free(kbs);
   ordering_free(&ord);
+  kycg_free_specs(picked, n_picked);
   return 0;
 
 fail:
   for (size_t k = 0; k < n_kb; ++k) kb_free(&kbs[k]);
   free(kbs);
   ordering_free(&ord);
+  kycg_free_specs(picked, n_picked);
   return 1;
 }

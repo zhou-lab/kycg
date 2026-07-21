@@ -86,6 +86,33 @@ void kycg_kb_detail(void *ctx, const char *root, const char *child_key,
                     int cols, kycg_ui_detail_t *out);
 
 /* Subcommand entry points, dispatched from main() on argv[1]. */
+/**
+ * A collection worth offering in the picker: its name, what kind of row space
+ * it indexes, and how many rows that is.
+ */
+typedef struct {
+  const char *name;
+  const char *kind;   /* "whole genome" or "array" */
+  uint64_t    rows;
+} kycg_pick_target_t;
+
+/**
+ * Offer these collections in the catalogue browser and return what was chosen.
+ *
+ * Shared by `kycg test` and `kycg annotate`, which differ only in which
+ * collections are worth offering: test filters by row count against its query,
+ * annotate offers the array platforms, since a probe ID has no meaning without
+ * one. `f` fetches inside the browser so a missing set can be downloaded and
+ * used in one sitting; `verb_key` ends it.
+ *
+ * Returns the count and fills *out with malloc'd "target:file" specs (free
+ * with kycg_free_specs). 0 means the user quit; (size_t)-1 means the terminal
+ * cannot host the browser.
+ */
+size_t kycg_pick_sets(const kycg_pick_target_t *targets, size_t n_targets,
+                      const char *title, char verb_key, const char *verb,
+                      char ***out);
+
 int main_test(int argc, char *argv[]);
 int main_info(int argc, char *argv[]);
 int main_fetch(int argc, char *argv[]);

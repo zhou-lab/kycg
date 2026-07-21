@@ -1920,6 +1920,207 @@ void kycg_kb_detail(void *ctx, const char *root, const char *child_key,
   lay_free(&L);
 }
 
+/* --------------------------------------------- choosing sets from the store */
+
+/*
+ * The store offered as a tree, shared by `kycg test` and `kycg annotate`.
+ *
+ * Both need the same thing -- let the user see what a collection publishes,
+ * fetch what is missing, and hand back what was chosen -- and they differ only
+ * in which collections are worth offering. So the caller supplies the target
+ * list and the verb, and everything below is common. Keeping one copy is the
+ * point: two pickers would drift, and the one that drifted would be the one
+ * used less.
+ */
+
+/**
+ * State for offering the store as a tree, the same widget `kycg fetch` uses.
+ *
+ * Roots are the collections the caller offered; children are the sets actually
+ * cached under them, which by construction share that collection's row space.
+ * So the list cannot contain a choice the caller would then have to refuse.
+ */
+typedef struct {
+  const char *root;        /* store root */
+
+  char        **rows;      /* root row text, tab-separated */
+  unsigned char *styles;
+  char        **names;     /* the target name for each root */
+  size_t        n, m;
+
+  char        **chosen;    /* paths picked, filled on accept */
+  size_t        n_chosen, m_chosen;
+} pickctx_t;
+
+static void pk_add_target(pickctx_t *p, const char *name, const char *kind,
+                            uint64_t rows) {
+  char **paths = NULL;
+  size_t n_cached = kycg_resolve_spec(name, NULL, &paths);
+  kycg_free_specs(paths, n_cached);
+
+  if (p->n == p->m) {
+    /* `p->x = realloc(p->x, ...)` loses the original on failure, and returning
+     * without updating p->m left the arrays grown but the capacity stale --
+     * the next call re-entered this branch, realloc(NULL) handed back a fresh
+     * block, every prior name leaked, and pick_free() then freed garbage.
+     * Adopt each block only once it has succeeded, and update m last. */
+    size_t want = p->m ? p->m * 2 : 16;
+    char **nr = realloc(p->rows, want * sizeof(char *));
+    if (!nr) return;
+    p->rows = nr;
+    char **nn = realloc(p->names, want * sizeof(char *));
+    if (!nn) return;
+    p->names = nn;
+    unsigned char *ns = realloc(p->styles, want);
+    if (!ns) return;
+    p->styles = ns;
+    p->m = want;
+  }
+
+  char buf[512], rb[32];
+  snprintf(buf, sizeof(buf), "%s\t%s\t%s\t%zu",
+           name, kind, commify(rows, rb, sizeof(rb)), n_cached);
+  /* Both strings must land before n advances: a NULL row reaches
+   * kycg_ui_tree(), whose strchr() on it would crash. */
+  char *row_s = strdup(buf), *name_s = strdup(name);
+  if (!row_s || !name_s) { free(row_s); free(name_s); return; }
+  p->rows[p->n] = row_s;
+  p->names[p->n] = name_s;
+  /* Dim a collection with nothing in it: it is listed so the user learns it
+   * exists and could be fetched, not because it can be tested against. */
+  p->styles[p->n] = n_cached ? KYCG_ROW_HAVE : KYCG_ROW_MISSING;
+  ++p->n;
+}
+
+static void pk_expand(void *ctx, const char *row, kycg_ui_kids_t *out) {
+  (void)ctx;
+
+  char target[128];
+  const char *tab = strchr(row, '\t');
+  size_t len = tab ? (size_t)(tab - row) : strlen(row);
+  if (len >= sizeof(target)) len = sizeof(target) - 1;
+  memcpy(target, row, len);
+  target[len] = '\0';
+
+  /* Everything the collection publishes, not just what is here: seeing what
+   * is missing is half the point, since f can fetch it and t can then test
+   * against it without leaving. */
+  size_t n = 0;
+  kycg_catalogue_t *cat = kycg_catalogue(target, NULL, &n);
+  if (!cat) {
+    kid_push(out, KYCG_ROW_MISSING, NULL,
+                   "catalogue unavailable - try: kycg fetch %s", target);
+    return;
+  }
+
+  for (size_t i = 0; i < n; ++i) {
+    char key[512], setn[256];
+    snprintf(key, sizeof(key), "%s:%s", target, cat[i].name);
+    const char *dot = strchr(cat[i].name, '.');
+    size_t l = dot ? (size_t)(dot - cat[i].name) : strlen(cat[i].name);
+    if (l >= sizeof(setn)) l = sizeof(setn) - 1;
+    memcpy(setn, cat[i].name, l);
+    setn[l] = '\0';
+    kid_push(out, cat[i].cached ? KYCG_ROW_HAVE : KYCG_ROW_MISSING, key,
+                   "%-22.22s %-32.32s %s", setn, cat[i].name,
+                   cat[i].cached ? "cached" : "-");
+  }
+  kycg_catalogue_free(cat, n);
+}
+
+static void pk_accept(void *ctx, const char *root, const char *key) {
+  (void)root;
+  pickctx_t *p = ctx;
+  if (p->n_chosen == p->m_chosen) {
+    size_t want = p->m_chosen ? p->m_chosen * 2 : 16;
+    char **v = realloc(p->chosen, want * sizeof(char *));
+    if (!v) return;
+    p->chosen = v; p->m_chosen = want;
+  }
+  p->chosen[p->n_chosen] = strdup(key);
+  if (p->chosen[p->n_chosen]) ++p->n_chosen;
+}
+
+/** f in the picker: fetch whatever is checked but not yet here, then stay. */
+static void pk_commit_fetch(void *ctx) {
+  pickctx_t *p = ctx;
+  if (p->n_chosen) kycg_fetch_specs(p->chosen, p->n_chosen, NULL);
+  for (size_t i = 0; i < p->n_chosen; ++i) free(p->chosen[i]);
+  p->n_chosen = 0;
+}
+
+static void pk_free(pickctx_t *p) {
+  for (size_t i = 0; i < p->n; ++i) { free(p->rows[i]); free(p->names[i]); }
+  free(p->rows); free(p->names); free(p->styles);
+  for (size_t i = 0; i < p->n_chosen; ++i) free(p->chosen[i]);
+  free(p->chosen);
+  memset(p, 0, sizeof(*p));
+}
+/**
+ * Offer `targets` in the browser and return what the user chose.
+ *
+ * `verb_key`/`verb` label the action that ends the session (t for test, a for
+ * annotate); `f` fetches without leaving, so a set that is missing can be
+ * downloaded and then used in one sitting.
+ *
+ * Returns the number of chosen specs and fills *out with malloc'd
+ * "target:file" strings, freeable with kycg_free_specs. Returns 0 when the
+ * user quit without choosing, and (size_t)-1 when the terminal cannot host
+ * the browser at all.
+ */
+size_t kycg_pick_sets(const kycg_pick_target_t *targets, size_t n_targets,
+                      const char *title, char verb_key, const char *verb,
+                      char ***out) {
+  *out = NULL;
+  if (!n_targets) return 0;
+
+  pickctx_t pc = {0};
+  pc.root = kycg_store_root(NULL);
+  for (size_t i = 0; i < n_targets; ++i)
+    pk_add_target(&pc, targets[i].name, targets[i].kind, targets[i].rows);
+
+  kycg_ui_tree_t spec = {0};
+  spec.title = title;
+  spec.header = "target\tkind\trows\tcached_sets";
+  spec.roots = pc.rows;
+  spec.root_styles = pc.styles;
+  spec.n_roots = pc.n;
+  spec.expand = pk_expand;
+  /* Two verbs on one screen: fetch what is missing, then act on it. f keeps
+   * the browser open (it has a commit); the caller's verb ends it and the
+   * selection is what gets used. */
+  spec.actions[0].key = 'f';
+  spec.actions[0].verb = "fetch";
+  spec.actions[0].accept = pk_accept;
+  spec.actions[0].commit = pk_commit_fetch;
+  spec.actions[1].key = verb_key;
+  spec.actions[1].verb = verb;
+  spec.actions[1].accept = pk_accept;
+  spec.actions[1].commit = NULL;
+  spec.n_actions = 2;
+  /* Cached sets are the ones worth acting on, so they stay checkable. */
+  spec.have_selectable = 1;
+  /* The same callbacks the fetch browser uses, so a set is recommended and
+   * described identically whichever tree you reached it through. */
+  spec.recommend = kycg_kb_recommended;
+  spec.detail_key = 'i';
+  spec.detail_verb = "info";
+  spec.detail = kycg_kb_detail;
+  spec.ctx = &pc;
+
+  int rc = kycg_ui_tree(&spec);
+  if (rc < 0) { pk_free(&pc); return (size_t)-1; }
+  if (rc != 2 || !pc.n_chosen) { pk_free(&pc); return 0; }
+
+  /* Hand the chosen specs over; pk_free must not release them. */
+  *out = pc.chosen;
+  size_t n = pc.n_chosen;
+  pc.chosen = NULL;
+  pc.n_chosen = 0;
+  pk_free(&pc);
+  return n;
+}
+
 /** Which rows a named target arrives with already checked. */
 static int on_preselect(void *ctx, const char *root, const char *key) {
   (void)root;
