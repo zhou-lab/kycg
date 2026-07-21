@@ -25,18 +25,19 @@
 /* One array platform's KYCG knowledgebase directory. */
 typedef struct {
     const char *platform;
+    uint64_t    rows;          /* probes in the platform's ordering */
     const char *sums_sha256;   /* sha256 of <platform>/KYCG/SHA256SUMS */
 } kycg_array_reg_t;
 
 static const kycg_array_reg_t KYCG_ARRAY_REGISTRY[] = {
-    { "EPIC", "1678294f10134013db3fe274dfeb5243cd5e4352d40e01ef50528c91ac3b077b" },
-    { "EPICv2", "82c17bbc0b59fbf96545ea029cdc089a19214395d8d3f6e6826ee161b8b8eb17" },
-    { "HM27", "450bdb2bb74d152ba8d8b96646e6976122ebe00900d41e7aa67ebcadcf739b68" },
-    { "HM450", "27e4d8ef73bcd1c8b75ddb0fc203e17218bd5de1b05e0bfc847b217621c308bf" },
-    { "Mammal40", "f49d45d83eac05f556595980aadba6cce39ee64172050f065a7b2137b73ea351" },
-    { "MM285", "2cb53129949cfce5f8149c6ab1321069f30a236757a3f4095c2e5e00b3c141e9" },
-    { "MSA", "cc63264354f71f436e7aa4e7b9820430461e6923d657c54a24bb03cca4682db5" },
-    { NULL, NULL }
+    { "EPIC", 866553, "1678294f10134013db3fe274dfeb5243cd5e4352d40e01ef50528c91ac3b077b" },
+    { "EPICv2", 937690, "82c17bbc0b59fbf96545ea029cdc089a19214395d8d3f6e6826ee161b8b8eb17" },
+    { "HM27", 27722, "450bdb2bb74d152ba8d8b96646e6976122ebe00900d41e7aa67ebcadcf739b68" },
+    { "HM450", 486427, "27e4d8ef73bcd1c8b75ddb0fc203e17218bd5de1b05e0bfc847b217621c308bf" },
+    { "Mammal40", 38607, "f49d45d83eac05f556595980aadba6cce39ee64172050f065a7b2137b73ea351" },
+    { "MM285", 287692, "2cb53129949cfce5f8149c6ab1321069f30a236757a3f4095c2e5e00b3c141e9" },
+    { "MSA", 284309, "cc63264354f71f436e7aa4e7b9820430461e6923d657c54a24bb03cca4682db5" },
+    { NULL, 0, NULL }
 };
 
 /* One file inside a Zenodo record. */
@@ -139,15 +140,16 @@ static const kycg_zfile_t KYCG_ZFILES_mm10[] = {
 /* One genome's sequencing knowledgebase collection. */
 typedef struct {
     const char        *genome;
+    uint64_t           rows;      /* CpGs in cpg_nocontig.cr */
     const char        *record;    /* Zenodo record id */
     const char        *doi;
     const kycg_zfile_t *files;
 } kycg_seq_reg_t;
 
 static const kycg_seq_reg_t KYCG_SEQ_REGISTRY[] = {
-    { "hg38", "18175838", "10.5281/zenodo.18175837", KYCG_ZFILES_hg38 },
-    { "mm10", "18175656", "10.5281/zenodo.18175655", KYCG_ZFILES_mm10 },
-    { NULL, NULL, NULL, NULL }
+    { "hg38", 29401795, "18175838", "10.5281/zenodo.18175837", KYCG_ZFILES_hg38 },
+    { "mm10", 21867837, "18175656", "10.5281/zenodo.18175655", KYCG_ZFILES_mm10 },
+    { NULL, 0, NULL, NULL, NULL }
 };
 
 #endif /* _KYCG_REGISTRY_H */

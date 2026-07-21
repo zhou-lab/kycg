@@ -162,9 +162,15 @@ keystroke apart:
 ```
 
 Whole-genome targets unfold offline, since their file list is compiled in.
-Array platforms only list once fetched — anchoring on `SHA256SUMS` is what lets
-upstream add a set without a kycg rebuild, so there is no local list until
-there is a manifest.
+Array platforms keep their file list in `SHA256SUMS` — that is what lets
+upstream add a set without a kycg rebuild — so unfolding an unfetched platform
+pulls that manifest (a couple of KB, verified against the compiled anchor) to
+show the catalogue. That is the only implicit request kycg makes, it happens
+only on a terminal, and never when stdout is redirected.
+
+Every target carries the size of the row space it indexes, which is the fact
+you need before fetching anything: a `.cm` is comparable only to a query with
+the same row count, so `kycg test` will refuse a mismatch.
 
 The picker, the browser and the tree are full-screen: they take the alternate
 screen buffer, scroll a fixed-height viewport, and hand the terminal back

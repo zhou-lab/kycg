@@ -128,6 +128,20 @@ static int passes_filter(const char *fname, const char *only) {
   return 0;
 }
 
+/* Group digits: 21867837 -> "21,867,837". Row counts are the one number here
+ * a user compares by eye against `kycg info`, so they get separators. */
+static const char *commify(uint64_t v, char *buf, size_t n) {
+  char raw[32];
+  snprintf(raw, sizeof(raw), "%" PRIu64, v);
+  size_t len = strlen(raw), out = 0;
+  for (size_t i = 0; i < len && out + 2 < n; ++i) {
+    if (i && (len - i) % 3 == 0) buf[out++] = ',';
+    buf[out++] = raw[i];
+  }
+  buf[out] = '\0';
+  return buf;
+}
+
 /* ------------------------------------------------------------- registry ops */
 
 static const kycg_array_reg_t *find_array(const char *name) {
@@ -895,6 +909,64 @@ static void on_pick(void *ctx, const char *root, const char *key) {
   picks_add(&lc->picks, target, key);
 }
 
+/**
+ * A platform's SHA256SUMS, fetched and verified, memoized for this run.
+ *
+ * Returns a malloc'd copy the caller frees, or NULL when there is no network
+ * (or no libcurl). The digest is checked against the compiled anchor exactly
+ * as a fetch would: a catalogue is worth no more trust than the files in it.
+ */
+static char *array_manifest(const kycg_array_reg_t *ar, size_t *len_out) {
+#ifndef KYCG_HAVE_CURL
+  (void)ar; (void)len_out;
+  return NULL;
+#else
+  /* One slot per platform; the registry is small and fixed. */
+  static struct { const char *plat; char *text; size_t len; } memo[16];
+  static size_t n_memo = 0;
+
+  for (size_t i = 0; i < n_memo; ++i) {
+    if (memo[i].plat != ar->platform) continue;
+    if (!memo[i].text) return NULL;
+    char *dup = malloc(memo[i].len + 1);
+    if (!dup) return NULL;
+    memcpy(dup, memo[i].text, memo[i].len + 1);
+    if (len_out) *len_out = memo[i].len;
+    return dup;
+  }
+
+  char *text = NULL;
+  size_t len = 0;
+
+  if (ar->sums_sha256) {
+    char url[4096];
+    snprintf(url, sizeof(url), "%s/%s/%s/KYCG/%s",
+             KYCG_IA_BASE_URL, KYCG_IA_TAG, ar->platform, KYCG_IA_SUMS_FILE);
+    text = http_get_mem(url, &len);
+
+    if (text) {
+      char got[65];
+      kycg_sha256_buf(text, len, got);
+      if (!kycg_digest_equal(got, ar->sums_sha256)) { free(text); text = NULL; }
+    }
+  }
+
+  if (n_memo < 16) {
+    memo[n_memo].plat = ar->platform;
+    memo[n_memo].len = len;
+    memo[n_memo].text = NULL;
+    if (text) {
+      memo[n_memo].text = malloc(len + 1);
+      if (memo[n_memo].text) memcpy(memo[n_memo].text, text, len + 1);
+    }
+    ++n_memo;
+  }
+
+  if (len_out) *len_out = len;
+  return text;
+#endif
+}
+
 /* Append one preformatted child line to an expansion. */
 static void kid_push(kycg_ui_kids_t *k, unsigned char style, const char *key,
                      const char *fmt, ...) {
@@ -967,19 +1039,41 @@ static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
     snprintf(dir, sizeof(dir), "%s/%s/KYCG", root, ar->platform);
     snprintf(sums, sizeof(sums), "%s/%s", dir, KYCG_IA_SUMS_FILE);
 
+    /* The catalogue lives in the manifest, and an unfetched platform has no
+     * local copy of it -- which made every array look as though it had no
+     * knowledgebases at all, when it simply had none *here*. So pull the
+     * manifest (a couple of kilobytes, verified against the compiled anchor)
+     * to list what exists. It is cached in memory for the session and never
+     * written to the store, because writing it would claim files are present
+     * that are not. */
+    char *text = NULL;
+    size_t len = 0;
+
     FILE *fp = fopen(sums, "rb");
-    if (!fp) {
+    if (fp) {
+      fseek(fp, 0, SEEK_END);
+      long sz = ftell(fp);
+      fseek(fp, 0, SEEK_SET);
+      if (sz > 0) {
+        text = malloc((size_t)sz + 1);
+        if (text) { len = fread(text, 1, (size_t)sz, fp); text[len] = '\0'; }
+      }
+      fclose(fp);
+    } else {
+      text = array_manifest(ar, &len);
+    }
+
+    if (!text) {
       kid_push(out, KYCG_ROW_MISSING, NULL,
-               "not fetched yet - run: kycg fetch %s", ar->platform);
+               "catalogue unavailable - run: kycg fetch %s", ar->platform);
       return;
     }
-    char line[1024];
-    while (fgets(line, sizeof(line), fp)) {
-      char *nm = strstr(line, "  ");
-      if (!nm) continue;
-      nm += 2;
+
+    size_t n_ent = 0;
+    sums_ent_t *ent = parse_sums(text, &n_ent);
+    for (size_t i = 0; ent && i < n_ent; ++i) {
+      const char *nm = ent[i].name;
       size_t l = strlen(nm);
-      while (l && (nm[l-1] == '\n' || nm[l-1] == '\r')) nm[--l] = '\0';
       if (l < 4 || strcmp(nm + l - 3, ".cm") != 0) continue;
       char setn[256], path[4400];
       set_name_of(nm, setn, sizeof(setn));
@@ -989,7 +1083,8 @@ static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
                "%-22.22s %-32.32s %9s  %s", setn, nm, "",
                have ? "cached" : "-");
     }
-    fclose(fp);
+    free(ent);
+    free(text);
   }
 }
 
@@ -1144,18 +1239,24 @@ static void build_overview(const char *root, rows_t *rows) {
      * would read as a different meaning on the array rows below, where the
      * total is unknowable by design -- anchoring on SHA256SUMS is what keeps
      * the file list out of the binary -- so the rule stays the same for both. */
+    char rb[32];
     rows_push(rows, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
-              "%s\twhole genome\tzenodo:%s\t%" PRIu64 "/%" PRIu64,
-              r->genome, r->record, have, avail);
+              "%s\twhole genome\t%s\tzenodo:%s\t%" PRIu64 "/%" PRIu64,
+              r->genome, commify(r->rows, rb, sizeof(rb)),
+              r->record, have, avail);
   }
 
   for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform; ++r) {
     char dir[4096];
     snprintf(dir, sizeof(dir), "%s/%s/KYCG", root, r->platform);
     uint64_t nc = count_cached(dir);
+    /* Arrays report only what is cached, not a total: the catalogue lives in
+     * the SHA256SUMS manifest, which is the point of anchoring on it. Unfold
+     * a platform and the browser fetches that manifest to show the rest. */
+    char rb[32];
     rows_push(rows, nc ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
-              "%s\tarray\tInfiniumAnnotation@%s\t%" PRIu64,
-              r->platform, KYCG_IA_TAG, nc);
+              "%s\tarray\t%s\tInfiniumAnnotation@%s\t%" PRIu64,
+              r->platform, commify(r->rows, rb, sizeof(rb)), KYCG_IA_TAG, nc);
   }
 }
 
@@ -1259,8 +1360,10 @@ int main_list(int argc, char *argv[]) {
       if (sr) {
         char dir[4096], title[256];
         snprintf(dir, sizeof(dir), "%s/%s", root, sr->genome);
-        snprintf(title, sizeof(title), "%s -- Zenodo %s (doi %s)",
-                 sr->genome, sr->record, sr->doi);
+        char rb[32];
+        snprintf(title, sizeof(title), "%s -- %s rows -- Zenodo %s (doi %s)",
+                 sr->genome, commify(sr->rows, rb, sizeof(rb)),
+                 sr->record, sr->doi);
 
         rows_t rows = {0};
         for (const kycg_zfile_t *f = sr->files; f->name; ++f) {
@@ -1279,23 +1382,42 @@ int main_list(int argc, char *argv[]) {
         snprintf(dir, sizeof(dir), "%s/%s/KYCG", root, ar->platform);
         char sums[4400];
         snprintf(sums, sizeof(sums), "%s/%s", dir, KYCG_IA_SUMS_FILE);
-        snprintf(title, sizeof(title), "%s -- InfiniumAnnotation tag %s",
-                 ar->platform, KYCG_IA_TAG);
+        char rb[32];
+        snprintf(title, sizeof(title), "%s -- %s rows -- InfiniumAnnotation %s",
+                 ar->platform, commify(ar->rows, rb, sizeof(rb)), KYCG_IA_TAG);
 
+        /* Read the local manifest if the platform is fetched. If it is not,
+         * pull the catalogue only when someone is watching -- a redirected
+         * stdout means a script is reading, and a script must not trigger a
+         * download it did not ask for. */
+        char *text = NULL;
+        size_t tlen = 0;
         FILE *fp = fopen(sums, "rb");
-        if (!fp) {
+        if (fp) {
+          fseek(fp, 0, SEEK_END);
+          long sz = ftell(fp);
+          fseek(fp, 0, SEEK_SET);
+          if (sz > 0) {
+            text = malloc((size_t)sz + 1);
+            if (text) { tlen = fread(text, 1, (size_t)sz, fp); text[tlen] = '\0'; }
+          }
+          fclose(fp);
+        } else if (isatty(STDOUT_FILENO)) {
+          text = array_manifest(ar, &tlen);
+        }
+
+        if (!text) {
           printf("# %s\n# not fetched yet; run: kycg fetch %s\n",
                  title, ar->platform);
           continue;
         }
+
         rows_t rows = {0};
-        char line[1024];
-        while (fgets(line, sizeof(line), fp)) {
-          char *nm = strstr(line, "  ");
-          if (!nm) continue;
-          nm += 2;
+        size_t n_ent = 0;
+        sums_ent_t *ent = parse_sums(text, &n_ent);
+        for (size_t i = 0; ent && i < n_ent; ++i) {
+          const char *nm = ent[i].name;
           size_t len = strlen(nm);
-          while (len && (nm[len-1] == '\n' || nm[len-1] == '\r')) nm[--len] = '\0';
           if (len < 4 || strcmp(nm + len - 3, ".cm") != 0) continue;
           char setn[256], path[4400];
           set_name_of(nm, setn, sizeof(setn));
@@ -1304,7 +1426,8 @@ int main_list(int argc, char *argv[]) {
           rows_push(&rows, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
                     "%s\t%s\t%s", setn, nm, have ? "yes" : "no");
         }
-        fclose(fp);
+        free(ent);
+        free(text);
         rows_emit(&rows, title, "set\tfile\tcached");
       } else {
         fprintf(stderr, "kycg list: '%s' is not a known platform or genome.\n",
@@ -1335,7 +1458,7 @@ int main_list(int argc, char *argv[]) {
 
     kycg_ui_tree_t spec = {0};
     spec.title = title;
-    spec.header = "target\tkind\tsource\tcached_sets";
+    spec.header = "target\tkind\trows\tsource\tcached_sets";
     spec.roots = rows.a;
     spec.root_styles = rows.st;
     spec.n_roots = rows.n;
@@ -1356,7 +1479,7 @@ int main_list(int argc, char *argv[]) {
     picks_free(&lc.picks);  /* -1: terminal cannot host it, print plainly */
   }
 
-  rows_emit(&rows, title, "target\tkind\tsource\tcached_sets");
+  rows_emit(&rows, title, "target\tkind\trows\tsource\tcached_sets");
 
   return 0;
 }
