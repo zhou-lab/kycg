@@ -234,6 +234,14 @@ typedef void (*kycg_ui_commit_fn)(void *ctx);
 typedef int (*kycg_ui_key_fn)(void *ctx, char key);
 
 /**
+ * Should this child start checked? Called once per child of the preselected
+ * root as the tree opens, so a named target can arrive already chosen and the
+ * user only has to look at it and press f.
+ */
+typedef int (*kycg_ui_preselect_fn)(void *ctx, const char *root,
+                                    const char *key);
+
+/**
  * Everything kycg_ui_tree() needs. A struct because the list outgrew a
  * readable argument list, and because most fields are optional.
  */
@@ -252,6 +260,11 @@ typedef struct {
   kycg_ui_commit_fn commit;    /* may be NULL: then `f` returns instead */
   kycg_ui_key_fn    on_key;    /* may be NULL */
   const char       *hint;      /* extra footer text for the caller's keys */
+
+  /* Open this root on entry and offer its children to `preselect`. NULL for
+   * the plain catalogue view. */
+  const char          *open_root;
+  kycg_ui_preselect_fn preselect;
   void *ctx;
 } kycg_ui_tree_t;
 

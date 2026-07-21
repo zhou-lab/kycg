@@ -46,16 +46,18 @@ Dependencies are YAME's: vendored htslib, zlib, libm, pthreads. Nothing else.
 ### `kycg fetch` — browse and build the knowledgebase store
 
 ```bash
-kycg fetch                    # browse, check what you want, fetch it
-kycg fetch mm10               # every set for a target
-kycg fetch hg38:CGI,ChromHMM  # just those sets
-kycg fetch -l hg38            # list one target, download nothing
+kycg fetch                    # browse everything
+kycg fetch hg38               # open with hg38 checked; press f to start
+kycg fetch hg38:CGI,ChromHMM  # open with just those checked
+kycg fetch -f hg38            # download it, no browser, no questions
+kycg fetch | cut -f1          # TSV catalogue, for scripts
 ```
 
-`kycg fetch` is one command because browsing the catalogue, choosing from it,
-and downloading are one activity. With no target it shows the catalogue — an
-interactive tree on a terminal, plain TSV when stdout is redirected, so
-`kycg fetch | cut -f1` still works. `→` unfolds a target, `space`
+There is one interactive path and one scripted one. On a terminal, naming a
+target opens the catalogue with that target already checked — you see exactly
+what will be downloaded and how large it is, can narrow it in the same screen,
+and press `f` to start. `-f` skips all of that, and so does a redirected
+stdout, which is what keeps scripts working unchanged. `→` unfolds a target, `space`
 checks a set, `f` fetches everything checked, `d` points the browser at a different store. Sets already present show a green ✓ and cannot be checked —
 there is nothing to ask for. `kycg fetch` with no target simply opens it.
 
@@ -73,21 +75,17 @@ place with your folds and cursor where you left them. Only `q` exits.
   row 4 of 42  •  1 selected  •  → open  ← close  space select  f fetch  q quit
 ```
 
-Either way, nothing downloads until a plan has been shown — which files, how
-large, where they land, and what is already present — followed by a `Proceed?`
-confirmation.
-
-**Every prompt is gated on an interactive terminal.** DESIGN.md's original rule
-was "never prompt", because a prompt hangs a Nextflow job or a Docker build with
-no indication of why. That guarantee is preserved: off a TTY an explicit target
-proceeds without asking, and a missing target is an error rather than a wait.
-`-y` forces the same on a TTY. kycg still downloads in `fetch` and nowhere else.
+**Nothing is asked when nobody can answer.** DESIGN.md's original rule was
+"never prompt", because a prompt hangs a Nextflow job or a Docker build with no
+indication of why. That guarantee holds: off a TTY a named target downloads
+without asking, and a missing target prints the catalogue rather than waiting.
+kycg still downloads in `fetch` and nowhere else.
 
 ```
     -d DIR    store directory [$KYCG_DATA_DIR, else ~/.cache/kycg]
     -o SETS   comma-separated subset, by set name (CGI,ChromHMM,TFBS)
-    -n        dry run: list what would be fetched, download nothing
-    -f        re-download even if present and verified
+    -f        download now: no browser, no questions
+    -r        re-download even what is present and verified
     -t TAG    InfiniumAnnotation tag, arrays only [v8]
 ```
 

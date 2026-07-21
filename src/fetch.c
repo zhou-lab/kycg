@@ -527,10 +527,8 @@ typedef struct {
   const char *store;
   const char *only;
   const char *tag;
-  int dry_run;
-  int force;
-  int assume_yes;
-  int list_only;
+  int direct;      /* -f: fetch now, no browser, no questions */
+  int redownload;  /* -r: re-fetch even what is present and verified */
 } fetch_conf_t;
 
 /**
@@ -724,22 +722,27 @@ static int usage(void) {
   fprintf(o, "    kycg fetch [options] [%s<target>%s[:%s<sets>%s] ...]\n\n",
           KYCG_H_KEY, KYCG_H_OFF, KYCG_H_KEY, KYCG_H_OFF);
 
-  fprintf(o, "    %sWith no target this shows the catalogue: an interactive tree on a%s\n",
+  fprintf(o, "    %sOn a terminal this opens the catalogue -- a tree of every%s\n",
           KYCG_H_NOTE, KYCG_H_OFF);
-  fprintf(o, "    %sterminal, or plain TSV when stdout is redirected. Naming a target%s\n",
+  fprintf(o, "    %scollection. Naming a target opens it already checked, so you see%s\n",
           KYCG_H_NOTE, KYCG_H_OFF);
-  fprintf(o, "    %sdownloads it instead.%s\n\n", KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %swhat will be downloaded, can narrow it, and press f to start.%s\n\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %sWith stdout redirected it prints the catalogue as TSV; with a%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %starget it downloads. -f forces that on a terminal too.%s\n\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
 
   fprintf(o, "%sExamples%s\n", KYCG_H_TITLE, KYCG_H_OFF);
-  fprintf(o, "    kycg fetch %-22s browse and pick\n", "");
-  fprintf(o, "    kycg fetch %s%-22s%s every set for a target\n",
+  fprintf(o, "    kycg fetch %-22s browse everything\n", "");
+  fprintf(o, "    kycg fetch %s%-22s%s open with hg38 checked, f to start\n",
           KYCG_H_KEY, "hg38", KYCG_H_OFF);
-  fprintf(o, "    kycg fetch %s%-22s%s just those sets\n",
+  fprintf(o, "    kycg fetch %s%-22s%s open with just those checked\n",
           KYCG_H_KEY, "hg38:CGI,ChromHMM", KYCG_H_OFF);
-  fprintf(o, "    kycg fetch %s%-22s%s list what a target holds\n",
-          KYCG_H_KEY, "-l hg38", KYCG_H_OFF);
-  fprintf(o, "    kycg fetch %s%-22s%s preview a download, fetch nothing\n\n",
-          KYCG_H_KEY, "-n hg38", KYCG_H_OFF);
+  fprintf(o, "    kycg fetch %s%-22s%s download it, no questions\n",
+          KYCG_H_KEY, "-f hg38", KYCG_H_OFF);
+  fprintf(o, "    kycg fetch %s%-22s%s TSV catalogue, for scripts\n\n",
+          KYCG_H_KEY, "| cut -f1", KYCG_H_OFF);
 
   fprintf(o, "%sIn the tree%s\n", KYCG_H_TITLE, KYCG_H_OFF);
   {
@@ -771,10 +774,8 @@ static int usage(void) {
   struct { const char *f, *d; } opt[] = {
     {"-d DIR", "store directory [$KYCG_DATA_DIR, else ~/.cache/kycg]"},
     {"-o SETS", "subset by set name; same as the :SETS suffix"},
-    {"-l", "list what a collection holds, and what you have"},
-    {"-n", "dry run: what this would download, and how much"},
-    {"-y", "assume yes; do not ask to confirm"},
-    {"-f", "re-download even if present and verified"},
+    {"-f", "download now: no browser, no questions"},
+    {"-r", "re-download even what is present and verified"},
     {"-t TAG", "InfiniumAnnotation tag, arrays only"},
     {"-h", "this help"},
   };
@@ -797,15 +798,13 @@ int main_fetch(int argc, char *argv[]) {
   conf.tag = KYCG_IA_TAG;
 
   int c;
-  while ((c = getopt(argc, argv, "d:o:t:nfylh")) >= 0) {
+  while ((c = getopt(argc, argv, "d:o:t:frh")) >= 0) {
     switch (c) {
     case 'd': conf.store = optarg; break;
     case 'o': conf.only = optarg; break;
     case 't': conf.tag = optarg; break;
-    case 'n': conf.dry_run = 1; break;
-    case 'f': conf.force = 1; break;
-    case 'y': conf.assume_yes = 1; break;
-    case 'l': conf.list_only = 1; break;
+    case 'f': conf.direct = 1; break;
+    case 'r': conf.redownload = 1; break;
     case 'h': return usage();
     default: return usage();
     }
@@ -831,7 +830,25 @@ int main_fetch(int argc, char *argv[]) {
    * download one. On a terminal that is the browser -- where checking a set
    * and fetching it happen anyway -- and off one it is plain TSV, so
    * `kycg fetch | cut -f1` still works. */
-  if (optind >= argc || conf.list_only) {
+  /* No target: the catalogue. A tree on a terminal, TSV when redirected, so
+   * `kycg fetch | cut -f1` still works. */
+  if (optind >= argc) {
+    char *lav[8];
+    int lac = 0;
+    lav[lac++] = "fetch";
+    if (conf.store) { lav[lac++] = "-d"; lav[lac++] = (char *)conf.store; }
+    for (int j = optind; j < argc && lac < 7; ++j) lav[lac++] = argv[j];
+    lav[lac] = NULL;
+    optind = 1;
+    curl_global_cleanup();
+    return main_list(lac, lav);
+  }
+
+  /* A named target on a terminal opens the catalogue with that target chosen,
+   * so the download is seen before it starts and can be narrowed in the same
+   * screen. -f skips straight to fetching, and so does a non-terminal, which
+   * is what keeps scripts working. */
+  if (!conf.direct && kycg_ui_interactive()) {
     char *lav[8];
     int lac = 0;
     lav[lac++] = "fetch";
@@ -891,31 +908,21 @@ int main_fetch(int argc, char *argv[]) {
       continue;
     }
 
-    plan_check_present(&plan, tc.force);
+    plan_check_present(&plan, tc.redownload);
     plan_show(&plan);
-
-    if (tc.dry_run) { plan_free(&plan); continue; }
 
     size_t n_todo = 0;
     for (size_t i = 0; i < plan.n; ++i) if (!plan.a[i].have) ++n_todo;
     if (!n_todo) { t.n_skip += plan.n; plan_free(&plan); continue; }
 
-    /* The confirmation. Skipped when nobody can answer, which is what keeps
-     * this safe to run inside a pipeline. */
-    if (!tc.assume_yes && kycg_ui_interactive()) {
-      if (!kycg_ui_confirm("Proceed?", 1)) {
-        fprintf(stderr, "Cancelled.\n");
-        plan_free(&plan);
-        continue;
-      }
-      fputc('\n', stderr);
-    }
-
+    /* No confirmation here: reaching this point means either -f or no
+     * terminal, and both say "do it". Anyone who wants to look first gets the
+     * catalogue, which is the same screen with the same numbers. */
     if (execute_plan(&plan, &t) != 0) rc = 1;
     plan_free(&plan);
   }
 
-  if (!conf.dry_run && (t.n_got || t.n_skip || t.n_fail)) {
+  if (t.n_got || t.n_skip || t.n_fail) {
     char hb[24];
     fprintf(stderr, "\n%s%s%s %" PRIu64 " fetched (%s)",
             kycg_ui_green(), kycg_ui_check(), kycg_ui_reset(),
@@ -1018,6 +1025,7 @@ typedef struct {
   rows_t *rows;      /* the overview, rewritten in place after any change */
   char  *title;      /* the widget's title buffer, rewritten with the root */
   size_t title_sz;
+  const char *only;  /* subset named on the command line, or NULL */
 } listctx_t;
 
 static void picks_add(picks_t *p, const char *target, const char *file) {
@@ -1444,7 +1452,7 @@ static int fetch_picked(const picks_t *picks, const char *store) {
     free(only);
     if (prc != 0 || !plan.n) { plan_free(&plan); rc = 1; continue; }
 
-    plan_check_present(&plan, 0);
+    plan_check_present(&plan, conf.redownload);
 
     size_t n_todo = 0;
     uint64_t bytes = 0;
@@ -1507,6 +1515,13 @@ static void on_commit(void *ctx) {
   if (lc->picks.n) fetch_picked(&lc->picks, lc->root);
   picks_free(&lc->picks);
   refresh_overview(lc);
+}
+
+/** Which rows a named target arrives with already checked. */
+static int on_preselect(void *ctx, const char *root, const char *key) {
+  (void)root;
+  listctx_t *lc = ctx;
+  return passes_filter(key, lc->only);
 }
 
 /**
@@ -1575,7 +1590,22 @@ int main_list(int argc, char *argv[]) {
 
   const char *root = kycg_store_root(store);
 
-  if (optind < argc) {
+  /* A target named on the command line opens the catalogue on it, already
+   * chosen. Same syntax as a fetch, so `hg38:CGI` narrows what is checked. */
+  char open_target[128] = {0};
+  const char *open_only = NULL;
+  if (optind < argc && isatty(STDOUT_FILENO)) {
+    const char *spec = argv[optind];
+    const char *colon = strchr(spec, ':');
+    size_t len = colon ? (size_t)(colon - spec) : strlen(spec);
+    if (len >= sizeof(open_target)) len = sizeof(open_target) - 1;
+    memcpy(open_target, spec, len);
+    open_target[len] = '\0';
+    if (colon && colon[1]) open_only = colon + 1;
+    if (!find_seq(open_target) && !find_array(open_target)) open_target[0] = '\0';
+  }
+
+  if (optind < argc && !open_target[0]) {
     for (int j = optind; j < argc; ++j) {
       /* Same target[:sets] syntax as a fetch, so `-l hg38:CGI` narrows the
        * listing rather than failing on a name it does not recognize. */
@@ -1668,6 +1698,7 @@ int main_list(int argc, char *argv[]) {
     lc.rows = &rows;
     lc.title = title;
     lc.title_sz = sizeof(title);
+    lc.only = open_only;
 
     kycg_ui_tree_t spec = {0};
     spec.title = title;
@@ -1681,6 +1712,10 @@ int main_list(int argc, char *argv[]) {
     spec.on_key = on_list_key;
     spec.hint = "d store";
     spec.ctx = &lc;
+    if (open_target[0]) {
+      spec.open_root = open_target;
+      spec.preselect = on_preselect;
+    }
 
     int rc = kycg_ui_tree(&spec);
 

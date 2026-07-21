@@ -1189,6 +1189,38 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
   size_t cur = 0, top = 0;
   frame_t f = {0};
 
+  /* A named target arrives open and chosen: the user sees exactly what will
+   * happen and presses f, or unpicks first. That is the same screen the
+   * catalogue uses, rather than a second confirmation flow beside it. */
+  if (spec->open_root) {
+    for (size_t i = 0; i < n_roots; ++i) {
+      const char *tab = strchr(roots[i], '\t');
+      size_t len = tab ? (size_t)(tab - roots[i]) : strlen(roots[i]);
+      if (strlen(spec->open_root) != len ||
+          strncmp(roots[i], spec->open_root, len) != 0) continue;
+
+      if (expand) expand(ctx, roots[i], &node[i].kids);
+      if (picking && node[i].kids.n) node[i].checked = calloc(node[i].kids.n, 1);
+      node[i].loaded = 1;
+      node[i].expanded = node[i].kids.n ? 1 : 0;
+
+      if (picking && spec->preselect && node[i].checked && node[i].kids.keys) {
+        for (size_t j = 0; j < node[i].kids.n; ++j) {
+          int req = node[i].kids.styles &&
+                    (node[i].kids.styles[j] == KYCG_ROW_HAVE ||
+                     node[i].kids.styles[j] == KYCG_ROW_REQUIRED);
+          if (!req && node[i].kids.keys[j] &&
+              spec->preselect(ctx, roots[i], node[i].kids.keys[j]))
+            node[i].checked[j] = 1;
+        }
+      }
+      /* Land on the row that was named, not on the top of the list. */
+      for (size_t k = 0; k < i; ++k)
+        cur += 1 + (node[k].expanded ? node[k].kids.n : 0);
+      break;
+    }
+  }
+
   for (;;) {
     /* Flatten: every root, plus the children of the open ones. */
     size_t nflat = 0;
