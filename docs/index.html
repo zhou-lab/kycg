@@ -116,8 +116,8 @@ kycg <span class="sub">fetch</span>
 kycg <span class="sub">fetch</span> mm10
 kycg <span class="sub">fetch</span> hg38:CGI,ChromHMM
 
-<span class="cm"># see what you have</span>
-kycg <span class="sub">list</span></code></pre>
+<span class="cm"># list one target, download nothing</span>
+kycg <span class="sub">fetch</span> -l hg38</code></pre>
     <div class="note"><b>Downloads happen in <code class="inl">fetch</code> and nowhere
       else</b>, and every question is gated on an interactive terminal. Inside a Nextflow
       job or a Docker build there is nobody to answer, so an explicit target proceeds
@@ -157,7 +157,7 @@ mm10 knowledgebases (Zenodo 18175656)
     <h2>Pick what you need <span class="m">— list, -o, -n</span></h2>
     <p>The full hg38 collection is 363&nbsp;MB. You rarely want all of it.</p>
     <pre><code><span class="cm"># a tree — → unfolds a target in place</span>
-$ kycg <span class="sub">list</span>
+$ kycg <span class="sub">fetch</span>
     target  kind          cached_sets
   <span class="sub">▸</span> hg38    whole genome  3/33
 <span class="sub">❯ ▾</span> mm10    whole genome  29/29
@@ -201,11 +201,11 @@ Knowledgebases matching 21,867,837 rows
   [ ] mm10/ChromHMMfullStack…cm
   <span class="cm">…</span>
   <span class="cm">arrows move · space toggles · / filter</span></code></pre>
-    <p style="margin-top:11px">The picker and <code class="inl">kycg list</code> render in
+    <p style="margin-top:11px">The picker and the catalogue render in
       place — arrows or <code class="inl">j</code>/<code class="inl">k</code>,
       <code class="inl">/</code> to filter. Both fall back to plain numbered text under
       <code class="inl">NO_COLOR</code> or <code class="inl">TERM=dumb</code>, and
-      <code class="inl">list</code> writes TSV whenever stdout is redirected.</p>
+      <code class="inl">fetch</code> writes TSV whenever stdout is redirected.</p>
     <div class="note">Testing against 30 knowledgebases in 30 processes decompresses the
       query 30 times. Pooling them decompresses it <b>once</b>.</div>
   </section>

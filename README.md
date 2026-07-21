@@ -19,7 +19,7 @@ Phase 0 (foundation) and Phase 1 (`kycg test`) are implemented and validated.
 |---|---|---|
 | 0 | Submodule, build, dispatch, `kycg info`, row-count assertion | done |
 | 1 | `kycg test` — hypergeometric, group-stratified BH, effect sizes | done |
-| 2 | `kycg fetch` + registry, `kycg list` | done |
+| 2 | `kycg fetch` — registry, catalogue browser, verified store | done |
 | 3 | Plot recipes (with cinderplot) | not started |
 | 4 | `proximity`, `sea`, `anno`, `bed2cg` | not started |
 
