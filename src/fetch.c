@@ -176,15 +176,27 @@ typedef struct coll_s {
   char                source[256]; /* provenance, for display               */
   const char         *anchor;      /* sha256 of SHA256SUMS; NULL = unpinned */
   const kycg_fsize_t *sizes;       /* display only, may be NULL/incomplete  */
+  int                 unpinned_tag;/* -t named a tag this build cannot verify */
 } coll_t;
 
 struct coll_s;
-static char *coll_manifest(const struct coll_s *c, size_t *len_out,
-                           int allow_fetch);
+#define KYCG_MF_LOCAL 0
+#define KYCG_MF_FETCH 1
+#define KYCG_MF_FORCE 2
 
-/** Resolve a target name to a collection. Returns 0 on success. */
-static int coll_for(const char *target, const char *store, coll_t *c) {
+static char *coll_manifest(const struct coll_s *c, size_t *len_out, int mode);
+
+/**
+ * Resolve a target name to a collection. Returns 0 on success.
+ *
+ * `tag` overrides the array channel's pinned tag (the -t flag); NULL uses the
+ * one compiled in. It does not apply to whole genomes, whose tags are per
+ * repository and come from the registry.
+ */
+static int coll_for(const char *target, const char *store, const char *tag,
+                    coll_t *c) {
   memset(c, 0, sizeof(*c));
+  if (!tag || !*tag) tag = KYCG_IA_TAG;
 
   const kycg_seq_reg_t *sr = find_seq(target);
   if (sr) {
@@ -202,9 +214,13 @@ static int coll_for(const char *target, const char *store, coll_t *c) {
   if (ar) {
     c->target = ar->platform;
     snprintf(c->base, sizeof(c->base), "%s/%s/%s/KYCG",
-             KYCG_IA_BASE_URL, KYCG_IA_TAG, ar->platform);
+             KYCG_IA_BASE_URL, tag, ar->platform);
     snprintf(c->dir, sizeof(c->dir), "%s/%s/KYCG", store, ar->platform);
-    snprintf(c->source, sizeof(c->source), "InfiniumAnnotation %s", KYCG_IA_TAG);
+    snprintf(c->source, sizeof(c->source), "InfiniumAnnotation %s", tag);
+    /* The anchor is only valid for the tag it was generated against. Asking
+     * for a different one must fail the manifest check rather than quietly
+     * fetch something this build cannot verify. */
+    c->unpinned_tag = (strcmp(tag, KYCG_IA_TAG) != 0);
     c->anchor = ar->sums_sha256;
     c->sizes = NULL;      /* this channel publishes no sizes */
     return 0;
@@ -483,6 +499,14 @@ typedef struct {
  * each one hash to" has one answer and one implementation.
  */
 static int build_plan(const coll_t *c, const fetch_conf_t *conf, plan_t *plan) {
+  if (c->unpinned_tag) {
+    fprintf(stderr,
+            "kycg fetch: this build pins InfiniumAnnotation %s, so it holds no\n"
+            "digest for the tag you asked for and cannot verify anything fetched\n"
+            "from it. Regenerate src/registry.h with tools/make_registry.sh and\n"
+            "rebuild to move tags.\n", KYCG_IA_TAG);
+    return -1;
+  }
   if (!c->anchor) {
     fprintf(stderr, "kycg fetch: '%s' has no published manifest in this build.\n",
             c->target);
@@ -494,7 +518,7 @@ static int build_plan(const coll_t *c, const fetch_conf_t *conf, plan_t *plan) {
             kycg_ui_dim(), c->target, kycg_ui_reset());
 
   size_t len = 0;
-  char *sums = coll_manifest(c, &len, 1);
+  char *sums = coll_manifest(c, &len, KYCG_MF_FETCH);
 
   if (kycg_ui_fancy() && !kycg_ui_panel_active()) fputs("\r\033[2K", stderr);
 
@@ -754,7 +778,7 @@ int main_fetch(int argc, char *argv[]) {
     tc.only = only;
 
     coll_t coll;
-    if (coll_for(target, kycg_store_root(tc.store), &coll) != 0) {
+    if (coll_for(target, kycg_store_root(tc.store), tc.tag, &coll) != 0) {
       fprintf(stderr,
               "kycg fetch: '%s' is not a known platform or genome.\n"
               "Run `kycg list` to see what is available.\n", target);
@@ -938,10 +962,16 @@ static void on_pick(void *ctx, const char *root, const char *key) {
  * A platform's SHA256SUMS: the catalogue of what that platform publishes.
  *
  * Looked for in three places, cheapest first -- the local store, this run's
- * memo, then the network. `allow_fetch` gates that last step, because two
- * callers want different things from the same lookup: drawing the overview
- * must never reach the network (it happens on every keystroke that redraws),
- * while unfolding a platform or pressing refresh explicitly should.
+ * memo, then the network. `mode` picks how far to go:
+ *
+ *   KYCG_MF_LOCAL  local or memo only; never reaches the network. Used when
+ *                  drawing the overview, which happens on every keystroke.
+ *   KYCG_MF_FETCH  fall through to the network if neither has it.
+ *   KYCG_MF_FORCE  ignore both and re-pull. This is what refresh means, and
+ *                  it is the only way to replace a local manifest that has
+ *                  gone stale -- a store written by an older kycg holds only
+ *                  the digests of files it fetched, not the full catalogue,
+ *                  and would otherwise be believed forever.
  *
  * Returns a malloc'd copy the caller frees, or NULL if unavailable. A fetched
  * manifest is verified against the compiled anchor exactly as a download would
@@ -956,15 +986,14 @@ static void array_manifest_forget(void) {
   g_manifest_n = 0;
 }
 
-static char *coll_manifest(const struct coll_s *c, size_t *len_out,
-                           int allow_fetch) {
+static char *coll_manifest(const struct coll_s *c, size_t *len_out, int mode) {
   if (len_out) *len_out = 0;
 
   /* 1. The store's own copy, written when the collection was fetched. It is
    *    authoritative and always current, so it is never memoized. */
   char sums[4400];
   snprintf(sums, sizeof(sums), "%s/%s", c->dir, KYCG_IA_SUMS_FILE);
-  FILE *fp = fopen(sums, "rb");
+  FILE *fp = (mode == KYCG_MF_FORCE) ? NULL : fopen(sums, "rb");
   if (fp) {
     fseek(fp, 0, SEEK_END);
     long sz = ftell(fp);
@@ -980,7 +1009,7 @@ static char *coll_manifest(const struct coll_s *c, size_t *len_out,
   }
 
   /* 2. Something this run already pulled. */
-  for (size_t i = 0; i < g_manifest_n; ++i) {
+  for (size_t i = 0; mode != KYCG_MF_FORCE && i < g_manifest_n; ++i) {
     if (g_manifest[i].plat != c->target) continue;
     if (!g_manifest[i].text) return NULL;
     char *dup = malloc(g_manifest[i].len + 1);
@@ -990,7 +1019,7 @@ static char *coll_manifest(const struct coll_s *c, size_t *len_out,
     return dup;
   }
 
-  if (!allow_fetch) return NULL;
+  if (mode == KYCG_MF_LOCAL) return NULL;
 
 #ifndef KYCG_HAVE_CURL
   return NULL;
@@ -1023,6 +1052,13 @@ static char *coll_manifest(const struct coll_s *c, size_t *len_out,
     ++g_manifest_n;
   }
 
+  /* A forced pull is authoritative: write it back so the store stops carrying
+   * a manifest that disagrees with upstream. */
+  if (text && mode == KYCG_MF_FORCE && kycg_store_is_file(sums)) {
+    FILE *out = fopen(sums, "wb");
+    if (out) { fwrite(text, 1, len, out); fclose(out); }
+  }
+
   if (len_out) *len_out = len;
   return text;
 #endif
@@ -1031,7 +1067,7 @@ static char *coll_manifest(const struct coll_s *c, size_t *len_out,
 /** How many sets a collection publishes, or 0 if the catalogue is not to hand. */
 static uint64_t coll_set_total(const coll_t *c) {
   size_t len = 0;
-  char *text = coll_manifest(c, &len, 0);
+  char *text = coll_manifest(c, &len, KYCG_MF_LOCAL);
   if (!text) return 0;
 
   size_t n_ent = 0;
@@ -1095,7 +1131,7 @@ static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
   target[len] = '\0';
 
   coll_t c;
-  if (coll_for(target, lc->root, &c) != 0) return;
+  if (coll_for(target, lc->root, NULL, &c) != 0) return;
 
   /* The catalogue lives in the manifest. A collection with nothing fetched has
    * no local copy, which used to make it look as though it published nothing
@@ -1104,7 +1140,7 @@ static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
    * store: writing it would claim files are present that are not. */
   int had = (coll_set_total(&c) != 0);
   size_t mlen = 0;
-  char *text = coll_manifest(&c, &mlen, 1);
+  char *text = coll_manifest(&c, &mlen, KYCG_MF_FETCH);
 
   /* The catalogue is what the overview needs to show a denominator, so the
    * row above updates the moment it becomes knowable. */
@@ -1150,7 +1186,7 @@ static uint64_t count_cached(const char *dir);
 static void build_overview(const char *root, rows_t *rows) {
   for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome; ++r) {
     coll_t c;
-    if (coll_for(r->genome, root, &c) != 0) continue;
+    if (coll_for(r->genome, root, NULL, &c) != 0) continue;
 
     uint64_t have = count_cached(c.dir);
     uint64_t nt = coll_set_total(&c);
@@ -1168,7 +1204,7 @@ static void build_overview(const char *root, rows_t *rows) {
 
   for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform; ++r) {
     coll_t c;
-    if (coll_for(r->platform, root, &c) != 0) continue;
+    if (coll_for(r->platform, root, NULL, &c) != 0) continue;
 
     uint64_t nc = count_cached(c.dir);
     /* The total comes from the manifest, which is the catalogue. Only counted
@@ -1256,7 +1292,7 @@ static int fetch_picked(const picks_t *picks, const char *store) {
 
     coll_t coll;
     plan_t plan = {0};
-    int prc = (coll_for(picks->target[i], kycg_store_root(store), &coll) == 0)
+    int prc = (coll_for(picks->target[i], kycg_store_root(store), NULL, &coll) == 0)
               ? build_plan(&coll, &conf, &plan) : -1;
     free(only);
     if (prc != 0 || !plan.n) { plan_free(&plan); rc = 1; continue; }
@@ -1357,9 +1393,9 @@ static int on_list_key(void *ctx, char key) {
                            kycg_ui_bold(), kycg_ui_reset(), kycg_ui_dim(),
                            ++n, tot, name, kycg_ui_reset());
         coll_t c;
-        if (coll_for(name, lc->root, &c) != 0) continue;
+        if (coll_for(name, lc->root, NULL, &c) != 0) continue;
         size_t len = 0;
-        free(coll_manifest(&c, &len, 1));
+        free(coll_manifest(&c, &len, KYCG_MF_FORCE));
       }
     }
     kycg_ui_panel_close();
@@ -1432,7 +1468,7 @@ int main_list(int argc, char *argv[]) {
       const char *target = argv[j];
 
       coll_t c;
-      if (coll_for(target, root, &c) == 0) {
+      if (coll_for(target, root, NULL, &c) == 0) {
         const kycg_seq_reg_t *sr = find_seq(target);
         const kycg_array_reg_t *ar = find_array(target);
         char title[512], rb[32];
@@ -1451,7 +1487,9 @@ int main_list(int argc, char *argv[]) {
          * reading, and a script must not trigger a download it did not ask
          * for. */
         size_t tlen = 0;
-        char *text = coll_manifest(&c, &tlen, isatty(STDOUT_FILENO));
+        char *text = coll_manifest(&c, &tlen,
+                                   isatty(STDOUT_FILENO) ? KYCG_MF_FETCH
+                                                         : KYCG_MF_LOCAL);
         if (!text) {
           printf("# %s\n# not fetched yet; run: kycg fetch %s\n",
                  title, c.target);
