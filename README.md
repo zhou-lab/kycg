@@ -113,6 +113,33 @@ registry as provenance and are no longer the fetch path.
 only `fetch` needs it, and it says so plainly if the build lacks it. `CURL=0`
 forces it off.
 
+### A build is coupled to a generation of the data
+
+kycg pins a specific tag per collection and can verify only those. `--version`
+says which:
+
+```
+$ kycg --version
+kycg 0.1.0
+knowledgebases pinned by this build:
+  hg38       KYCGKB_hg38 v2
+  mm10       KYCGKB_mm10 v1
+  arrays     InfiniumAnnotation v8
+```
+
+Nothing updates on its own, deliberately: the digest a download is checked
+against is compiled in, so a tag this build does not pin is one it cannot
+verify, and `-t` on such a tag is refused rather than silently fetched.
+Following an upstream tag is two commands and one generated file:
+
+```bash
+tools/make_registry.sh v9 > src/registry.h && make
+tools/check_dimensions.sh          # confirm the pinned row counts still hold
+```
+
+The trade is reproducibility for immediacy — a given kycg release means an
+exact, known set of knowledgebases, and data updates ride software releases.
+
 ### `kycg test` — set enrichment
 
 ```bash

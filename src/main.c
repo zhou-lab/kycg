@@ -29,6 +29,7 @@
 #include <string.h>
 
 #include "kycg.h"
+#include "registry.h"
 
 static int usage(void) {
   fprintf(stderr, "\n");
@@ -58,7 +59,15 @@ int main(int argc, char *argv[]) {
   else if (strcmp(argv[1], "-h") == 0 ||
            strcmp(argv[1], "--help") == 0) return usage();
   else if (strcmp(argv[1], "--version") == 0) {
-    printf("%s\n", KYCG_VERSION);
+    /* A build is bound to a specific generation of the data: it can only
+     * verify the tags whose digests were compiled into it. Printing them makes
+     * that binding visible, so "which data does this kycg speak to" is
+     * answerable without reading the registry. */
+    printf("kycg %s\n", KYCG_VERSION);
+    printf("knowledgebases pinned by this build:\n");
+    for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome; ++r)
+      printf("  %-10s %s %s\n", r->genome, r->repo, r->tag);
+    printf("  %-10s InfiniumAnnotation %s\n", "arrays", KYCG_IA_TAG);
     return 0;
   } else {
     fprintf(stderr, "[main] Unrecognized command '%s'.\n", argv[1]);
