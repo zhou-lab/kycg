@@ -109,7 +109,6 @@ static const kycg_fsize_t KYCG_SIZES_hg38[] = {
 static const kycg_fsize_t KYCG_SIZES_mm10[] = {
     { "Blacklist.20220304.cm", 636 },
     { "CGI.20220904.cm", 122892 },
-    { "ChromHMM.20220318.cm", 878195 },
     { "ChromHMM.20220414.cm", 877986 },
     { "ChromHMMfullStack.20231222.cm", 6409786 },
     { "Chromosome.20240119.cm", 269 },
@@ -167,7 +166,7 @@ typedef struct {
 
 static const kycg_seq_reg_t KYCG_SEQ_REGISTRY[] = {
     { "hg38", 29401795, 32, "KYCGKB_hg38", "v2", "8e0594ade2936a7b837306cec8e4d29bb9028a6a3be5b2cdbd372af7c16f650a", "18175838", "10.5281/zenodo.18175837", KYCG_SIZES_hg38 },
-    { "mm10", 21867837, 29, "KYCGKB_mm10", "v1", "0693eb6d7e173c04e083c48c41eedc593af96a8ac78c80e8cfd2b24b71c25d3a", "18175656", "10.5281/zenodo.18175655", KYCG_SIZES_mm10 },
+    { "mm10", 21867837, 28, "KYCGKB_mm10", "v2", "fbb75f8198a731f3ea2de7d2fb65e92c84f4e0f0e2ff335b9ff2e2000606f289", "18175656", "10.5281/zenodo.18175655", KYCG_SIZES_mm10 },
     { NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
 };
 
