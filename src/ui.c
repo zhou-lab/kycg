@@ -1213,7 +1213,10 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
 
   const int picking = (spec->n_actions > 0);
   int accepted = 0;
-  int detail_open = 0;
+  /* On by default: the descriptions are the reason the catalogue is browsable
+   * rather than just listable, and a key you have to discover is a key most
+   * people never press. `detail_key` turns it off. */
+  int detail_open = (spec->detail != NULL);
   kycg_ui_detail_t det = {0};
 
   /* Column widths over the root rows only; children arrive preformatted. */
@@ -1324,8 +1327,22 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
        * the text describes is what makes it useful at all. */
       int cap = rowsz / 2;
       if (cap < 0) cap = 0;
-      if ((int)det.n > cap) det.n = (size_t)cap;
-      avail -= (int)det.n + 1;            /* +1 for the blank separator */
+      if ((int)det.n > cap && cap > 0) {
+        /* Say that it was cut. Silently stopping mid-sentence reads as the
+         * whole of what is recorded, which for provenance is the wrong
+         * impression to leave. */
+        det.n = (size_t)cap;
+        char *mark = malloc(64);
+        if (mark) {
+          snprintf(mark, 64, "  %s...%s", kycg_ui_dim(), kycg_ui_reset());
+          free(det.rows[det.n - 1]);
+          det.rows[det.n - 1] = mark;
+        }
+      }
+      /* No lines, no space: a callback returns nothing for a row it has
+       * nothing to say about, and reserving a separator for it would leave a
+       * stray rule under the list. */
+      if (det.n) avail -= (int)det.n + 1;
     }
     if (avail < 3) avail = 3;
 
@@ -1560,8 +1577,10 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
           break;
         }
 
-        /* Do the work without leaving: the panel covers the bottom rows and
-         * the catalogue stays visible above it. */
+        /* The panel simply paints over the bottom rows, pane included. The
+         * catalogue stays visible above it, which is the part that matters
+         * while a download runs; the description underneath is context you
+         * have already read. */
         act->commit(ctx);
         kycg_ui_panel_close();
 

@@ -1884,10 +1884,11 @@ void kycg_kb_detail(void *ctx, const char *root, const char *child_key,
   L.cols = cols > 20 ? cols : 20;
 
   if (!child_key) {
-    /* A collection row: the columns above already say what it is. */
-    lay_push(&L, "");
-    lay_wrap(&L, NULL, "Open this collection and put the cursor on a set to "
-                       "see what it is.");
+    /* A collection row: the columns above already describe it, so the pane
+     * collapses rather than showing a placeholder. With the pane on by
+     * default that placeholder would have been the first thing anyone saw,
+     * occupying half the screen to say nothing. */
+    return;
   } else {
     char setn[256];
     const char *file = strchr(child_key, ':');

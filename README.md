@@ -85,9 +85,10 @@ recommended selection in one keypress — the dozen or so sets worth having
 before you know what you are looking for, rather than all forty. `i` describes
 the set under the cursor: what the annotation means for methylation, the
 upstream database, the publication, and what was done to it on the way in.
-The pane stays open while you move — arrow down and it describes the next set,
-so comparing two of them does not mean opening and closing anything. `i` again
-or `esc` closes it.
+The pane is open by default and follows the cursor, so arrowing down walks the
+catalogue with each set explained as you reach it. It collapses on collection
+rows, where the columns already say what there is to say. `i` hides it when you
+want the full screen for scanning.
 That last one is the answer to "is `TFBSrm` the same as `TFBS`, differently
 filtered?" — it is not; `rm` is ReMap. The text lives in
 [`data/knowledgebases.tsv`](data/knowledgebases.tsv) and is compiled into the
@@ -105,7 +106,7 @@ place with your folds and cursor where you left them. Only `q` exits.
    ├ [x] ABCompartment   ABCompartment.20220911.cm   9.5 KB  -
    ├  ✓  Blacklist       Blacklist.20220304.cm       3.1 KB  cached
    ├ [ ] CTCFbind        CTCFbind.20220911.cm        159 KB  -
-  row 4 of 42  •  1 selected  •  → open  ← close  space select  r recommended  i info  f fetch  d store   q quit
+  row 4 of 42  •  1 selected  •  → open  ← close  space select  r recommended  i hide  f fetch  d store   q quit
 ```
 
 **Nothing is asked when nobody can answer.** The original rule was
@@ -221,7 +222,7 @@ Knowledgebases for 21,867,837 rows -- space to choose, t to test
 ❯ ▾ mm10    whole genome  21,867,837  28
    ├ [x] CGI          CGI.20220904.cm            cached
    ├ [ ] EvoCons      EvoCons.20220314.cm        -
-  row 3 of 30 · 1 selected · → open  ← close  space select  r recommended  i info  f fetch  t test  q quit
+  row 3 of 30 · 1 selected · → open  ← close  space select  r recommended  i hide  f fetch  t test  q quit
 ```
 
 It lists everything a collection publishes, not just what you have — so if the
