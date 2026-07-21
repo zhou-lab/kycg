@@ -334,9 +334,9 @@ knowledgebase 'chromhmm.cm' record '1' has 21867837 rows.
 These files index different reference row lists and cannot be compared.
 ```
 
-It does no more than that, by design. kycg does not infer
-platforms and cannot detect two files that share a row count but come from
-different row spaces — sequencing uses a whole-genome `.cr`, arrays use a
+It does no more than that, by design. kycg does not infer platforms and
+cannot detect two files that share a row count but come from different row
+spaces — sequencing uses a whole-genome `.cr`, arrays use a
 per-platform `ordering.tsv.gz`, and a `.cm` from one is meaningless in the
 other. Keeping them matched is the user's responsibility.
 
@@ -367,8 +367,8 @@ PASS: kycg agrees with R on every column.
 ```
 
 The acceptance bar is ~1e-10 agreement on `log10.p.value`; the residual above
-is dominated by output text precision, not by the
-computation. The counts themselves are byte-identical to `yame summary`.
+is dominated by output text precision, not by the computation. The counts
+themselves are byte-identical to `yame summary`.
 
 Regenerate the unit-test reference values with `Rscript tests/ref.R`.
 

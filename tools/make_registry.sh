@@ -26,10 +26,10 @@
 #     paper cites -- so the record id and DOI stay in the registry as
 #     provenance. They are no longer the fetch path.
 #
-#     File sizes are pinned separately, for display only. They let `fetch -n`
-#     say how large a download will be before it starts. Nothing depends on
-#     them for correctness, and a file missing from the table simply shows no
-#     size -- so adding a set upstream still needs no rebuild.
+#     File sizes are pinned separately, for display only. They let the browser
+#     and the fetch plan say how large a download will be before it starts.
+#     Nothing depends on them for correctness, and a file missing from the
+#     table simply shows no size -- so adding a set upstream needs no rebuild.
 #
 # Regenerating requires network but downloads nothing large: only SHA256SUMS
 # files and two JSON listings.

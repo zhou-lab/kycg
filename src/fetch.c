@@ -56,7 +56,7 @@
  *   Nextflow job or a Docker build forever with no indication of why. That
  *   guarantee is preserved exactly, by gating every question on an interactive
  *   terminal (see ui.c): off a TTY, an explicit target proceeds without asking
- *   and a missing target is an error rather than a wait. -y forces the same
+ *   and a missing target is an error rather than a wait. -f forces the same
  *   behavior on a TTY.
  *
  *   What has not changed: kycg still downloads in this command and nowhere

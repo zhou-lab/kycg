@@ -36,10 +36,10 @@
  *   must check kycg_ui_interactive() and supply their own non-interactive
  *   behavior; nothing here silently blocks on a closed stdin.
  *
- *   This is the refinement of the original "never prompt" rule. It existed
- *   because a prompt would hang automation; gating
- *   prompts on an interactive terminal preserves that guarantee exactly, while
- *   letting a human at a keyboard get a usable interface.
+ *   This is the refinement of the original "never prompt" rule. That rule
+ *   existed because a prompt would hang automation; gating prompts on an
+ *   interactive terminal preserves the guarantee exactly, while letting a
+ *   human at a keyboard get a usable interface.
  *
  * DEGRADATION
  *   Off a TTY: no escape sequences, no spinner, one plain line per event.
