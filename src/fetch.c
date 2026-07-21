@@ -910,31 +910,67 @@ static void on_pick(void *ctx, const char *root, const char *key) {
 }
 
 /**
- * A platform's SHA256SUMS, fetched and verified, memoized for this run.
+ * A platform's SHA256SUMS: the catalogue of what that platform publishes.
  *
- * Returns a malloc'd copy the caller frees, or NULL when there is no network
- * (or no libcurl). The digest is checked against the compiled anchor exactly
- * as a fetch would: a catalogue is worth no more trust than the files in it.
+ * Looked for in three places, cheapest first -- the local store, this run's
+ * memo, then the network. `allow_fetch` gates that last step, because two
+ * callers want different things from the same lookup: drawing the overview
+ * must never reach the network (it happens on every keystroke that redraws),
+ * while unfolding a platform or pressing refresh explicitly should.
+ *
+ * Returns a malloc'd copy the caller frees, or NULL if unavailable. A fetched
+ * manifest is verified against the compiled anchor exactly as a download would
+ * be: a catalogue deserves no more trust than the files it lists.
  */
-static char *array_manifest(const kycg_array_reg_t *ar, size_t *len_out) {
-#ifndef KYCG_HAVE_CURL
-  (void)ar; (void)len_out;
-  return NULL;
-#else
-  /* One slot per platform; the registry is small and fixed. */
-  static struct { const char *plat; char *text; size_t len; } memo[16];
-  static size_t n_memo = 0;
+static struct { const char *plat; char *text; size_t len; } g_manifest[16];
+static size_t g_manifest_n = 0;
 
-  for (size_t i = 0; i < n_memo; ++i) {
-    if (memo[i].plat != ar->platform) continue;
-    if (!memo[i].text) return NULL;
-    char *dup = malloc(memo[i].len + 1);
+/** Drop the memo, so the next lookup goes back to the network. */
+static void array_manifest_forget(void) {
+  for (size_t i = 0; i < g_manifest_n; ++i) free(g_manifest[i].text);
+  g_manifest_n = 0;
+}
+
+static char *array_manifest(const kycg_array_reg_t *ar, const char *store,
+                            size_t *len_out, int allow_fetch) {
+  if (len_out) *len_out = 0;
+
+  /* 1. The store's own copy, written when the platform was fetched. It is
+   *    authoritative and always current, so it is never memoized. */
+  char sums[4400];
+  snprintf(sums, sizeof(sums), "%s/%s/KYCG/%s",
+           store, ar->platform, KYCG_IA_SUMS_FILE);
+  FILE *fp = fopen(sums, "rb");
+  if (fp) {
+    fseek(fp, 0, SEEK_END);
+    long sz = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    char *text = NULL;
+    size_t len = 0;
+    if (sz > 0 && (text = malloc((size_t)sz + 1))) {
+      len = fread(text, 1, (size_t)sz, fp);
+      text[len] = '\0';
+    }
+    fclose(fp);
+    if (text) { if (len_out) *len_out = len; return text; }
+  }
+
+  /* 2. Something this run already pulled. */
+  for (size_t i = 0; i < g_manifest_n; ++i) {
+    if (g_manifest[i].plat != ar->platform) continue;
+    if (!g_manifest[i].text) return NULL;
+    char *dup = malloc(g_manifest[i].len + 1);
     if (!dup) return NULL;
-    memcpy(dup, memo[i].text, memo[i].len + 1);
-    if (len_out) *len_out = memo[i].len;
+    memcpy(dup, g_manifest[i].text, g_manifest[i].len + 1);
+    if (len_out) *len_out = g_manifest[i].len;
     return dup;
   }
 
+  if (!allow_fetch) return NULL;
+
+#ifndef KYCG_HAVE_CURL
+  return NULL;
+#else
   char *text = NULL;
   size_t len = 0;
 
@@ -943,7 +979,6 @@ static char *array_manifest(const kycg_array_reg_t *ar, size_t *len_out) {
     snprintf(url, sizeof(url), "%s/%s/%s/KYCG/%s",
              KYCG_IA_BASE_URL, KYCG_IA_TAG, ar->platform, KYCG_IA_SUMS_FILE);
     text = http_get_mem(url, &len);
-
     if (text) {
       char got[65];
       kycg_sha256_buf(text, len, got);
@@ -951,20 +986,41 @@ static char *array_manifest(const kycg_array_reg_t *ar, size_t *len_out) {
     }
   }
 
-  if (n_memo < 16) {
-    memo[n_memo].plat = ar->platform;
-    memo[n_memo].len = len;
-    memo[n_memo].text = NULL;
+  /* Remember the outcome either way: a failed lookup memoized as NULL stops
+   * a dead platform being retried on every redraw. */
+  if (g_manifest_n < 16) {
+    g_manifest[g_manifest_n].plat = ar->platform;
+    g_manifest[g_manifest_n].len = len;
+    g_manifest[g_manifest_n].text = NULL;
     if (text) {
-      memo[n_memo].text = malloc(len + 1);
-      if (memo[n_memo].text) memcpy(memo[n_memo].text, text, len + 1);
+      g_manifest[g_manifest_n].text = malloc(len + 1);
+      if (g_manifest[g_manifest_n].text)
+        memcpy(g_manifest[g_manifest_n].text, text, len + 1);
     }
-    ++n_memo;
+    ++g_manifest_n;
   }
 
   if (len_out) *len_out = len;
   return text;
 #endif
+}
+
+/** How many sets a platform publishes, or 0 if the catalogue is not to hand. */
+static uint64_t array_set_total(const kycg_array_reg_t *ar, const char *store) {
+  size_t len = 0;
+  char *text = array_manifest(ar, store, &len, 0);
+  if (!text) return 0;
+
+  size_t n_ent = 0;
+  sums_ent_t *ent = parse_sums(text, &n_ent);
+  uint64_t n = 0;
+  for (size_t i = 0; ent && i < n_ent; ++i) {
+    size_t l = strlen(ent[i].name);
+    if (l > 3 && strcmp(ent[i].name + l - 3, ".cm") == 0) ++n;
+  }
+  free(ent);
+  free(text);
+  return n;
 }
 
 /* Append one preformatted child line to an expansion. */
@@ -1003,8 +1059,11 @@ static void kid_push(kycg_ui_kids_t *k, unsigned char style, const char *key,
  * in. Array platforms cannot: anchoring on SHA256SUMS is what lets upstream
  * add a set without a kycg rebuild, so the set list only exists once fetched.
  */
+static void refresh_overview(listctx_t *lc);
+
 static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
-  const char *root = ((listctx_t *)ctx)->root;
+  listctx_t *lc = ctx;
+  const char *root = lc->root;
 
   char target[128];
   const char *tab = strchr(row, '\t');
@@ -1046,22 +1105,13 @@ static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
      * to list what exists. It is cached in memory for the session and never
      * written to the store, because writing it would claim files are present
      * that are not. */
-    char *text = NULL;
     size_t len = 0;
+    int had = (array_set_total(ar, root) != 0);
+    char *text = array_manifest(ar, root, &len, 1);
 
-    FILE *fp = fopen(sums, "rb");
-    if (fp) {
-      fseek(fp, 0, SEEK_END);
-      long sz = ftell(fp);
-      fseek(fp, 0, SEEK_SET);
-      if (sz > 0) {
-        text = malloc((size_t)sz + 1);
-        if (text) { len = fread(text, 1, (size_t)sz, fp); text[len] = '\0'; }
-      }
-      fclose(fp);
-    } else {
-      text = array_manifest(ar, &len);
-    }
+    /* The catalogue we just pulled is what the overview needs to show a
+     * denominator, so the row above updates the moment it becomes knowable. */
+    if (text && !had) refresh_overview(lc);
 
     if (!text) {
       kid_push(out, KYCG_ROW_MISSING, NULL,
@@ -1250,13 +1300,17 @@ static void build_overview(const char *root, rows_t *rows) {
     char dir[4096];
     snprintf(dir, sizeof(dir), "%s/%s/KYCG", root, r->platform);
     uint64_t nc = count_cached(dir);
-    /* Arrays report only what is cached, not a total: the catalogue lives in
-     * the SHA256SUMS manifest, which is the point of anchoring on it. Unfold
-     * a platform and the browser fetches that manifest to show the rest. */
-    char rb[32];
+    /* The total comes from the platform's manifest, which is the catalogue.
+     * Only counted when that is already to hand -- locally, or pulled earlier
+     * this run -- because this runs on every redraw and must not touch the
+     * network. Unfolding a platform, or pressing r, warms it. */
+    uint64_t nt = array_set_total(r, root);
+    char rb[32], cnt[64];
+    if (nt) snprintf(cnt, sizeof(cnt), "%" PRIu64 "/%" PRIu64, nc, nt);
+    else    snprintf(cnt, sizeof(cnt), "%" PRIu64, nc);
     rows_push(rows, nc ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
-              "%s\tarray\t%s\tInfiniumAnnotation@%s\t%" PRIu64,
-              r->platform, commify(r->rows, rb, sizeof(rb)), KYCG_IA_TAG, nc);
+              "%s\tarray\t%s\tInfiniumAnnotation@%s\t%s",
+              r->platform, commify(r->rows, rb, sizeof(rb)), KYCG_IA_TAG, cnt);
   }
 }
 
@@ -1292,6 +1346,31 @@ static void on_commit(void *ctx) {
  */
 static int on_list_key(void *ctx, char key) {
   listctx_t *lc = ctx;
+
+  if (key == 'r') {
+    /* Refresh: drop every remembered catalogue and pull them again. This is
+     * the one place that reaches the network for all platforms at once, which
+     * is why it is a key the user presses rather than something the overview
+     * does on its own. It also fills in every denominator. */
+    array_manifest_forget();
+
+    kycg_ui_panel_open(2);
+    size_t n = 0, tot = 0;
+    for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform; ++r) ++tot;
+
+    for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform; ++r) {
+      kycg_ui_panel_line(0, "  %srefreshing catalogues%s  %s%zu/%zu  %s%s",
+                         kycg_ui_bold(), kycg_ui_reset(), kycg_ui_dim(),
+                         ++n, tot, r->platform, kycg_ui_reset());
+      size_t len = 0;
+      free(array_manifest(r, lc->root, &len, 1));
+    }
+    kycg_ui_panel_close();
+
+    refresh_overview(lc);
+    return 1;
+  }
+
   if (key != 'd') return 0;
 
   char buf[4096];
@@ -1403,7 +1482,7 @@ int main_list(int argc, char *argv[]) {
           }
           fclose(fp);
         } else if (isatty(STDOUT_FILENO)) {
-          text = array_manifest(ar, &tlen);
+          text = array_manifest(ar, root, &tlen, 1);
         }
 
         if (!text) {
@@ -1466,7 +1545,7 @@ int main_list(int argc, char *argv[]) {
     spec.accept = on_pick;
     spec.commit = on_commit;
     spec.on_key = on_list_key;
-    spec.hint = "d store";
+    spec.hint = "r refresh  d store";
     spec.ctx = &lc;
 
     int rc = kycg_ui_tree(&spec);

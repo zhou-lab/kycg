@@ -54,8 +54,8 @@ kycg list hg38                # the individual sets (works offline)
 
 `kycg list` is the interactive surface: browsing the catalogue, choosing from
 it, and fetching are one activity on one screen. `→` unfolds a target, `space`
-checks a set, `f` fetches everything checked, `d` points the browser at a
-different store. Sets already present show a green ✓ and cannot be checked —
+checks a set, `f` fetches everything checked, `r` refreshes the catalogues,
+`d` points the browser at a different store. Sets already present show a green ✓ and cannot be checked —
 there is nothing to ask for. `kycg fetch` with no target simply opens it.
 
 Fetching does not leave the browser. The plan, the confirmation and the
@@ -171,6 +171,13 @@ only on a terminal, and never when stdout is redirected.
 Every target carries the size of the row space it indexes, which is the fact
 you need before fetching anything: a `.cm` is comparable only to a query with
 the same row count, so `kycg test` will refuse a mismatch.
+
+`cached_sets` reads *have/total* once the catalogue is known. For whole
+genomes that is always, since the file list is compiled in. For an array
+platform the total lives in its manifest, so it appears as soon as that is to
+hand — locally, after unfolding the platform, or after `r`, which pulls them
+all. Until then only the count is shown, because drawing the overview happens
+on every keystroke and must never reach the network.
 
 The picker, the browser and the tree are full-screen: they take the alternate
 screen buffer, scroll a fixed-height viewport, and hand the terminal back
