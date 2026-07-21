@@ -1464,7 +1464,7 @@ static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
   free(text);
 }
 
-static uint64_t count_cached(const char *dir);
+static uint64_t count_cached(const coll_t *c);
 
 /**
  * Fill `rows` with one line per target, counting what the store holds.
@@ -1478,7 +1478,7 @@ static void build_overview(const char *root, rows_t *rows) {
     coll_t c;
     if (coll_for(r->genome, root, NULL, &c) != 0) continue;
 
-    uint64_t have = count_cached(c.dir);
+    uint64_t have = count_cached(&c);
     /* Pinned, not discovered: the tag is immutable, so its set count is a
      * fixed fact about this build. The overview therefore shows have/total
      * immediately, without a manifest and without touching the network. */
@@ -1499,7 +1499,7 @@ static void build_overview(const char *root, rows_t *rows) {
     coll_t c;
     if (coll_for(r->platform, root, NULL, &c) != 0) continue;
 
-    uint64_t nc = count_cached(c.dir);
+    uint64_t nc = count_cached(&c);
     uint64_t nt = c.n_sets;
 
     char rb[32], cnt[64];
@@ -1928,18 +1928,51 @@ int kycg_fetch_specs(char *const *specs, size_t n, const char *store) {
   return rc;
 }
 
-static uint64_t count_cached(const char *dir) {
-  DIR *d = opendir(dir);
-  if (!d) return 0;
+/**
+ * How many of this collection's sets are actually present.
+ *
+ * Counts the intersection of what is on disk with what the collection
+ * publishes -- not every .cm in the directory. A store can legitimately hold a
+ * file the pinned tag no longer publishes: fetch mm10 at v1, pin v2, and the
+ * ChromHMM build v2 dropped is still sitting there. Counting it produced
+ * "29/28", a numerator larger than its own denominator, which reads as a
+ * broken counter rather than as a true fact about the store. It also let any
+ * unrelated .cm dropped in the directory inflate the count.
+ *
+ * The denominator is the pinned set count, so the numerator has to be measured
+ * against the same catalogue or the two are not comparable.
+ *
+ * With no local manifest there is nothing to intersect against and every .cm
+ * counts. That is the hand-populated store -- unpacked from a tarball, mounted
+ * off a shared drive -- which store.c supports deliberately, and reporting
+ * zero for it would be a worse answer than counting a stray file.
+ */
+static uint64_t count_cached(const coll_t *c) {
+  size_t len = 0;
+  char *text = coll_manifest(c, &len, KYCG_MF_LOCAL);
+  size_t n_ent = 0;
+  sums_ent_t *ent = text ? parse_sums(text, &n_ent) : NULL;
+
+  DIR *d = opendir(c->dir);
+  if (!d) { free(ent); free(text); return 0; }
 
   uint64_t n = 0;
   struct dirent *e;
   while ((e = readdir(d))) {
     size_t l = strlen(e->d_name);
     if (e->d_name[0] == '.') continue;
-    if (l > 3 && strcmp(e->d_name + l - 3, ".cm") == 0) ++n;
+    if (l <= 3 || strcmp(e->d_name + l - 3, ".cm") != 0) continue;
+
+    if (!ent) { ++n; continue; }        /* no catalogue to check against */
+
+    for (size_t i = 0; i < n_ent; ++i) {
+      if (strcmp(ent[i].name, e->d_name) == 0) { ++n; break; }
+    }
   }
   closedir(d);
+
+  free(ent);
+  free(text);
   return n;
 }
 
