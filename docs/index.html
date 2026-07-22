@@ -8,12 +8,12 @@
 <style>
   :root{
     --bg:#fbfdfd;--fg:#16232a;--muted:#55666f;--line:#e2e9ea;--soft:#eff4f5;--card:#ffffff;
-    --accent:#0f766e;--accent-2:#14b8a6;--accent-soft:#e0f5f2;--code-bg:#0b1620;--code-fg:#e4eef2;--cm:#74899a;--ok:#22c55e;--warn:#b45309;
+    --accent:#0f766e;--accent-2:#14b8a6;--accent-soft:#e0f5f2;--on-accent:#ffffff;--code-bg:#0b1620;--code-fg:#e4eef2;--cm:#74899a;--ok:#22c55e;--warn:#b45309;
     --shadow:0 1px 2px rgba(15,35,45,.04),0 6px 20px rgba(15,35,45,.05);
   }
   @media (prefers-color-scheme:dark){:root{
     --bg:#08131a;--fg:#e4eef2;--muted:#8ea3ae;--line:#1d2f3a;--soft:#0f1e27;--card:#0f1c25;
-    --accent:#5eead4;--accent-2:#99f6e4;--accent-soft:#123b38;--code-bg:#050f16;--code-fg:#dbe9ef;--cm:#647c8c;--ok:#4ade80;--warn:#fbbf24;
+    --accent:#5eead4;--accent-2:#99f6e4;--accent-soft:#123b38;--on-accent:#08131a;--code-bg:#050f16;--code-fg:#dbe9ef;--cm:#647c8c;--ok:#4ade80;--warn:#fbbf24;
     --shadow:0 1px 2px rgba(0,0,0,.25),0 8px 26px rgba(0,0,0,.30);}}
   :root[data-theme=light]{--bg:#fbfdfd;--fg:#16232a;--muted:#55666f;--line:#e2e9ea;--soft:#eff4f5;--card:#fff;--accent:#0f766e;--accent-2:#14b8a6;--accent-soft:#e0f5f2;--code-bg:#0b1620;--code-fg:#e4eef2;--cm:#74899a;--ok:#22c55e;--warn:#b45309;--shadow:0 1px 2px rgba(15,35,45,.04),0 6px 20px rgba(15,35,45,.05);}
   :root[data-theme=dark]{--bg:#08131a;--fg:#e4eef2;--muted:#8ea3ae;--line:#1d2f3a;--soft:#0f1e27;--card:#0f1c25;--accent:#5eead4;--accent-2:#99f6e4;--accent-soft:#123b38;--code-bg:#050f16;--code-fg:#dbe9ef;--cm:#647c8c;--ok:#4ade80;--warn:#fbbf24;--shadow:0 1px 2px rgba(0,0,0,.25),0 8px 26px rgba(0,0,0,.30);}
@@ -28,6 +28,24 @@
   .badge{margin-left:9px;font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
      color:var(--accent);background:var(--accent-soft);border:1px solid var(--line);padding:2px 8px;border-radius:20px;vertical-align:middle}
   .badge-ver{text-transform:none;letter-spacing:.02em;margin-left:5px;text-decoration:none}
+  /* The title line wraps as a unit so the install command can sit beside the
+     name on a wide screen and drop below it on a phone. */
+  .titlerow{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px}
+  /* install: the command itself is the button — click to copy */
+  .install{display:inline-flex;align-items:stretch;border:1px solid var(--accent);
+     border-radius:6px;overflow:hidden;margin-left:4px}
+  #install-btn{font:inherit;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+     font-size:.74rem;cursor:pointer;border:0;color:var(--on-accent);background:var(--accent);
+     padding:.42em .7em;line-height:1.15;display:inline-flex;align-items:center;gap:.5em;
+     white-space:nowrap}
+  #install-btn:hover{filter:brightness(1.08)}
+  #install-btn:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+  #install-btn .ico{opacity:.75;font-size:.92em}
+  #install-btn.done .ico::before{content:"✓"}
+  .install .ana{display:inline-flex;align-items:center;padding:.42em .55em;font-size:.72rem;
+     text-decoration:none;color:var(--accent);background:var(--accent-soft);
+     border-left:1px solid var(--accent)}
+  .install .ana:hover{filter:brightness(.96)}
   .badge-ver:hover{background:var(--accent);color:#fff}
   .expand{color:var(--muted);margin:8px 0 12px;font-size:.9rem;max-width:82ch}
   .links{font-size:.85rem;color:var(--muted)}
@@ -87,8 +105,18 @@
 <div class="wrap">
 
 <header>
-  <h1><b>K</b>now<b>Y</b>our<b>CG</b></h1> <span class="badge">cli</span><a
-    class="badge badge-ver" href="https://github.com/zhou-lab/kycg/releases/tag/v0.1.0">v0.1.0</a>
+  <div class="titlerow">
+    <h1><b>K</b>now<b>Y</b>our<b>CG</b></h1>
+    <span class="badge">cli</span><a
+      class="badge badge-ver" href="https://github.com/zhou-lab/kycg/releases/tag/v0.1.0">v0.1.0</a>
+    <span class="install">
+      <button id="install-btn" type="button"
+              data-cmd="conda install -c zhou-lab -c conda-forge kycg"
+              title="Copy to clipboard"><span class="ico">⧉</span>conda install -c zhou-lab -c conda-forge kycg</button>
+      <a class="ana" href="https://anaconda.org/zhou-lab/kycg"
+         title="anaconda.org/zhou-lab/kycg" rel="noopener">↗</a>
+    </span>
+  </div>
   <p class="expand">Functional analysis of DNA methylation at CpG resolution.
     One C binary, one verified knowledgebase store, one implementation of every statistic.</p>
   <p class="links">
@@ -486,6 +514,23 @@ log10 fdr   OK   worst 2.96e-12
 </div>
 <script>
 (function(){
+  // --- copy the install command ---
+  var ib=document.getElementById('install-btn');
+  if(ib){
+    ib.addEventListener('click',function(){
+      var cmd=ib.getAttribute('data-cmd'),done=function(){
+        ib.classList.add('done');
+        setTimeout(function(){ib.classList.remove('done');},1400);
+      };
+      if(navigator.clipboard){navigator.clipboard.writeText(cmd).then(done,done);}
+      else{                      // file:// and older browsers
+        var t=document.createElement('textarea');
+        t.value=cmd;document.body.appendChild(t);t.select();
+        try{document.execCommand('copy');}catch(e){}
+        document.body.removeChild(t);done();
+      }
+    });
+  }
   document.querySelectorAll('pre').forEach(function(pre){
     var b=document.createElement('button');
     b.className='copy';b.type='button';b.textContent='copy';
