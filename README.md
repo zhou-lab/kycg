@@ -5,6 +5,9 @@ reimplementation of the [knowYourCG](https://bioconductor.org/packages/knowYourC
 R/Bioconductor package, with [YAME](https://github.com/zhou-lab/YAME) as its
 computational backend.
 
+**Cite:** Goldberg *et al.* KnowYourCG. *Sci Adv* 2025;11(43):eadw3027.
+[doi:10.1126/sciadv.adw3027](https://doi.org/10.1126/sciadv.adw3027)
+
 **Docs site:** [`docs/index.html`](docs/index.html) — a single self-contained
 page covering the whole workflow. This README covers what is implemented and
 how to run it.

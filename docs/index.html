@@ -48,6 +48,20 @@
   .install .ana:hover{filter:brightness(.96)}
   .badge-ver:hover{background:var(--accent);color:#fff}
   .expand{color:var(--muted);margin:8px 0 12px;font-size:.9rem;max-width:82ch}
+  /* citation: a paired button — the label opens the paper, the stub copies the PMID */
+  .cite{display:inline-flex;align-items:stretch;
+     border:1px solid var(--accent);border-radius:6px;overflow:hidden}
+  .cite a,.cite button{font:inherit;font-size:.74rem;line-height:1.15;padding:.42em .7em;
+     display:inline-flex;align-items:center;gap:.45em;white-space:nowrap;
+     text-decoration:none;border:0;cursor:pointer}
+  .cite .paper{color:var(--on-accent);background:var(--accent);font-weight:600}
+  .cite .paper:hover{filter:brightness(1.08)}
+  /* min-width keeps the button from resizing when the label flips to "copied" */
+  .cite .pmid{color:var(--accent);background:var(--accent-soft);min-width:5.2em;justify-content:center;
+     border-left:1px solid var(--accent);font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+  .cite .pmid:hover{filter:brightness(.96)}
+  .cite a:focus-visible,.cite button:focus-visible{outline:2px solid var(--fg);outline-offset:-2px}
+  .cite .pmid.done{color:var(--on-accent);background:var(--accent)}
   .links{font-size:.85rem;color:var(--muted)}
   .links a{font-weight:600}.links span{opacity:.4;margin:0 8px}
   .grid{column-count:1;column-gap:16px}
@@ -115,6 +129,12 @@
               title="Copy to clipboard"><span class="ico">⧉</span>conda install -c zhou-lab -c conda-forge kycg</button>
       <a class="ana" href="https://anaconda.org/zhou-lab/kycg"
          title="anaconda.org/zhou-lab/kycg" rel="noopener">↗</a>
+    </span>
+    <span class="cite">
+      <a class="paper" href="https://doi.org/10.1126/sciadv.adw3027" rel="noopener"
+         title="Goldberg et al. KnowYourCG. Sci Adv 2025;11(43):eadw3027">Cite ↗</a>
+      <button class="pmid" type="button" data-pmid="41134907"
+              title="Copy PMID to clipboard">PMID</button>
     </span>
   </div>
   <p class="expand">Functional analysis of DNA methylation at CpG resolution.
@@ -514,23 +534,36 @@ log10 fdr   OK   worst 2.96e-12
 </div>
 <script>
 (function(){
+  // --- clipboard, with a file:// and older-browser fallback ---
+  function copy(text,done){
+    if(navigator.clipboard){navigator.clipboard.writeText(text).then(done,done);return;}
+    var t=document.createElement('textarea');
+    t.value=text;document.body.appendChild(t);t.select();
+    try{document.execCommand('copy');}catch(e){}
+    document.body.removeChild(t);done();
+  }
+
   // --- copy the install command ---
   var ib=document.getElementById('install-btn');
   if(ib){
     ib.addEventListener('click',function(){
-      var cmd=ib.getAttribute('data-cmd'),done=function(){
+      copy(ib.getAttribute('data-cmd'),function(){
         ib.classList.add('done');
         setTimeout(function(){ib.classList.remove('done');},1400);
-      };
-      if(navigator.clipboard){navigator.clipboard.writeText(cmd).then(done,done);}
-      else{                      // file:// and older browsers
-        var t=document.createElement('textarea');
-        t.value=cmd;document.body.appendChild(t);t.select();
-        try{document.execCommand('copy');}catch(e){}
-        document.body.removeChild(t);done();
-      }
+      });
     });
   }
+
+  // --- copy the PMID ---
+  document.querySelectorAll('.cite .pmid').forEach(function(b){
+    var label=b.textContent;
+    b.addEventListener('click',function(){
+      copy(b.getAttribute('data-pmid'),function(){
+        b.textContent='copied';b.classList.add('done');
+        setTimeout(function(){b.textContent=label;b.classList.remove('done');},1200);
+      });
+    });
+  });
   document.querySelectorAll('pre').forEach(function(pre){
     var b=document.createElement('button');
     b.className='copy';b.type='button';b.textContent='copy';
