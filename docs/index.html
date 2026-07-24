@@ -344,32 +344,46 @@ cinderplot 'res.tsv
 
 <section class="full">
   <h2>Worked example <span class="m">— one mouse cell methylome, 21.8M rows</span></h2>
-  <p>Everything below comes from <code class="inl">kycg test</code> over four mm10
-    knowledgebases, plotted with <a href="https://github.com/zhou-lab/cinderplot">cinderplot</a>.
-    Data, output table, and the exact commands are in
-    <a href="https://github.com/zhou-lab/kycg-examples">kycg-examples</a>.</p>
-  <pre style="margin-bottom:14px"><code>D=~/.cache/kycg/mm10
-kycg <span class="sub">test</span> -m $D/ChromHMM.20220414.cm -m $D/CGI.20220904.cm \
-          -m $D/PMD.20220911.cm  -m $D/rmsk1.20220321.cm \
-  onecell.cg &gt; res.tsv</code></pre>
+  <p>The single query cell <code class="inl">onecell.cg</code> tested against the
+    18 ChromHMM chromatin states, plotted with
+    <a href="https://github.com/zhou-lab/cinderplot">cinderplot</a> — no R. Data,
+    output table, and the exact commands live in
+    <a href="https://github.com/zhou-lab/kycg-examples">kycg-examples</a>; the
+    whole figure set regenerates with one script.</p>
+  <pre style="margin-bottom:14px"><code>git clone https://github.com/zhou-lab/kycg-examples
+bash kycg-examples/scripts/chromhmm_enrichment.sh</code></pre>
   <div class="cols">
     <figure>
-      <img src="https://github.com/zhou-lab/kycg-examples/raw/main/figures/volcano.png"
-           alt="Volcano plot: log2 odds ratio against -log10 FDR, colored by knowledgebase"
+      <img src="figures/volcano.png"
+           alt="Volcano plot: log2 odds ratio against -log10 FDR, colored by significance"
            loading="lazy">
-      <figcaption><b>Volcano.</b> <code>aes(estimate, neglog10_fdr, colour=group)</code>.
-        Sets with no overlap are filtered first — their odds ratio is zero, so log2(OR)
+      <figcaption><b>Volcano.</b> <code>aes(estimate, neglog10_fdr, colour=sig)</code>.
+        States with no overlap are filtered first — their odds ratio is zero, so log2(OR)
         saturates at <code>log2(DBL_MIN) = -1022</code> (matching knowYourCG) and a single
         such point would compress every real effect size into one pixel column.</figcaption>
     </figure>
     <figure>
-      <img src="https://github.com/zhou-lab/kycg-examples/raw/main/figures/top_sets.png"
-           alt="Bar chart of the twelve most significant CpG sets by -log10 FDR"
+      <img src="figures/dot.png"
+           alt="Horizontal dot plot of ChromHMM states by -log10 FDR, sized by overlap"
            loading="lazy">
-      <figcaption><b>Top sets.</b> The table arrives sorted by significance, so this is a
-        <code>head</code>. Partially methylated domains and quiescent chromatin dominate,
-        at <code>-log10 FDR ≈ 2567</code> — a number the <code>fdr</code> column cannot
-        represent.</figcaption>
+      <figcaption><b>Dot.</b> <code>aes(db, neglog10_fdr, size=overlap, colour=estimate) + coord_flip()</code>.
+        One row per state; point area is the overlap count, colour the log2 odds ratio.</figcaption>
+    </figure>
+    <figure>
+      <img src="figures/bar.png"
+           alt="Horizontal bar chart of ChromHMM states by -log10 FDR"
+           loading="lazy">
+      <figcaption><b>Bar.</b> <code>aes(db, neglog10_fdr) + geom_col() + coord_flip()</code>.
+        Quiescent chromatin and PMDs dominate, at <code>-log10 FDR ≈ 1546</code> — a
+        magnitude the linear <code>fdr</code> column underflows to 0.</figcaption>
+    </figure>
+    <figure>
+      <img src="figures/waterfall.png"
+           alt="Waterfall of enrichment ranked by log2 odds ratio, sized by -log10 FDR"
+           loading="lazy">
+      <figcaption><b>Waterfall.</b> <code>aes(index, estimate, size=neglog10_fdr) + geom_hline(0)</code>.
+        Enrichment ranked left to right; point area is significance, so the most
+        confident calls are the largest.</figcaption>
     </figure>
   </div>
 </section>
