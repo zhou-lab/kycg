@@ -55,43 +55,20 @@
 #define H_OFF    kycg_ui_reset()
 
 /**
- * Where the store is, and what this build is bound to.
- *
- * Every fetch and every -m path resolves against that directory, and a build
- * can verify only the tags whose digests it carries -- neither is trivia, and
- * neither was visible in any output before.
+ * The two facts worth stating right under the title: the backend this build is
+ * coupled to, and where its store is. kycg links libyame.a from a pinned
+ * submodule, so the YAME version is fixed at build time -- the store layout,
+ * the fetch/verify engine and the `.cx` formats all come from it; every fetch
+ * and every -m path resolves against the store directory.
  */
-static void print_pins(FILE *out) {
+static void print_build_info(FILE *out) {
   const char *env = getenv("KYCG_DATA_DIR");
 
-  fprintf(out, "%sStore%s\n", H_TITLE, H_OFF);
-  fprintf(out, "    %s%s%s   %s%s%s\n",
-          H_KEY, kycg_store_root(NULL), H_OFF,
+  fprintf(out, "    %sbuilt against%s  YAME %s\n", H_NOTE, H_OFF, YAME_VERSION);
+  fprintf(out, "    %sstore%s          %s   %s%s%s\n",
+          H_NOTE, H_OFF, kycg_store_root(NULL),
           H_NOTE, env && *env ? "(from $KYCG_DATA_DIR)"
                               : "($KYCG_DATA_DIR unset; -d overrides)", H_OFF);
-  fprintf(out, "\n");
-
-  fprintf(out, "%sKnowledgebases pinned by this build%s\n", H_TITLE, H_OFF);
-  for (const kycg_seq_reg_t *r = KYCG_SEQ_REGISTRY; r->genome; ++r)
-    fprintf(out, "    %-9s %s %s%s%s\n", r->genome, r->repo,
-            H_KEY, r->tag, H_OFF);
-  fprintf(out, "    %-9s InfiniumAnnotation %s%s%s\n", "arrays",
-          H_KEY, KYCG_IA_TAG, H_OFF);
-  fprintf(out, "    %sonly these tags can be verified; to follow a newer one,%s\n",
-          H_NOTE, H_OFF);
-  fprintf(out, "    %sregenerate src/registry.h (tools/make_registry.sh) and rebuild%s\n",
-          H_NOTE, H_OFF);
-  fprintf(out, "\n");
-
-  /* The YAME version this build is coupled to. kycg links libyame.a statically
-   * from a pinned submodule, so the backend version is a fixed fact of the
-   * build -- worth stating because the store layout, the fetch/verify engine
-   * and the `.cx` formats all come from it, and it is the thing a package test
-   * can assert on. (Curl is YAME's concern now, and YAME requires it, so there
-   * is no longer a "fetch available" question to report.) */
-  fprintf(out, "%sBackend%s\n", H_TITLE, H_OFF);
-  fprintf(out, "    %sYAME%s      %s%s%s\n",
-          H_KEY, H_OFF, H_NOTE, YAME_VERSION, H_OFF);
 }
 
 static void cmd(FILE *out, const char *name, const char *what) {
@@ -105,6 +82,9 @@ static int usage(void) {
              "at CpG resolution%s\n\n",
           H_TITLE, H_OFF, H_KEY, KYCG_VERSION, H_OFF, H_NOTE, H_OFF);
 
+  print_build_info(o);
+  fprintf(o, "\n");
+
   fprintf(o, "%sUsage%s\n", H_TITLE, H_OFF);
   fprintf(o, "    kycg %s<command>%s [options]\n\n", H_KEY, H_OFF);
 
@@ -115,8 +95,6 @@ static int usage(void) {
   cmd(o, "info",  "describe the records in a .cg or .cm file");
   fprintf(o, "\n");
 
-  print_pins(o);
-  fprintf(o, "\n");
   return 1;
 }
 
@@ -132,12 +110,10 @@ int main(int argc, char *argv[]) {
   else if (strcmp(argv[1], "-h") == 0 ||
            strcmp(argv[1], "--help") == 0) return usage();
   else if (strcmp(argv[1], "--version") == 0) {
-    /* A build is bound to a specific generation of the data: it can only
-     * verify the tags whose digests were compiled into it. Printing them makes
-     * that binding visible, so "which data does this kycg speak to" is
-     * answerable without reading the registry. */
+    /* Title, plus what the build is coupled to and points at: the YAME version
+     * (fixed by the pinned submodule) and the store directory. */
     printf("kycg %s\n", KYCG_VERSION);
-    print_pins(stdout);
+    print_build_info(stdout);
     return 0;
   } else {
     fprintf(stderr, "[main] Unrecognized command '%s'.\n", argv[1]);
