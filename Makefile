@@ -61,7 +61,7 @@ OBJECTS := $(SOURCES:$(SRC_DIR)/%.c=$(SRC_DIR)/%.o)
 # Everything except the CLI dispatcher, so tests can link the library half.
 LIBOBJECTS = $(filter-out $(SRC_DIR)/main.o, $(OBJECTS))
 
-.PHONY: all build debug clean distclean test yame install
+.PHONY: all build debug clean distclean test check-docs yame install
 
 all: build
 
@@ -133,6 +133,17 @@ $(TEST_DIR)/%: $(TEST_DIR)/%.c $(TEST_OBJ) $(YAME_LIB)
 
 test: $(TEST_BIN)
 	@for t in $(TEST_BIN); do echo "== $$t"; ./$$t || exit 1; done
+
+###################
+###  doc check  ###
+###################
+
+# Fail if docs/index.html quotes a stale kycg or coupled-YAME version. Those
+# live in prose there and prose does not recompile, so this makes a forgotten
+# update a build failure. Runs in CI (conda-build.yml selftest); run
+# `make check-docs` locally, and after any submodule bump.
+check-docs:
+	sh tools/check_docs_versions.sh
 
 ###################
 ###   install   ###
