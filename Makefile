@@ -16,7 +16,14 @@
 ifeq ($(origin CC),default)
   CC = cc
 endif
-CFLAGS = -W -Wall -finline-functions -std=gnu99 -Wno-unused-result -O3
+# _GNU_SOURCE makes glibc declare strcasestr (src/ui.c), which sits behind
+# __USE_GNU in <string.h> under every glibc. Without it the call is an implicit
+# declaration -- a warning on gcc <= 13 but a hard error from gcc 14 on.
+# Safe here only because conda-recipe/conda_build_config.yaml pins the build to
+# the glibc 2.17 sysroot: from glibc 2.38 on, _GNU_SOURCE also switches on the
+# C23 strtol redirects (strtol -> __isoc23_strtol@GLIBC_2.38), which would make
+# the binary unrunnable on RHEL 9 / Ubuntu 22.04. Do not drop that pin.
+CFLAGS = -W -Wall -finline-functions -std=gnu99 -Wno-unused-result -O3 -D_GNU_SOURCE
 CLIB = -lpthread -lz -lm
 
 PREFIX ?= /usr/local
