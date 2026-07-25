@@ -33,7 +33,7 @@
 #include "registry.h"
 #include "store.h"
 #include "ui.h"
-#include "assets.h"
+#include "yame_version.h"
 
 /**
  * What this build is bound to.
@@ -83,20 +83,15 @@ static void print_pins(FILE *out) {
           H_NOTE, H_OFF);
   fprintf(out, "\n");
 
-  /* libcurl is optional at build time, and a build without it is a kycg that
-   * analyzes fine and cannot fetch anything. That is invisible until someone
-   * runs `fetch` and gets told, which for a *packaged* build is far too late
-   * -- so state it here, where it is also the thing a package test can assert
-   * on. */
-  fprintf(out, "%sNetwork%s\n", H_TITLE, H_OFF);
-  /* Curl now lives in libyame; whether this build can fetch is a runtime fact
-   * (did libyame get built against libcurl), so ask it rather than a macro. */
-  if (yame_assets_have_curl())
-    fprintf(out, "    %slibcurl%s   %sfetch available%s\n",
-            H_KEY, H_OFF, H_NOTE, H_OFF);
-  else
-    fprintf(out, "    %snone%s      %sbuilt without libcurl; fetch is unavailable%s\n",
-            H_KEY, H_OFF, H_NOTE, H_OFF);
+  /* The YAME version this build is coupled to. kycg links libyame.a statically
+   * from a pinned submodule, so the backend version is a fixed fact of the
+   * build -- worth stating because the store layout, the fetch/verify engine
+   * and the `.cx` formats all come from it, and it is the thing a package test
+   * can assert on. (Curl is YAME's concern now, and YAME requires it, so there
+   * is no longer a "fetch available" question to report.) */
+  fprintf(out, "%sBackend%s\n", H_TITLE, H_OFF);
+  fprintf(out, "    %sYAME%s      %s%s%s\n",
+          H_KEY, H_OFF, H_NOTE, YAME_VERSION, H_OFF);
 }
 
 static void cmd(FILE *out, const char *name, const char *what) {

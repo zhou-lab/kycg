@@ -39,13 +39,12 @@ test:
     # --version prints the knowledgebase tags this build can verify, so it
     # exercises the compiled-in registry rather than just the binary loading.
     - kycg --version
-    # kycg's Makefile probes curl-config and silently drops network support if
-    # it is missing, which would ship a `kycg fetch` that cannot fetch. Assert
-    # positively that fetch is available. Grep the *state*, not the library
-    # name: the no-libcurl banner says "built without libcurl", so grepping
-    # for "libcurl" matches both cases and proves nothing. A negative grep is
-    # worse still -- it passes on any multi-line output.
-    - kycg --version | grep -q "fetch available"
+    # --version reports the YAME version this build is coupled to (kycg links
+    # libyame.a statically from the pinned submodule). Assert it is printed, so
+    # a build that somehow linked the wrong/older backend is caught here rather
+    # than at run time. libcurl is no longer kycg's concern -- YAME owns and
+    # requires it -- so there is nothing to probe on that front.
+    - kycg --version | grep -qE "YAME[[:space:]]+v[0-9]"
 
 about:
   home: https://github.com/zhou-lab/kycg
