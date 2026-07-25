@@ -48,27 +48,13 @@ YAME_HTSLIB = $(YAME_DIR)/htslib/libhts.a
 
 CFLAGS += -I$(SRC_DIR) -I$(YAME_DIR)/src -I$(YAME_DIR)/htslib
 
-# libcurl is OPTIONAL and used by `kycg fetch` alone. Everything that analyzes
-# data -- test, info, list -- works without it, so a build box with no curl
-# headers still produces a fully functional analysis tool; fetch then reports
-# that the build has no network support instead of silently missing. Set
-# CURL=0 to force it off even where curl-config exists.
-CURL ?= auto
-ifeq ($(CURL),auto)
-  CURL_CFLAGS := $(shell curl-config --cflags 2>/dev/null)
-  CURL_LIBS   := $(shell curl-config --libs 2>/dev/null)
-else ifeq ($(CURL),0)
-  CURL_CFLAGS :=
-  CURL_LIBS   :=
-else
-  CURL_CFLAGS := $(shell curl-config --cflags 2>/dev/null)
-  CURL_LIBS   := $(shell curl-config --libs 2>/dev/null)
-endif
-
-ifneq ($(CURL_LIBS),)
-  CFLAGS += -DKYCG_HAVE_CURL $(CURL_CFLAGS)
-  CLIB   += $(CURL_LIBS)
-endif
+# libcurl is no longer kycg's concern: the fetch/verify engine moved into
+# libyame (src/assets.c), and YAME owns the curl link. Everything kycg needs at
+# link time -- libyame, htslib, zlib/pthread/curl -- comes from `yame-config
+# --libs`, which is a build product of `make -C external/YAME lib`. It is
+# expanded with $$(...) in the link recipes so the shell runs it after
+# $(YAME_LIB) has been built. Whether `kycg fetch` can reach the network is
+# therefore a runtime question (yame_assets_have_curl()), not a compile flag.
 
 SOURCES := $(wildcard $(SRC_DIR)/*.c)
 OBJECTS := $(SOURCES:$(SRC_DIR)/%.c=$(SRC_DIR)/%.o)
@@ -125,22 +111,25 @@ $(SRC_DIR)/%.o: $(SRC_DIR)/%.c $(KYCG_HEADERS)
 # it a linux-64 conda build fails to find -lz -- libcurl resolves by luck,
 # because curl-config emits its own -L.
 $(PROG): $(YAME_LIB) $(OBJECTS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJECTS) $(YAME_LIB) $(YAME_HTSLIB) $(CLIB)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJECTS) $$($(YAME_DIR)/yame-config --libs)
 
 ###################
 ###    tests    ###
 ###################
 
 # The statistics are pure functions over counts, and argv permutation is a
-# pure function over argv, so the tested modules all link without YAME.
+# pure function over argv. store.o, however, is now a thin shim over libyame's
+# yame_assets_* primitives, so anything linking it must also pull in libyame
+# (and the htslib/zlib/curl behind it) -- hence the $(YAME_LIB) prereq and the
+# `yame-config --libs` on the link line.
 TEST_SRC := $(wildcard $(TEST_DIR)/*.c)
 TEST_BIN := $(TEST_SRC:$(TEST_DIR)/%.c=$(TEST_DIR)/%)
 
 TEST_OBJ = $(SRC_DIR)/hypergeo.o $(SRC_DIR)/enrich.o $(SRC_DIR)/args.o \
            $(SRC_DIR)/store.o
 
-$(TEST_DIR)/%: $(TEST_DIR)/%.c $(TEST_OBJ)
-	$(CC) $(CFLAGS) -o $@ $< $(TEST_OBJ) -lm
+$(TEST_DIR)/%: $(TEST_DIR)/%.c $(TEST_OBJ) $(YAME_LIB)
+	$(CC) $(CFLAGS) -o $@ $< $(TEST_OBJ) $$($(YAME_DIR)/yame-config --libs)
 
 test: $(TEST_BIN)
 	@for t in $(TEST_BIN); do echo "== $$t"; ./$$t || exit 1; done

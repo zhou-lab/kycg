@@ -88,10 +88,7 @@
 #include "store.h"
 #include "ui.h"
 #include "kbinfo.h"
-
-#ifdef KYCG_HAVE_CURL
-#include <curl/curl.h>
-#endif
+#include "assets.h"
 
 /* ------------------------------------------------------------- set naming */
 
@@ -219,6 +216,7 @@ typedef struct coll_s {
    * as a choice. */
   char                comp_name[256];  /* "" when there is none              */
   char                comp_base[1024]; /* may differ from base               */
+  char                comp_dir[4096];  /* where the companion LANDS in store */
   const char         *comp_anchor;     /* NULL: listed in the main manifest  */
 } coll_t;
 
@@ -246,14 +244,17 @@ static int coll_for(const char *target, const char *store, const char *tag,
     c->target = sr->genome;
     snprintf(c->base, sizeof(c->base), "%s/%s/raw/%s",
              KYCG_KB_BASE_URL, sr->repo, sr->tag);
-    snprintf(c->dir, sizeof(c->dir), "%s/%s", store, sr->genome);
+    /* Unified layout: whole-genome sets live under KYCGKB/<genome>/. */
+    snprintf(c->dir, sizeof(c->dir), "%s/KYCGKB/%s", store, sr->genome);
     snprintf(c->source, sizeof(c->source), "%s %s", sr->repo, sr->tag);
     c->anchor = sr->sums_sha256;
     c->sizes = sr->sizes;
     c->n_sets = sr->n_sets;
-    /* Listed in the same manifest as the sets, so no second anchor. */
+    /* Listed in the same manifest as the sets, so no second anchor, and it
+     * lands in the same directory as they do. */
     snprintf(c->comp_name, sizeof(c->comp_name), "cpg_nocontig.cr");
     snprintf(c->comp_base, sizeof(c->comp_base), "%s", c->base);
+    snprintf(c->comp_dir, sizeof(c->comp_dir), "%s", c->dir);
     c->comp_anchor = NULL;
     return 0;
   }
@@ -263,7 +264,10 @@ static int coll_for(const char *target, const char *store, const char *tag,
     c->target = ar->platform;
     snprintf(c->base, sizeof(c->base), "%s/%s/%s/KYCG",
              KYCG_IA_BASE_URL, tag, ar->platform);
-    snprintf(c->dir, sizeof(c->dir), "%s/%s/KYCG", store, ar->platform);
+    /* Unified layout: array assets live under InfiniumAnnotation/<platform>/,
+     * with the .cm sets in its KYCG/ subdir. */
+    snprintf(c->dir, sizeof(c->dir), "%s/InfiniumAnnotation/%s/KYCG",
+             store, ar->platform);
     snprintf(c->source, sizeof(c->source), "InfiniumAnnotation %s", tag);
     /* The anchor is only valid for the tag it was generated against. Asking
      * for a different one must fail the manifest check rather than quietly
@@ -272,12 +276,16 @@ static int coll_for(const char *target, const char *store, const char *tag,
     c->anchor = ar->sums_sha256;
     c->sizes = NULL;      /* this channel publishes no sizes */
     c->n_sets = ar->n_sets;
-    /* One level up, under the platform's own manifest. */
+    /* The probe ordering is canonical one level UP, at the platform parent
+     * (matching the remote and sesame-cli), under the platform's own manifest.
+     * It lands there, not under KYCG/. */
     if (ar->plat_sums_sha256) {
       snprintf(c->comp_name, sizeof(c->comp_name), "%s.ordering.tsv.gz",
                ar->platform);
       snprintf(c->comp_base, sizeof(c->comp_base), "%s/%s/%s",
                KYCG_IA_BASE_URL, tag, ar->platform);
+      snprintf(c->comp_dir, sizeof(c->comp_dir), "%s/InfiniumAnnotation/%s",
+               store, ar->platform);
       c->comp_anchor = ar->plat_sums_sha256;
     }
     return 0;
@@ -489,6 +497,9 @@ typedef struct {
   char     sha[65];       /* always set: both channels publish sha256 */
   uint64_t size;          /* 0 = not published by this channel        */
   int      have;          /* already present and digest-verified      */
+  /* Where this item lands. Empty means plan->dir; the array probe ordering
+   * sets this to the platform parent, one level above the KYCG/ set dir. */
+  char     destdir[4096];
 } plan_item_t;
 
 typedef struct {
@@ -535,7 +546,8 @@ static void plan_check_present(plan_t *p, int force) {
   for (size_t i = 0; i < p->n; ++i) {
     plan_item_t *it = &p->a[i];
     char path[4600];
-    snprintf(path, sizeof(path), "%s/%s", p->dir, it->name);
+    snprintf(path, sizeof(path), "%s/%s",
+             it->destdir[0] ? it->destdir : p->dir, it->name);
     if (!kycg_store_is_file(path)) continue;
 
     char got[65];
@@ -601,116 +613,19 @@ static void plan_show(const plan_t *p) {
 
 /* ------------------------------------------------------------- networking */
 
-#ifdef KYCG_HAVE_CURL
-
-typedef struct { char *s; size_t n, m; } membuf_t;
-
-static size_t mem_write(void *data, size_t sz, size_t nm, void *ud) {
-  membuf_t *b = ud;
-  size_t add = sz * nm;
-  if (b->n + add + 1 > b->m) {
-    size_t want = (b->n + add + 1) * 2;
-    char *p = realloc(b->s, want);
-    if (!p) return 0;
-    b->s = p; b->m = want;
-  }
-  memcpy(b->s + b->n, data, add);
-  b->n += add;
-  b->s[b->n] = '\0';
-  return add;
-}
-
-static CURL *new_handle(const char *url) {
-  CURL *h = curl_easy_init();
-  if (!h) return NULL;
-  curl_easy_setopt(h, CURLOPT_URL, url);
-  curl_easy_setopt(h, CURLOPT_FAILONERROR, 1L);
-  curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
-  curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT, 30L);
-  curl_easy_setopt(h, CURLOPT_USERAGENT, "kycg/" KYCG_VERSION);
-
-  /* Redirects have to be followed: github.com/<repo>/raw/... legitimately
-   * lands on raw.githubusercontent.com. But they are confined to https and
-   * bounded in number.
-   *
-   * Every byte is digest-checked against a compiled-in anchor, so a downgrade
-   * could not substitute content -- what it could do is move the transfer to
-   * cleartext, exposing which knowledgebases are being fetched, and an
-   * unbounded chain is a way to waste a client's time. Every runtime URL is
-   * built from compiled-in https constants (KYCG_IA_BASE_URL,
-   * KYCG_KB_BASE_URL), so nothing legitimate ever needs another scheme. */
-  curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 1L);
-  curl_easy_setopt(h, CURLOPT_MAXREDIRS, 10L);
-#if defined(CURLOPT_REDIR_PROTOCOLS_STR) && LIBCURL_VERSION_NUM >= 0x075500
-  curl_easy_setopt(h, CURLOPT_REDIR_PROTOCOLS_STR, "https");
-#elif defined(CURLOPT_REDIR_PROTOCOLS)
-  /* Pre-7.85 spelling; the bitmask form is deprecated but is what older
-   * libcurl understands, and bioconda still builds against those. */
-  curl_easy_setopt(h, CURLOPT_REDIR_PROTOCOLS, (long)CURLPROTO_HTTPS);
-#endif
-  return h;
-}
-
-static char *http_get_mem(const char *url, size_t *len) {
-  CURL *h = new_handle(url);
-  if (!h) return NULL;
-
-  membuf_t b = {0};
-  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, mem_write);
-  curl_easy_setopt(h, CURLOPT_WRITEDATA, &b);
-
-  CURLcode rc = curl_easy_perform(h);
-  curl_easy_cleanup(h);
-
-  if (rc != CURLE_OK) { free(b.s); return NULL; }
-  if (len) *len = b.n;
-  return b.s;
-}
-
-/* Drives the spinner and bar from libcurl's transfer callback. No thread is
- * needed: the callback fires often enough to animate on its own. */
-static int on_xfer(void *ud, curl_off_t dltotal, curl_off_t dlnow,
-                   curl_off_t ultotal, curl_off_t ulnow) {
-  (void)ultotal; (void)ulnow;
-  kycg_prog_update((kycg_prog_t *)ud, (uint64_t)dlnow, (uint64_t)dltotal);
-  return 0;
-}
-
-/*
- * Download to `path`, which is a temporary name the caller renames on success.
+/* The HTTP + verify engine now lives in libyame (external/YAME/src/assets.c):
+ * yame_assets_http_get_mem() for a manifest into memory, and
+ * yame_assets_download_verify() for a file (per-pid ".part" + O_EXCL, sha256
+ * check, atomic rename). kycg's own curl code -- three-way duplicated across
+ * the tool suite -- is retired. yame_assets_have_curl() answers, at run time,
+ * whether libyame was built with libcurl.
  *
- * O_EXCL, and the caller makes the name unique per process: the temp name used
- * to be a fixed "<file>.part", so two concurrent fetches into one store wrote
- * the same file. The likely outcome was a digest mismatch on both sides, but
- * there was a window where one process verified the digest, the other
- * truncated and rewrote the file, and the first renamed the other's partial
- * content into place as verified. Both are fetching identical bytes from the
- * same origin so the practical risk was nil, but a temp file that cannot
- * collide costs nothing.
- */
-static int http_get_file(const char *url, const char *path, kycg_prog_t *pr) {
-  int fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0644);
-  if (fd < 0) return -1;
-  FILE *fp = fdopen(fd, "wb");
-  if (!fp) { close(fd); unlink(path); return -1; }
-
-  CURL *h = new_handle(url);
-  if (!h) { fclose(fp); return -1; }
-
-  curl_easy_setopt(h, CURLOPT_WRITEDATA, fp);
-  curl_easy_setopt(h, CURLOPT_XFERINFOFUNCTION, on_xfer);
-  curl_easy_setopt(h, CURLOPT_XFERINFODATA, pr);
-  curl_easy_setopt(h, CURLOPT_NOPROGRESS, 0L);
-
-  CURLcode rc = curl_easy_perform(h);
-  curl_easy_cleanup(h);
-  fclose(fp);
-
-  if (rc != CURLE_OK) { unlink(path); return -1; }
-  return 0;
+ * Progress: yame_assets_download_verify() calls back through a
+ * yame_fetch_opt_t, so kycg's spinner is wired to it by forwarding on_progress
+ * to kycg_prog_update. The kycg_prog_t is passed as the callback user-data. */
+static void fetch_on_progress(void *ud, uint64_t now, uint64_t total) {
+  kycg_prog_update((kycg_prog_t *)ud, now, total);
 }
-
-#endif /* KYCG_HAVE_CURL */
 
 /* ---------------------------------------------------------- sums parsing */
 
@@ -829,7 +744,9 @@ static int build_plan(const coll_t *c, const fetch_conf_t *conf, plan_t *plan) {
     it->size = coll_size_of(c, ent[i].name);
   }
 
-  /* A companion under a manifest of its own is not in the list above. */
+  /* A companion under a manifest of its own is not in the list above. The
+   * array ordering also lands one level up from the sets (the platform
+   * parent), so it carries its own destdir. */
   if (c->comp_name[0] && c->comp_anchor) {
     char csha[65];
     if (coll_companion_sha(c, csha, KYCG_MF_FETCH)) {
@@ -838,6 +755,8 @@ static int build_plan(const coll_t *c, const fetch_conf_t *conf, plan_t *plan) {
         snprintf(it->name, sizeof(it->name), "%s", c->comp_name);
         snprintf(it->url, sizeof(it->url), "%s/%s", c->comp_base, c->comp_name);
         snprintf(it->sha, sizeof(it->sha), "%s", csha);
+        if (c->comp_dir[0])
+          snprintf(it->destdir, sizeof(it->destdir), "%s", c->comp_dir);
       }
     }
   }
@@ -852,8 +771,6 @@ typedef struct {
   uint64_t n_got, n_skip, n_fail;
   uint64_t bytes_got;
 } tally_t;
-
-#ifdef KYCG_HAVE_CURL
 
 /*
  * Remove temp files a previous run left behind.
@@ -899,45 +816,33 @@ static int execute_plan(const plan_t *plan, tally_t *t) {
       continue;
     }
 
-    char path[4600], part[4750];
-    snprintf(path, sizeof(path), "%s/%s", plan->dir, it->name);
-    /* Per-process temp name; see http_get_file. Still ends in ".part", which
-     * is what keeps it invisible to the store's ".cm" enumeration. */
-    snprintf(part, sizeof(part), "%s.%ld.part", path, (long)getpid());
+    /* Most items land in plan->dir; the array probe ordering lands one level
+     * up, at the platform parent (see the destdir on its plan item). */
+    char path[4600];
+    snprintf(path, sizeof(path), "%s/%s",
+             it->destdir[0] ? it->destdir : plan->dir, it->name);
 
     kycg_prog_t pr;
     kycg_prog_begin(&pr, it->name, it->size);
 
-    if (http_get_file(it->url, part, &pr) != 0) {
-      kycg_prog_done(&pr, "download failed", 0);
-      ++t->n_fail;
-      continue;
-    }
+    /* The whole download-verify-rename dance -- per-pid ".part" + O_EXCL, the
+     * sha256 check against the pinned digest, the atomic rename -- is libyame's
+     * now. The verification is exactly preserved: no digest, no rename. */
+    yame_fetch_opt_t opt = {0};
+    opt.on_progress = fetch_on_progress;
+    opt.ud = &pr;
 
-    /* No digest, no rename. Both channels always publish one, so an item
-     * without a sha is a bug rather than a permissive case. */
-    int ok = 0;
-    char got[65];
-    if (it->sha[0]) {
-      if (kycg_sha256_file(part, got) == 0) ok = kycg_digest_equal(got, it->sha);
-    }
-
-    if (!ok) {
-      unlink(part);
-      kycg_prog_done(&pr, "digest mismatch - discarded", 0);
+    char *err = NULL;
+    if (yame_assets_download_verify(it->url, it->sha, path, &opt, NULL, &err)
+        != 0) {
+      kycg_prog_done(&pr, err ? err : "download failed", 0);
+      free(err);
       ++t->n_fail;
       continue;
     }
 
     struct stat st;
-    uint64_t sz = (stat(part, &st) == 0) ? (uint64_t)st.st_size : 0;
-
-    if (rename(part, path) != 0) {
-      unlink(part);
-      kycg_prog_done(&pr, "could not move into the store", 0);
-      ++t->n_fail;
-      continue;
-    }
+    uint64_t sz = (stat(path, &st) == 0) ? (uint64_t)st.st_size : 0;
 
     char hb[24];
     kycg_prog_done(&pr, kycg_ui_human(sz, hb, sizeof(hb)), 1);
@@ -970,10 +875,6 @@ static int execute_plan(const plan_t *plan, tally_t *t) {
 
   return 0;
 }
-
-/* ----------------------------------------------------------- the guided run */
-
-#endif /* KYCG_HAVE_CURL */
 
 /* ------------------------------------------------------------------ usage */
 
@@ -1037,7 +938,7 @@ static int usage(void) {
 
   fprintf(o, "%sOptions%s\n", KYCG_H_TITLE, KYCG_H_OFF);
   struct { const char *f, *d; } opt[] = {
-    {"-d DIR", "store directory [$KYCG_DATA_DIR, else ~/.cache/kycg]"},
+    {"-d DIR", "store directory [$KYCG_DATA_DIR, else the shared yame store]"},
     {"-o SETS", "subset by set name; same as the :SETS suffix"},
     {"-f", "download now: no browser, no questions"},
     {"-r", "re-download even what is present and verified"},
@@ -1062,7 +963,7 @@ static int usage(void) {
  * `fetch <target>` on a terminal, both hand off to it. */
 static int browse_catalogue(int argc, char *argv[]);
 
-int main_fetch(int argc, char *argv[]) {
+int kycg_main_fetch(int argc, char *argv[]) {
   fetch_conf_t conf = {0};
   conf.tag = KYCG_IA_TAG;
 
@@ -1081,17 +982,17 @@ int main_fetch(int argc, char *argv[]) {
     }
   }
 
-#ifndef KYCG_HAVE_CURL
-  (void)argc;
-  fprintf(stderr,
-          "kycg fetch: this build has no network support.\n"
-          "kycg was compiled without libcurl, so fetch is unavailable. Install\n"
-          "libcurl development headers and rebuild, or populate the store by\n"
-          "hand -- fetched files are ordinary .cm files and `kycg test -m` takes\n"
-          "any path. See `kycg fetch` for the expected layout.\n");
-  return 1;
-#else
-  curl_global_init(CURL_GLOBAL_DEFAULT);
+  /* Curl lives in libyame now, so whether fetch can reach the network is a
+   * runtime question. libyame handles curl global init/teardown internally. */
+  if (!yame_assets_have_curl()) {
+    fprintf(stderr,
+            "kycg fetch: this build has no network support.\n"
+            "libyame was compiled without libcurl, so fetch is unavailable.\n"
+            "Install libcurl development headers and rebuild, or populate the\n"
+            "store by hand -- fetched files are ordinary .cm files and\n"
+            "`kycg test -m` takes any path. See `kycg fetch` for the layout.\n");
+    return 1;
+  }
 
   /* Collect targets, either from argv or from the guided run. */
   const char *argv_targets[64];
@@ -1111,7 +1012,6 @@ int main_fetch(int argc, char *argv[]) {
     for (int j = optind; j < argc && lac < 7; ++j) lav[lac++] = argv[j];
     lav[lac] = NULL;
     optind = 1;
-    curl_global_cleanup();
     return browse_catalogue(lac, lav);
   }
 
@@ -1127,7 +1027,6 @@ int main_fetch(int argc, char *argv[]) {
     for (int j = optind; j < argc && lac < 7; ++j) lav[lac++] = argv[j];
     lav[lac] = NULL;
     optind = 1;
-    curl_global_cleanup();
     return browse_catalogue(lac, lav);
   }
 
@@ -1219,9 +1118,7 @@ int main_fetch(int argc, char *argv[]) {
     fprintf(stderr, ".\n");
   }
 
-  curl_global_cleanup();
   return (rc || t.n_fail) ? 1 : 0;
-#endif
 }
 
 /* ------------------------------------------------ the catalogue browser */
@@ -1237,7 +1134,7 @@ static int browse_usage(void) {
   fprintf(stderr, "With a target named, lists the individual sets it carries.\n");
   fprintf(stderr, "\n");
   fprintf(stderr, "Options:\n");
-  fprintf(stderr, "    -d DIR    store directory [$KYCG_DATA_DIR, else ~/.cache/kycg]\n");
+  fprintf(stderr, "    -d DIR    store directory [$KYCG_DATA_DIR, else the shared yame store]\n");
   fprintf(stderr, "    -h        this help\n");
   fprintf(stderr, "\n");
   return 1;
@@ -1417,16 +1314,15 @@ static char *coll_manifest(const struct coll_s *c, size_t *len_out, int mode) {
 
   if (mode == KYCG_MF_LOCAL) return NULL;
 
-#ifndef KYCG_HAVE_CURL
-  return NULL;
-#else
+  /* 3. The network. yame_assets_http_get_mem returns NULL when libyame has no
+   * curl, so this degrades to "unavailable" without a compile-time guard. */
   char *text = NULL;
   size_t len = 0;
 
   if (c->anchor) {
     char url[5200];
     snprintf(url, sizeof(url), "%s/%s", c->base, KYCG_IA_SUMS_FILE);
-    text = http_get_mem(url, &len);
+    text = yame_assets_http_get_mem(url, &len);
     if (text) {
       char got[65];
       kycg_sha256_buf(text, len, got);
@@ -1457,7 +1353,6 @@ static char *coll_manifest(const struct coll_s *c, size_t *len_out, int mode) {
 
   if (len_out) *len_out = len;
   return text;
-#endif
 }
 
 /**
@@ -1474,15 +1369,12 @@ static int coll_companion_sha(const struct coll_s *c, char sha_out[65], int mode
   if (c->comp_anchor) {          /* a manifest of its own */
     snprintf(src.base, sizeof(src.base), "%s", c->comp_base);
     src.anchor = c->comp_anchor;
-    /* dir has to move with base. It did not, so coll_manifest's write-back of
-     * a re-verified copy put the *platform* manifest at the *KYCG* directory's
-     * SHA256SUMS -- self-healing, since the next run rejects it against the
-     * anchor and re-downloads, but in the meantime `shasum -c SHA256SUMS` in
-     * that directory failed for no visible reason and count_cached lost its
-     * catalogue. The companion lives one level up from KYCG/. */
-    size_t dl = strlen(src.dir);
-    if (dl > 5 && strcmp(src.dir + dl - 5, "/KYCG") == 0)
-      src.dir[dl - 5] = '\0';
+    /* The companion's manifest is the platform manifest, which lives where the
+     * companion lands -- the platform parent, comp_dir -- not in the KYCG/ set
+     * dir. coll_manifest reads and writes back <dir>/SHA256SUMS, so dir has to
+     * move with base. (This replaces an old hardcoded "/KYCG" suffix strip,
+     * which the unified layout's explicit comp_dir makes unnecessary.) */
+    snprintf(src.dir, sizeof(src.dir), "%s", c->comp_dir);
   }
 
   size_t len = 0;
@@ -1703,12 +1595,12 @@ static void refresh_overview(listctx_t *lc) {
  * catalogue stays visible above the download.
  */
 static int fetch_picked(const picks_t *picks, const char *store) {
-#ifndef KYCG_HAVE_CURL
-  (void)picks; (void)store;
-  fprintf(stderr, "kycg: this build has no network support.\n");
-  return 1;
-#else
-  curl_global_init(CURL_GLOBAL_DEFAULT);
+  /* Reachable from the test/annotate pickers, which do not gate on curl, so
+   * the runtime check stays here too. */
+  if (!yame_assets_have_curl()) {
+    fprintf(stderr, "kycg: this build has no network support.\n");
+    return 1;
+  }
   kycg_ui_panel_open(4);
 
   tally_t t = {0};
@@ -1801,9 +1693,7 @@ static int fetch_picked(const picks_t *picks, const char *store) {
   }
 
   kycg_ui_panel_close();
-  curl_global_cleanup();
   return (rc || t.n_fail) ? 1 : 0;
-#endif
 }
 
 

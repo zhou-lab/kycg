@@ -100,7 +100,13 @@ static void ordering_free(ordering_t *o) {
 }
 
 /**
- * Read <store>/<platform>/KYCG/<platform>.ordering.tsv.gz.
+ * Read <store>/InfiniumAnnotation/<platform>/<platform>.ordering.tsv.gz.
+ *
+ * The ordering is canonical at the platform PARENT under the unified asset
+ * layout (it matches the remote, and sesame-cli lands it there too), not under
+ * the KYCG/ subdir where kycg used to keep it. The legacy KYCG/-parent spot is
+ * still tried as a fallback for one release, so a store fetched by an older
+ * kycg keeps working until it is re-fetched.
  *
  * The row index of a probe is its line number after the header; nothing else
  * in the file matters here. The M/U/col columns describe the bead design and
@@ -108,11 +114,16 @@ static void ordering_free(ordering_t *o) {
  */
 static int ordering_load(const char *store, const char *platform,
                          ordering_t *out) {
-  char path[4096];
-  snprintf(path, sizeof(path), "%s/%s/KYCG/%s.ordering.tsv.gz",
+  char path[4096], legacy[4096];
+  snprintf(path, sizeof(path),
+           "%s/InfiniumAnnotation/%s/%s.ordering.tsv.gz",
+           store, platform, platform);
+  snprintf(legacy, sizeof(legacy),
+           "%s/InfiniumAnnotation/%s/KYCG/%s.ordering.tsv.gz",
            store, platform, platform);
 
   gzFile fp = gzopen(path, "rb");
+  if (!fp) fp = gzopen(legacy, "rb");   /* one-release fallback */
   if (!fp) {
     fprintf(stderr,
             "kycg annotate: cannot read the probe ordering for %s.\n"

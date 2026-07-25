@@ -33,6 +33,7 @@
 #include "registry.h"
 #include "store.h"
 #include "ui.h"
+#include "assets.h"
 
 /**
  * What this build is bound to.
@@ -88,13 +89,14 @@ static void print_pins(FILE *out) {
    * -- so state it here, where it is also the thing a package test can assert
    * on. */
   fprintf(out, "%sNetwork%s\n", H_TITLE, H_OFF);
-#ifdef KYCG_HAVE_CURL
-  fprintf(out, "    %slibcurl%s   %sfetch available%s\n",
-          H_KEY, H_OFF, H_NOTE, H_OFF);
-#else
-  fprintf(out, "    %snone%s      %sbuilt without libcurl; fetch is unavailable%s\n",
-          H_KEY, H_OFF, H_NOTE, H_OFF);
-#endif
+  /* Curl now lives in libyame; whether this build can fetch is a runtime fact
+   * (did libyame get built against libcurl), so ask it rather than a macro. */
+  if (yame_assets_have_curl())
+    fprintf(out, "    %slibcurl%s   %sfetch available%s\n",
+            H_KEY, H_OFF, H_NOTE, H_OFF);
+  else
+    fprintf(out, "    %snone%s      %sbuilt without libcurl; fetch is unavailable%s\n",
+            H_KEY, H_OFF, H_NOTE, H_OFF);
 }
 
 static void cmd(FILE *out, const char *name, const char *what) {
@@ -129,8 +131,8 @@ int main(int argc, char *argv[]) {
   if (argc < 2) return usage();
 
   if      (strcmp(argv[1], "test") == 0)  ret = main_test(argc - 1, argv + 1);
-  else if (strcmp(argv[1], "info") == 0)  ret = main_info(argc - 1, argv + 1);
-  else if (strcmp(argv[1], "fetch") == 0) ret = main_fetch(argc - 1, argv + 1);
+  else if (strcmp(argv[1], "info") == 0)  ret = kycg_main_info(argc - 1, argv + 1);
+  else if (strcmp(argv[1], "fetch") == 0) ret = kycg_main_fetch(argc - 1, argv + 1);
   else if (strcmp(argv[1], "annotate") == 0) ret = main_annotate(argc - 1, argv + 1);
   else if (strcmp(argv[1], "-h") == 0 ||
            strcmp(argv[1], "--help") == 0) return usage();

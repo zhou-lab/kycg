@@ -31,6 +31,7 @@
  */
 
 #include "store.h"
+#include "assets.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,48 +41,28 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+/* These four are now thin shims over libyame's shared asset primitives, so the
+ * store kycg reads is the same one sesame-cli fills, and $KYCG_DATA_DIR keeps
+ * its role as the first override. The kycg_* names/signatures are unchanged so
+ * every caller in fetch.c / annotate.c / main.c is untouched. The store-walk
+ * helpers below (find_cm / relative / free_list) stay in kycg: they are how
+ * kycg enumerates a store for `test`, and no other tool needs them. */
+
 int kycg_store_safe_name(const char *s) {
-  if (!s || !*s) return 0;
-  if (s[0] == '.') return 0;              /* ".", "..", and hidden files */
-  for (const char *p = s; *p; ++p) {
-    if (*p == '/' || *p == '\\') return 0;
-    if ((unsigned char)*p < 0x20) return 0;   /* control chars, incl. newline */
-  }
-  return 1;
+  return yame_assets_safe_name(s);
 }
 
 const char *kycg_store_root(const char *override) {
   static char buf[4096];
-  if (override && *override) return override;
-
-  const char *env = getenv("KYCG_DATA_DIR");
-  if (env && *env) return env;
-
-  const char *home = getenv("HOME");
-  if (!home || !*home) home = ".";
-  snprintf(buf, sizeof(buf), "%s/.cache/kycg", home);
-  return buf;
+  return yame_assets_root(override, "KYCG_DATA_DIR", buf, sizeof(buf));
 }
 
 int kycg_store_mkdir_p(const char *path) {
-  char tmp[4096];
-  snprintf(tmp, sizeof(tmp), "%s", path);
-  size_t n = strlen(tmp);
-  if (n && tmp[n-1] == '/') tmp[n-1] = '\0';
-
-  for (char *p = tmp + 1; *p; ++p) {
-    if (*p != '/') continue;
-    *p = '\0';
-    if (mkdir(tmp, 0755) != 0 && errno != EEXIST) return -1;
-    *p = '/';
-  }
-  if (mkdir(tmp, 0755) != 0 && errno != EEXIST) return -1;
-  return 0;
+  return yame_assets_mkdir_p(path);
 }
 
 int kycg_store_is_file(const char *path) {
-  struct stat st;
-  return stat(path, &st) == 0 && S_ISREG(st.st_mode);
+  return yame_assets_is_file(path);
 }
 
 static int ends_with(const char *s, const char *suf) {

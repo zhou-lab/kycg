@@ -30,11 +30,19 @@
  * `kycg test -m` takes by path. There is no database and no lockfile, so the
  * store stays inspectable with ls and verifiable with shasum.
  *
- *   <root>/<PLATFORM>/KYCG/<Set>.<date>.cm   arrays
- *   <root>/<genome>/<Set>.<date>.cm          sequencing
+ * The unified asset layout shared across the tool suite:
+ *
+ *   <root>/InfiniumAnnotation/<PLATFORM>/<PLATFORM>.ordering.tsv.gz   arrays
+ *   <root>/InfiniumAnnotation/<PLATFORM>/KYCG/<Set>.<date>.cm        arrays
+ *   <root>/KYCGKB/<genome>/<Set>.<date>.cm                          sequencing
  */
 
-/** Resolve the store root: `override`, else $KYCG_DATA_DIR, else ~/.cache/kycg. */
+/**
+ * Resolve the store root. Thin shim over libyame's yame_assets_root:
+ * `override`, else $KYCG_DATA_DIR, else $YAME_DATA_HOME, else the shared data
+ * tier (${XDG_DATA_HOME:-~/.local/share}/yame) -- so the store kycg reads is
+ * the one every tool in the suite fills.
+ */
 const char *kycg_store_root(const char *override);
 
 /** mkdir -p. Returns 0 on success. */

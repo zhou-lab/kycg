@@ -83,7 +83,7 @@ static const char *fmt_name(char fmt) {
   }
 }
 
-int main_info(int argc, char *argv[]) {
+int kycg_main_info(int argc, char *argv[]) {
   int no_header = 0;
   int c;
   /* Options may follow the target; BSD getopt would stop at it. */
