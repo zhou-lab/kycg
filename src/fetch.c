@@ -938,7 +938,7 @@ static int usage(void) {
 
   fprintf(o, "%sOptions%s\n", KYCG_H_TITLE, KYCG_H_OFF);
   struct { const char *f, *d; } opt[] = {
-    {"-d DIR", "store directory [$KYCG_DATA_DIR, else the shared yame store]"},
+    {"-d DIR", "store directory [$YAME_DATA_HOME, else the shared store]"},
     {"-o SETS", "subset by set name; same as the :SETS suffix"},
     {"-f", "download now: no browser, no questions"},
     {"-r", "re-download even what is present and verified"},
@@ -1134,7 +1134,7 @@ static int browse_usage(void) {
   fprintf(stderr, "With a target named, lists the individual sets it carries.\n");
   fprintf(stderr, "\n");
   fprintf(stderr, "Options:\n");
-  fprintf(stderr, "    -d DIR    store directory [$KYCG_DATA_DIR, else the shared yame store]\n");
+  fprintf(stderr, "    -d DIR    store directory [$YAME_DATA_HOME, else the shared store]\n");
   fprintf(stderr, "    -h        this help\n");
   fprintf(stderr, "\n");
   return 1;

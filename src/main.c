@@ -62,13 +62,13 @@
  * and every -m path resolves against the store directory.
  */
 static void print_build_info(FILE *out) {
-  const char *env = getenv("KYCG_DATA_DIR");
+  const char *env = getenv("YAME_DATA_HOME");
 
   fprintf(out, "    %sbuilt against%s  YAME %s\n", H_NOTE, H_OFF, YAME_VERSION);
   fprintf(out, "    %sstore%s          %s   %s%s%s\n",
           H_NOTE, H_OFF, kycg_store_root(NULL),
-          H_NOTE, env && *env ? "(from $KYCG_DATA_DIR)"
-                              : "($KYCG_DATA_DIR unset; -d overrides)", H_OFF);
+          H_NOTE, env && *env ? "(from $YAME_DATA_HOME)"
+                              : "($YAME_DATA_HOME unset; -d overrides)", H_OFF);
 }
 
 static void cmd(FILE *out, const char *name, const char *what) {

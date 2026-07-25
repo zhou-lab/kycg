@@ -119,7 +119,7 @@ without asking, and a missing target prints the catalogue rather than waiting.
 kycg still downloads in `fetch` and nowhere else.
 
 ```
-    -d DIR    store directory [$KYCG_DATA_DIR, else ~/.cache/kycg]
+    -d DIR    store directory [$YAME_DATA_HOME, else the shared store]
     -o SETS   comma-separated subset, by set name (CGI,ChromHMM,TFBS)
     -f        download now: no browser, no questions
     -r        re-download even what is present and verified
@@ -151,24 +151,14 @@ forces it off.
 
 ### A build is coupled to a generation of the data
 
-kycg pins a specific tag per collection and can verify only those. `--version`
-says which:
+kycg pins a specific tag per collection, compiled into `src/registry.h`, and
+can verify only those. `--version` reports the build and the coupled YAME:
 
 ```
 $ kycg --version
 kycg 0.1.0
-Store
-    /Users/zhouw3/.cache/kycg   ($KYCG_DATA_DIR unset; -d overrides)
-
-Knowledgebases pinned by this build
-    hg38      KYCGKB_hg38 v2
-    mm10      KYCGKB_mm10 v2
-    arrays    InfiniumAnnotation v8
-    only these tags can be verified; to follow a newer one,
-    regenerate src/registry.h (tools/make_registry.sh) and rebuild
-
-Network
-    libcurl   fetch available
+    built against  YAME v1.29
+    store          ~/.local/share/yame   ($YAME_DATA_HOME unset; -d overrides)
 ```
 
 Nothing updates on its own, deliberately: the digest a download is checked

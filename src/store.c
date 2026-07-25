@@ -42,8 +42,10 @@
 #include <sys/types.h>
 
 /* These four are now thin shims over libyame's shared asset primitives, so the
- * store kycg reads is the same one sesame-cli fills, and $KYCG_DATA_DIR keeps
- * its role as the first override. The kycg_* names/signatures are unchanged so
+ * store kycg reads is the same one sesame-cli fills. There is no kycg-specific
+ * override env var: passing NULL for the per-tool slot means the root resolves
+ * as `override` (the -d flag), else $YAME_DATA_HOME, else the shared data tier
+ * -- one knob for the whole suite. The kycg_* names/signatures are unchanged so
  * every caller in fetch.c / annotate.c / main.c is untouched. The store-walk
  * helpers below (find_cm / relative / free_list) stay in kycg: they are how
  * kycg enumerates a store for `test`, and no other tool needs them. */
@@ -54,7 +56,7 @@ int kycg_store_safe_name(const char *s) {
 
 const char *kycg_store_root(const char *override) {
   static char buf[4096];
-  return yame_assets_root(override, "KYCG_DATA_DIR", buf, sizeof(buf));
+  return yame_assets_root(override, NULL, buf, sizeof(buf));
 }
 
 int kycg_store_mkdir_p(const char *path) {

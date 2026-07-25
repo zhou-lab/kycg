@@ -39,9 +39,9 @@
 
 /**
  * Resolve the store root. Thin shim over libyame's yame_assets_root:
- * `override`, else $KYCG_DATA_DIR, else $YAME_DATA_HOME, else the shared data
- * tier (${XDG_DATA_HOME:-~/.local/share}/yame) -- so the store kycg reads is
- * the one every tool in the suite fills.
+ * `override` (the -d flag), else $YAME_DATA_HOME, else the shared data tier
+ * (${XDG_DATA_HOME:-~/.local/share}/yame) -- one env var for the whole suite,
+ * so the store kycg reads is the one every tool fills.
  */
 const char *kycg_store_root(const char *override);
 
