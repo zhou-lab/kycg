@@ -308,13 +308,14 @@ CGI…cm           Shore      0.196     9.17e-266</code></pre>
   </section>
 
   <section class="card">
-    <h2>Check the row space <span class="m">— info</span></h2>
+    <h2>Check the row space <span class="m">— yame info</span></h2>
     <p>Everything is <b>positional</b>: row <i>i</i> must mean the same CpG in the query and
-      in the knowledgebase. Confirm before you test.</p>
-    <pre><code>$ kycg <span class="sub">info</span> onecell.cg ChromHMM.20220414.cm
-file          record name format        n_rows    n_set
-onecell.cg    1      NA   3:mu          21867837  NA
-ChromHMM…cm   1      NA   2:categorical 21867837  NA</code></pre>
+      in the knowledgebase. Confirm with <code class="inl">yame info</code> (kycg's backend)
+      before you test.</p>
+    <pre><code>$ yame <span class="sub">info</span> onecell.cg ChromHMM.20220414.cm
+File        Sample Ncol Nrow     Format UnitBytes Keys
+onecell.cg  1      NA   21867837 3      1         NA
+ChromHMM…cm 1      NA   21867837 2      1         N=19|Quies,…</code></pre>
     <p style="margin-top:11px">Mismatches fail loudly, naming both files and both counts:</p>
     <pre><code><span class="hl">Row count mismatch: query 'small.cg' record '1'
 has 5 rows but knowledgebase 'chromhmm.cm'

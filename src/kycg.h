@@ -139,12 +139,12 @@ size_t kycg_pick_sets(const kycg_pick_target_t *targets, size_t n_targets,
  */
 size_t kycg_resolve_or_offer(const char *spec, const char *verb, char ***out);
 
-/* fetch and info are prefixed kycg_ to avoid colliding with libyame's own
- * main_fetch / main_info: kycg links YAME's summary.o, which pulls fetch.o
- * (yame_browse_pick) into the binary, so those two CLI entry symbols would
- * otherwise be doubly defined. test / annotate have no libyame counterpart. */
+/* fetch is prefixed kycg_ to avoid colliding with libyame's own main_fetch:
+ * kycg links YAME's summary.o, which pulls fetch.o (yame_browse_pick) into the
+ * binary, so that CLI entry symbol would otherwise be doubly defined. test /
+ * annotate have no libyame counterpart. (File inspection is `yame info` now, so
+ * kycg no longer carries its own info subcommand.) */
 int main_test(int argc, char *argv[]);
-int kycg_main_info(int argc, char *argv[]);
 int kycg_main_fetch(int argc, char *argv[]);
 int main_annotate(int argc, char *argv[]);
 

@@ -19,7 +19,7 @@ knowYourCG sequencing workflow.
 
 | Phase | Scope | State |
 |---|---|---|
-| 0 | Submodule, build, dispatch, `kycg info`, row-count assertion | done |
+| 0 | Submodule, build, dispatch, row-count assertion | done |
 | 1 | `kycg test` — hypergeometric, group-stratified BH, effect sizes | done |
 | 2 | `kycg fetch` — registry, catalogue browser, verified store | done |
 | 3 | Plot recipes (with cinderplot) | not started |
@@ -366,16 +366,19 @@ aesthetics and it is the y-axis of three separate plots.
 > `-1500` and beyond. Sort, threshold, and plot on `log10_p` and
 > `neglog10_fdr`, which are carried in log space end to end.
 
-### `kycg info` — describe a file
+### Inspecting a file
+
+kycg builds on YAME's `.cx` formats, so file inspection is `yame info` — it
+describes a `.cg` / `.cm`'s format, row count, and (for a categorical set) its
+state keys:
 
 ```bash
-$ kycg info onecell.cg chromhmm.cm
-file          record  name  format         n_rows    n_set
-onecell.cg    1       NA    3:mu           21867837  NA
-chromhmm.cm   1       NA    2:categorical  21867837  NA
+$ yame info onecell.cg chromhmm.cm
 ```
 
-Use this to confirm two files index the same row space before testing them.
+That is how you confirm two files index the same row space before testing.
+`kycg test` also fails loudly on any row-count mismatch, naming both files, so
+the check is a convenience rather than a guardrail.
 
 ### Plotting
 
@@ -467,7 +470,6 @@ src/kbinfo.h         generated: per-set provenance from data/knowledgebases.tsv
 src/ui.{c,h}         terminal layer: tree browser, panels, progress, TTY gating
 src/fetch.c          kycg fetch — catalogue, plan, verified download
 src/test.c           kycg test
-src/info.c           kycg info
 src/main.c           subcommand dispatch (the only main())
 data/                knowledgebase metadata (source of truth for kbinfo.h)
 tools/               generators for registry.h and kbinfo.h, dimension checks

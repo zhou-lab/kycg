@@ -92,7 +92,6 @@ static int usage(void) {
   cmd(o, "fetch", "browse, choose and download knowledgebases");
   cmd(o, "test",  "set enrichment against a knowledgebase");
   cmd(o, "annotate", "label a TSV of probe IDs by set membership");
-  cmd(o, "info",  "describe the records in a .cg or .cm file");
   fprintf(o, "\n");
 
   return 1;
@@ -104,7 +103,6 @@ int main(int argc, char *argv[]) {
   if (argc < 2) return usage();
 
   if      (strcmp(argv[1], "test") == 0)  ret = main_test(argc - 1, argv + 1);
-  else if (strcmp(argv[1], "info") == 0)  ret = kycg_main_info(argc - 1, argv + 1);
   else if (strcmp(argv[1], "fetch") == 0) ret = kycg_main_fetch(argc - 1, argv + 1);
   else if (strcmp(argv[1], "annotate") == 0) ret = main_annotate(argc - 1, argv + 1);
   else if (strcmp(argv[1], "-h") == 0 ||
