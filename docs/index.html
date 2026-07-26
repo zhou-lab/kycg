@@ -121,8 +121,8 @@
 <header>
   <div class="titlerow">
     <h1><b>K</b>now<b>Y</b>our<b>CG</b></h1>
-    <span class="badge">cli</span><a
-      class="badge badge-ver" href="https://github.com/zhou-lab/kycg/releases/tag/v0.1.0">v0.1.0</a>
+    <span class="badge">cli</span><a class="badge badge-ver" id="ver"
+      href="https://github.com/zhou-lab/kycg/tags">latest</a>
     <span class="install">
       <button id="install-btn" type="button"
               data-cmd="conda install -c zhou-lab -c conda-forge kycg"
@@ -596,6 +596,35 @@ log10 fdr   OK   worst 2.96e-12
     pre.appendChild(b);
   });
 })();
+
+  /* The version is whatever the repository says it is: hardcoding it here is
+   * how a docs page ends up advertising a release two tags out of date, with
+   * nothing about editing the page to remind anyone.
+   *
+   * Sorted numerically rather than trusting the order the endpoint returns --
+   * alphabetically v1.8 sorts above v1.31 -- and filtered to v<digit>, since
+   * some of these repositories also tag things like "MSA.ordering.v1".
+   * Offline or rate-limited it keeps its label and still links to the tags. */
+  fetch("https://api.github.com/repos/zhou-lab/kycg/tags?per_page=100")
+    .then(function (r) { return r.ok ? r.json() : []; })
+    .then(function (tags) {
+      var parts = function (v) { return v.replace(/^v/, "").split(".").map(Number); };
+      var newest = tags.map(function (t) { return t.name; })
+        .filter(function (n) { return /^v\d/.test(n); })
+        .sort(function (a, b) {
+          var A = parts(a), B = parts(b);
+          for (var i = 0; i < Math.max(A.length, B.length); ++i) {
+            var d = (B[i] || 0) - (A[i] || 0);
+            if (d) return d;
+          }
+          return 0;
+        })[0];
+      if (!newest) return;
+      var el = document.getElementById("ver");
+      el.textContent = newest;
+      el.href = "https://github.com/zhou-lab/kycg/releases/tag/" + newest;
+    })
+    .catch(function () {});
 </script>
 </body>
 </html>
