@@ -49,10 +49,10 @@
   .badge-ver:hover{background:var(--accent);color:#fff}
   /* "built against YAME vX.YZ" box on the title row; the version is filled by
      JS from the pinned submodule, so nothing here needs manual updating. */
-  .builton{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:6px;
-     padding:.42em .7em;font-size:.72rem;color:var(--muted);background:var(--soft);
+  .builton{display:inline-flex;align-items:center;border:1px solid var(--accent);border-radius:6px;
+     padding:.42em .7em;font-size:.72rem;color:var(--accent);background:var(--accent-soft);
      white-space:nowrap;text-decoration:none}
-  .builton:hover{border-color:var(--accent);color:var(--accent)}
+  .builton:hover{filter:brightness(.96)}
   .expand{color:var(--muted);margin:8px 0 12px;font-size:.9rem;max-width:82ch}
   /* citation: a paired button — the label opens the paper, the stub copies the PMID */
   .cite{display:inline-flex;align-items:stretch;
