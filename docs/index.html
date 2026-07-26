@@ -141,10 +141,9 @@
     One C binary, one verified knowledgebase store, one implementation of every statistic.</p>
   <p class="links">
     <a href="https://github.com/zhou-lab/kycg">GitHub</a><span>·</span>
-    <a href="https://bioconductor.org/packages/knowYourCG/">R / Bioconductor</a><span>·</span>
-    <a href="https://github.com/zhou-lab/YAME">YAME</a><span>·</span>
-    <a href="https://github.com/zhou-lab/cinderplot">cinderplot</a><span>·</span>
-    <a href="https://github.com/zwdzwd/sesame-cli">sesame-cli</a><span>·</span>
+    <a href="https://zhou-lab.github.io/YAME/">YAME</a><span>·</span>
+    <a href="https://zhou-lab.github.io/cinderplot/">cinderplot</a><span>·</span>
+    <a href="https://zwdzwd.github.io/sesame-cli/">sesame-cli</a><span>·</span>
     hg38 · mm10 · MSA · EPICv2 · EPIC · HM450 · HM27 · MM285 · Mammal40
   </p>
 </header>
@@ -335,7 +334,7 @@ lists and cannot be compared.</span></code></pre>
 
   <section class="card">
     <h2>Plot <span class="m">— cinderplot, separately</span></h2>
-    <p>kycg emits TSV; <a href="https://github.com/zhou-lab/cinderplot">cinderplot</a> renders
+    <p>kycg emits TSV; <a href="https://zhou-lab.github.io/cinderplot/">cinderplot</a> renders
       it as its own process. No linking, so Cairo never enters kycg's dependency surface.</p>
     <pre><code><span class="cm"># volcano</span>
 cinderplot 'res.tsv
@@ -352,7 +351,7 @@ cinderplot 'res.tsv
   <h2>Worked example <span class="m">— one mouse cell methylome, 21.8M rows</span></h2>
   <p>The single query cell <code class="inl">onecell.cg</code> tested against the
     18 ChromHMM chromatin states, plotted with
-    <a href="https://github.com/zhou-lab/cinderplot">cinderplot</a> — no R. Data,
+    <a href="https://zhou-lab.github.io/cinderplot/">cinderplot</a> — no R. Data,
     output table, and the exact commands live in
     <a href="https://github.com/zhou-lab/kycg-examples">kycg-examples</a>; the
     whole figure set regenerates with one script.</p>
@@ -544,8 +543,8 @@ log10 fdr   OK   worst 2.96e-12
 </section>
 
 <footer>
-  kycg reimplements <a href="https://bioconductor.org/packages/knowYourCG/">knowYourCG</a> in C,
-  over <a href="https://github.com/zhou-lab/YAME">YAME</a>. Full usage, the
+  kycg reimplements knowYourCG in C,
+  over <a href="https://zhou-lab.github.io/YAME/">YAME</a>. Full usage, the
   trust model, and validation against the R package are in the
   <a href="https://github.com/zhou-lab/kycg/blob/main/README.md">README</a>.
   AGPL-3.0-or-later. · <a href="https://github.com/zhou-lab/kycg">github.com/zhou-lab/kycg</a>
