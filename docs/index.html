@@ -49,10 +49,15 @@
   .badge-ver:hover{background:var(--accent);color:#fff}
   /* "built against YAME vX.YZ" box on the title row; the version is filled by
      JS from the pinned submodule, so nothing here needs manual updating. */
-  .builton{display:inline-flex;align-items:center;border:1px solid var(--accent);border-radius:6px;
-     padding:.42em .7em;font-size:.72rem;color:var(--accent);background:var(--accent-soft);
-     white-space:nowrap;text-decoration:none}
-  .builton:hover{filter:brightness(.96)}
+  .builton{display:inline-flex;align-items:stretch;border:1px solid var(--accent);
+     border-radius:6px;overflow:hidden;font-size:.72rem;white-space:nowrap;text-decoration:none}
+  .builton .bl{display:inline-flex;align-items:center;padding:.42em .6em;font-weight:600;
+     background:var(--accent);color:var(--on-accent)}
+  .builton .br{display:inline-flex;align-items:center;padding:.42em .6em;
+     color:var(--accent);background:var(--accent-soft);
+     font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .builton:hover .bl{filter:brightness(1.08)}
+  .builton:hover .br{filter:brightness(.96)}
   .expand{color:var(--muted);margin:8px 0 12px;font-size:.9rem;max-width:82ch}
   /* citation: a paired button — the label opens the paper, the stub copies the PMID */
   .cite{display:inline-flex;align-items:stretch;
@@ -136,7 +141,7 @@
       <a class="ana" href="https://anaconda.org/zhou-lab/kycg"
          title="anaconda.org/zhou-lab/kycg" rel="noopener">↗</a>
     </span>
-    <a class="builton" id="yame-ver" href="https://zhou-lab.github.io/YAME/" hidden></a>
+    <a class="builton" id="builton" href="https://zhou-lab.github.io/YAME/" hidden><span class="bl">built against</span><span class="br">YAME&nbsp;<span id="yame-ver"></span></span></a>
     <span class="cite">
       <a class="paper" href="https://doi.org/10.1126/sciadv.adw3027" rel="noopener"
          title="Goldberg et al. KnowYourCG. Sci Adv 2025;11(43):eadw3027">Cite ↗</a>
@@ -647,9 +652,8 @@ log10 fdr   OK   worst 2.96e-12
       if (!f || !f.content) return;
       var m = atob(f.content.replace(/\s/g, "")).match(/YAME_VERSION\s+"([^"]+)"/);
       if (!m) return;
-      var el = document.getElementById("yame-ver");
-      el.textContent = "built against YAME " + m[1];
-      el.hidden = false;
+      document.getElementById("yame-ver").textContent = m[1];
+      document.getElementById("builton").hidden = false;
     })
     .catch(function () {});
 </script>
