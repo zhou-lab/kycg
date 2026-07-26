@@ -47,6 +47,12 @@
      border-left:1px solid var(--accent)}
   .install .ana:hover{filter:brightness(.96)}
   .badge-ver:hover{background:var(--accent);color:#fff}
+  /* "built against YAME vX.YZ" box on the title row; the version is filled by
+     JS from the pinned submodule, so nothing here needs manual updating. */
+  .builton{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:6px;
+     padding:.42em .7em;font-size:.72rem;color:var(--muted);background:var(--soft);
+     white-space:nowrap;text-decoration:none}
+  .builton:hover{border-color:var(--accent);color:var(--accent)}
   .expand{color:var(--muted);margin:8px 0 12px;font-size:.9rem;max-width:82ch}
   /* citation: a paired button — the label opens the paper, the stub copies the PMID */
   .cite{display:inline-flex;align-items:stretch;
@@ -130,6 +136,7 @@
       <a class="ana" href="https://anaconda.org/zhou-lab/kycg"
          title="anaconda.org/zhou-lab/kycg" rel="noopener">↗</a>
     </span>
+    <a class="builton" id="yame-ver" href="https://zhou-lab.github.io/YAME/" hidden></a>
     <span class="cite">
       <a class="paper" href="https://doi.org/10.1126/sciadv.adw3027" rel="noopener"
          title="Goldberg et al. KnowYourCG. Sci Adv 2025;11(43):eadw3027">Cite ↗</a>
@@ -141,9 +148,8 @@
     One C binary, one verified knowledgebase store, one implementation of every statistic.</p>
   <p class="links">
     <a href="https://github.com/zhou-lab/kycg">GitHub</a><span>·</span>
-    <a href="https://zhou-lab.github.io/YAME/">YAME</a><span>·</span>
     <a href="https://zhou-lab.github.io/cinderplot/">cinderplot</a><span>·</span>
-    <a href="https://zwdzwd.github.io/sesame-cli/">sesame-cli</a><span>·</span>
+    <a href="https://zwdzwd.github.io/sesame-cli/">SeSAMe</a><span>·</span>
     hg38 · mm10 · MSA · EPICv2 · EPIC · HM450 · HM27 · MM285 · Mammal40
   </p>
 </header>
@@ -623,6 +629,27 @@ log10 fdr   OK   worst 2.96e-12
       var el = document.getElementById("ver");
       el.textContent = newest;
       el.href = "https://github.com/zhou-lab/kycg/releases/tag/" + newest;
+    })
+    .catch(function () {});
+
+  /* "built against YAME vX.YZ": read the version the pinned submodule commit
+   * declares (external/YAME/src/yame_version.h at that commit) from the
+   * published repo, so it tracks whatever the submodule points at without a
+   * manual edit. Stays hidden offline / until kycg + the bump are pushed. */
+  fetch("https://api.github.com/repos/zhou-lab/kycg/contents/external/YAME")
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (sub) {
+      if (!sub || !sub.sha) return null;
+      return fetch("https://api.github.com/repos/zhou-lab/YAME/contents/src/yame_version.h?ref=" + sub.sha)
+        .then(function (r) { return r.ok ? r.json() : null; });
+    })
+    .then(function (f) {
+      if (!f || !f.content) return;
+      var m = atob(f.content.replace(/\s/g, "")).match(/YAME_VERSION\s+"([^"]+)"/);
+      if (!m) return;
+      var el = document.getElementById("yame-ver");
+      el.textContent = "built against YAME " + m[1];
+      el.hidden = false;
     })
     .catch(function () {});
 </script>
