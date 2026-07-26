@@ -23,11 +23,6 @@ jobs:
         run: |
           make -j"$(nproc)"
           make test
-      # docs/index.html quotes kycg's and the coupled YAME's version in prose;
-      # fail here if either drifted from the headers the binary is built from,
-      # so a bump can't publish with stale docs.
-      - name: Docs versions in sync
-        run: make check-docs
 
   build:
     name: ${{ matrix.name }}

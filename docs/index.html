@@ -157,9 +157,8 @@ git clone --recurse-submodules \
   https://github.com/zhou-lab/kycg
 cd kycg &amp;&amp; make</code></pre>
     <p style="margin-top:11px">Dependencies are YAME's — vendored htslib, zlib,
-      libm, libcurl — built against <b>YAME v1.29</b>, linked statically from the
-      pinned submodule. <code class="inl">kycg --version</code> prints the coupled
-      version.</p>
+      libm, libcurl — with YAME linked statically from a pinned submodule.
+      <code class="inl">kycg --version</code> reports the coupled YAME version.</p>
     <pre><code><span class="cm"># guided: location, collection, sets, confirm</span>
 kycg <span class="sub">fetch</span>
 
