@@ -244,17 +244,19 @@ static int coll_for(const char *target, const char *store, const char *tag,
     c->target = sr->genome;
     snprintf(c->base, sizeof(c->base), "%s/%s/raw/%s",
              KYCG_KB_BASE_URL, sr->repo, sr->tag);
-    /* Unified layout: whole-genome sets live under KYCGKB/<genome>/. */
-    snprintf(c->dir, sizeof(c->dir), "%s/KYCGKB/%s", store, sr->genome);
+    /* YAME v1.33 layout: whole-genome sets live under <genome>/KYCG/ (keyed on
+     * the browser address, no repo-name prefix). */
+    snprintf(c->dir, sizeof(c->dir), "%s/%s/KYCG", store, sr->genome);
     snprintf(c->source, sizeof(c->source), "%s %s", sr->repo, sr->tag);
     c->anchor = sr->sums_sha256;
     c->sizes = sr->sizes;
     c->n_sets = sr->n_sets;
-    /* Listed in the same manifest as the sets, so no second anchor, and it
-     * lands in the same directory as they do. */
+    /* Listed in the same manifest as the sets, so no second anchor. v1.33
+     * carries its own store slot for this genome index: it lands at the genome
+     * unit root (one level UP from KYCG/), matching its browser address. */
     snprintf(c->comp_name, sizeof(c->comp_name), "cpg_nocontig.cr");
     snprintf(c->comp_base, sizeof(c->comp_base), "%s", c->base);
-    snprintf(c->comp_dir, sizeof(c->comp_dir), "%s", c->dir);
+    snprintf(c->comp_dir, sizeof(c->comp_dir), "%s/%s", store, sr->genome);
     c->comp_anchor = NULL;
     return 0;
   }
@@ -264,9 +266,10 @@ static int coll_for(const char *target, const char *store, const char *tag,
     c->target = ar->platform;
     snprintf(c->base, sizeof(c->base), "%s/%s/%s/KYCG",
              KYCG_IA_BASE_URL, tag, ar->platform);
-    /* Unified layout: array assets live under InfiniumAnnotation/<platform>/,
-     * with the .cm sets in its KYCG/ subdir. */
-    snprintf(c->dir, sizeof(c->dir), "%s/InfiniumAnnotation/%s/KYCG",
+    /* YAME v1.33 layout: array assets live under <platform>/ (keyed on the
+     * browser address, no repo-name prefix), with the .cm sets in its KYCG/
+     * subdir. */
+    snprintf(c->dir, sizeof(c->dir), "%s/%s/KYCG",
              store, ar->platform);
     snprintf(c->source, sizeof(c->source), "InfiniumAnnotation %s", tag);
     /* The anchor is only valid for the tag it was generated against. Asking
@@ -284,7 +287,7 @@ static int coll_for(const char *target, const char *store, const char *tag,
                ar->platform);
       snprintf(c->comp_base, sizeof(c->comp_base), "%s/%s/%s",
                KYCG_IA_BASE_URL, tag, ar->platform);
-      snprintf(c->comp_dir, sizeof(c->comp_dir), "%s/InfiniumAnnotation/%s",
+      snprintf(c->comp_dir, sizeof(c->comp_dir), "%s/%s",
                store, ar->platform);
       c->comp_anchor = ar->plat_sums_sha256;
     }
@@ -742,6 +745,11 @@ static int build_plan(const coll_t *c, const fetch_conf_t *conf, plan_t *plan) {
     snprintf(it->url, sizeof(it->url), "%s/%s", c->base, ent[i].name);
     snprintf(it->sha, sizeof(it->sha), "%s", ent[i].sha);
     it->size = coll_size_of(c, ent[i].name);
+    /* A companion listed in the main manifest (comp_anchor NULL, e.g. the
+     * genome index cpg_nocontig.cr) still lands at its own slot -- the genome
+     * unit root under v1.33 -- not in the KYCG/ set dir with the rows above. */
+    if (is_comp && c->comp_dir[0])
+      snprintf(it->destdir, sizeof(it->destdir), "%s", c->comp_dir);
   }
 
   /* A companion under a manifest of its own is not in the list above. The
@@ -1488,7 +1496,8 @@ static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
    * choices would misrepresent it. */
   if (c.comp_name[0]) {
     char cpath[4400], hb[24];
-    snprintf(cpath, sizeof(cpath), "%s/%s", c.dir, c.comp_name);
+    snprintf(cpath, sizeof(cpath), "%s/%s",
+             c.comp_dir[0] ? c.comp_dir : c.dir, c.comp_name);
     int chave = kycg_store_is_file(cpath);
     uint64_t csz = coll_size_of(&c, c.comp_name);
     char setn[256];

@@ -100,13 +100,15 @@ static void ordering_free(ordering_t *o) {
 }
 
 /**
- * Read <store>/InfiniumAnnotation/<platform>/<platform>.ordering.tsv.gz.
+ * Read <store>/<platform>/<platform>.ordering.tsv.gz.
  *
- * The ordering is canonical at the platform PARENT under the unified asset
- * layout (it matches the remote, and sesame-cli lands it there too), not under
- * the KYCG/ subdir where kycg used to keep it. The legacy KYCG/-parent spot is
- * still tried as a fallback for one release, so a store fetched by an older
- * kycg keeps working until it is re-fetched.
+ * YAME v1.33 keys the store on the browser hierarchy -- the address a user
+ * navigates to (`<platform>/...`) -- not on the upstream repo that publishes
+ * the file, so the old `InfiniumAnnotation/` prefix is gone. The ordering sits
+ * at the platform unit root (matching the remote and where sesame-cli lands
+ * it). The pre-v1.33 `InfiniumAnnotation/<platform>/` spot is still tried as a
+ * fallback for one release, so a store fetched by an older kycg/yame keeps
+ * working until it is re-fetched.
  *
  * The row index of a probe is its line number after the header; nothing else
  * in the file matters here. The M/U/col columns describe the bead design and
@@ -116,20 +118,20 @@ static int ordering_load(const char *store, const char *platform,
                          ordering_t *out) {
   char path[4096], legacy[4096];
   snprintf(path, sizeof(path),
-           "%s/InfiniumAnnotation/%s/%s.ordering.tsv.gz",
+           "%s/%s/%s.ordering.tsv.gz",
            store, platform, platform);
   snprintf(legacy, sizeof(legacy),
-           "%s/InfiniumAnnotation/%s/KYCG/%s.ordering.tsv.gz",
+           "%s/InfiniumAnnotation/%s/%s.ordering.tsv.gz",
            store, platform, platform);
 
   gzFile fp = gzopen(path, "rb");
-  if (!fp) fp = gzopen(legacy, "rb");   /* one-release fallback */
+  if (!fp) fp = gzopen(legacy, "rb");   /* one-release fallback (pre-v1.33) */
   if (!fp) {
     fprintf(stderr,
             "kycg annotate: cannot read the probe ordering for %s.\n"
             "  expected: %s\n"
             "  It is fetched with any set for that platform:\n"
-            "      kycg fetch -f %s:CGI\n", platform, path, platform);
+            "      yame fetch %s\n", platform, path, platform);
     return -1;
   }
 

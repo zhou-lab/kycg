@@ -193,7 +193,7 @@ kycg <span class="sub">fetch</span> hg38</code></pre>
 $ kycg <span class="sub">fetch</span> -f mm10:CGI
 
 ==&gt; Knowledgebase sets to download
-    mm10  •  KYCGKB_mm10 v2  •  ~/.local/share/yame/KYCGKB/mm10
+    mm10  •  KYCGKB_mm10 v2  •  ~/.local/share/yame/mm10/KYCG
 
     CGI.20220904.cm                                  120 KB
     cpg_nocontig.cr                                 22.7 MB
@@ -204,21 +204,23 @@ $ kycg <span class="sub">fetch</span> -f mm10:CGI
 ✓ cpg_nocontig.cr                    22.7 MB
 
 ✓ 2 fetched (22.8 MB).</code></pre>
-    <p style="margin-top:11px">…into a plain, source-keyed layout shared with the rest of
-      the suite. A <code class="inl">.cm</code>
+    <p style="margin-top:11px">…into a plain layout keyed on the target you fetch — the
+      address you browse to, not the repo it came from — shared with the rest of the
+      suite. A <code class="inl">.cm</code>
       in the store is an ordinary file that <code class="inl">kycg test -m</code> takes by path.
       No database, no lockfile, no bookkeeping.</p>
     <pre><code>~/.local/share/yame/
-├ KYCGKB/mm10/            <span class="cm"># whole genome (KYCGKB_mm10)</span>
-│ ├ ChromHMM.20220414.cm
+├ mm10/                   <span class="cm"># whole genome (KYCGKB_mm10)</span>
 │ ├ cpg_nocontig.cr         <span class="cm"># the row list</span>
-│ └ SHA256SUMS
-└ InfiniumAnnotation/MSA/ <span class="cm"># array (InfiniumAnnotation)</span>
+│ └ KYCG/
+│   ├ ChromHMM.20220414.cm
+│   └ SHA256SUMS
+└ MSA/                    <span class="cm"># array (InfiniumAnnotation)</span>
   ├ MSA.ordering.tsv.gz     <span class="cm"># probe ordering</span>
-  ├ KYCG/
-  │ ├ CGI.20220904.cm(+.idx)
-  │ └ SHA256SUMS
-  └ SHA256SUMS              <span class="cm"># as published</span></code></pre>
+  ├ SHA256SUMS              <span class="cm"># platform manifest</span>
+  └ KYCG/
+    ├ CGI.20220904.cm(+.idx)
+    └ SHA256SUMS</code></pre>
     <div class="note">Re-runs are cheap: a file already present with the right digest is
       not re-downloaded. Set the root with <code class="inl">$YAME_DATA_HOME</code>.</div>
   </section>
@@ -268,11 +270,11 @@ $ kycg <span class="sub">fetch</span> -f hg38:CGI,ChromHMM</code></pre>
     <h2>Test <span class="m">— the core</span></h2>
     <p>Hypergeometric tail, six effect sizes, stratified FDR. 21.8M rows in
       <b>0.12&nbsp;s</b>.</p>
-    <pre><code>kycg <span class="sub">test</span> -m ~/.local/share/yame/KYCGKB/mm10/ChromHMM.20220414.cm \
+    <pre><code>kycg <span class="sub">test</span> -m ~/.local/share/yame/mm10/KYCG/ChromHMM.20220414.cm \
   query.cg &gt; res.tsv</code></pre>
     <p style="margin-top:11px"><code class="inl">-m</code> is <b>repeatable</b> — this is what
       makes a store worth having. One pass, one table, one FDR correction:</p>
-    <pre><code>kycg <span class="sub">test</span> $(for f in ~/.local/share/yame/KYCGKB/mm10/*.cm; do
+    <pre><code>kycg <span class="sub">test</span> $(for f in ~/.local/share/yame/mm10/KYCG/*.cm; do
         printf -- '-m %s ' $f; done) \
   query.cg &gt; res.tsv</code></pre>
     <p style="margin-top:11px">Omit <code class="inl">-m</code> on a terminal and kycg offers
@@ -468,7 +470,7 @@ bash kycg-examples/scripts/chromhmm_enrichment.sh</code></pre>
         <code class="inl">.part</code> sibling and are renamed only after the digest matches, so
         an interrupted fetch cannot leave a file that later reads as valid. The store is
         re-checkable with no kycg code at all:</p>
-      <pre><code>cd ~/.local/share/yame/InfiniumAnnotation/MSA/KYCG
+      <pre><code>cd ~/.local/share/yame/MSA/KYCG
 shasum -a 256 -c SHA256SUMS</code></pre>
     </div>
   </div>
