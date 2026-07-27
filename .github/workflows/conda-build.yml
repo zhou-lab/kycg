@@ -123,10 +123,12 @@ jobs:
         run: |
           # The tag must match BOTH the recipe version and the version compiled
           # into the binary. Checking only meta.yaml would let a package
-          # labelled 0.2.0 ship a kycg whose --version says 0.1.0.
+          # labelled 0.2.0 ship a kycg whose --version says 0.1.0. The docs
+          # badge is not checked: it is populated at runtime from the tags API
+          # (id="ver" reads github.com/zhou-lab/kycg/tags), so it tracks the
+          # latest release automatically and has no static version to drift.
           version=$(sed -n 's/.*set version = "\(.*\)".*/\1/p' conda-recipe/meta.yaml)
           binver=$(sed -n 's/.*KYCG_VERSION "\(.*\)".*/\1/p' src/kycg.h)
-          docver=$(sed -n 's/.*badge-ver[^>]*>v\([0-9][^<]*\)<.*/\1/p' docs/index.html)
           tag="${GITHUB_REF_NAME#v}"
           if [ "$version" != "$tag" ]; then
             echo "tag v$tag does not match recipe version $version; bump conda-recipe/meta.yaml" >&2
@@ -134,10 +136,6 @@ jobs:
           fi
           if [ "$binver" != "$tag" ]; then
             echo "tag v$tag does not match KYCG_VERSION $binver; bump src/kycg.h" >&2
-            exit 1
-          fi
-          if [ "$docver" != "$tag" ]; then
-            echo "tag v$tag does not match the docs badge $docver; bump docs/index.html" >&2
             exit 1
           fi
 
