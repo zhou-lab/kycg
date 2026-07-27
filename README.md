@@ -156,7 +156,7 @@ can verify only those. `--version` reports the build and the coupled YAME:
 
 ```
 $ kycg --version
-kycg 0.2
+kycg 0.3
     built against  YAME v1.33
     store          ~/.local/share/yame   ($YAME_DATA_HOME unset; -d overrides)
 ```
