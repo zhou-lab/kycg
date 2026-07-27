@@ -54,7 +54,7 @@ Cutting a release:
 ```sh
 # bump `version` in conda-recipe/meta.yaml and KYCG_VERSION in src/kycg.h,
 # commit, then:
-git tag -a v0.3 -m "kycg 0.3" && git push origin v0.3
+git tag -a v0.4 -m "kycg 0.4" && git push origin v0.4
 ```
 
 ## Notes
