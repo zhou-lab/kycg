@@ -19,6 +19,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      # YAME v1.33 requires libcurl (it owns `yame fetch`) and its Makefile
+      # errors out when curl-config is absent rather than silently building
+      # without it. The runner image has curl but not the -dev package that
+      # ships curl-config, so install it -- the conda `build` job gets libcurl
+      # from the recipe host deps instead.
+      - name: Install libcurl
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
       - name: Build and test
         run: |
           make -j"$(nproc)"
