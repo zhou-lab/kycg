@@ -118,6 +118,29 @@
   .cols3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px}
   @media(max-width:900px){.cols3{grid-template-columns:1fr 1fr}}
   @media(max-width:720px){.cols,.cols3{grid-template-columns:1fr}}
+  /* case-study gallery: small uniform cards, click any figure to zoom */
+  .gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(228px,1fr));gap:16px}
+  @media(max-width:520px){.gallery{grid-template-columns:1fr}}
+  .shot{position:relative;height:190px;overflow:hidden;background:#fff;cursor:zoom-in}
+  .shot>img{width:100%;height:100%;object-fit:contain;object-position:center;display:block}
+  .zoom{position:absolute;top:8px;right:8px;z-index:6;width:29px;height:29px;display:flex;
+     align-items:center;justify-content:center;font-size:.95rem;line-height:1;color:#eef2fb;
+     background:rgba(8,12,22,.62);border:1px solid rgba(255,255,255,.2);border-radius:8px;
+     cursor:zoom-in;opacity:0;transition:opacity .15s,background .15s}
+  .shot:hover .zoom,.shot:focus-within .zoom{opacity:1}
+  .zoom:hover{background:rgba(8,12,22,.9)}
+  /* the command that made the figure, revealed over the image on hover */
+  .shot .code{position:absolute;inset:0;margin:0;display:flex;align-items:center;justify-content:center;
+     padding:12px;overflow:auto;background:rgba(8,12,22,0);opacity:0;transition:opacity .2s ease,background .2s ease}
+  .shot:hover .code,.shot:focus-within .code{opacity:1;background:rgba(8,12,22,.94)}
+  .shot .code pre{background:transparent;padding:0;margin:0;border-radius:0;font-size:.62rem;
+     line-height:1.5;max-width:100%;overflow:visible}
+  .gcopy{top:8px;right:44px;z-index:7;opacity:0}          /* gallery copy, left of the zoom */
+  .shot:hover .gcopy,.gcopy:focus{opacity:1}
+  .lb{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;
+     background:rgba(6,9,16,.92);padding:24px;cursor:zoom-out}
+  .lb.on{display:flex}
+  .lb img{max-width:96vw;max-height:92vh;border-radius:10px;box-shadow:0 14px 60px rgba(0,0,0,.55);background:#fff}
   table.t{width:100%;border-collapse:collapse;font-size:.79rem;margin:2px 0 0}
   table.t th{text-align:left;font-weight:700;color:var(--fg);border-bottom:1px solid var(--line);padding:5px 8px 5px 0;white-space:nowrap}
   table.t td{padding:4px 8px 4px 0;border-bottom:1px solid var(--line);color:var(--muted);vertical-align:top}
@@ -360,49 +383,85 @@ cinderplot 'res.tsv
 </div>
 
 <section class="full">
-  <h2>Worked example <span class="m">— one mouse cell methylome, 21.8M rows</span></h2>
-  <p>The single query cell <code class="inl">onecell.cg</code> tested against the
-    18 ChromHMM chromatin states, plotted with
-    <a href="https://zhou-lab.github.io/cinderplot/">cinderplot</a> — no R. Data,
-    output table, and the exact commands live in
-    <a href="https://github.com/zhou-lab/kycg-examples">kycg-examples</a>; the
-    whole figure set regenerates with one script.</p>
+  <h2>Case studies <span class="m">— recovering known biology</span></h2>
+  <p>Does kycg recover known biology? Two angles. A tissue's <b>hypomethylated</b> CpGs
+    mark the regulatory DNA it holds open — fed to <code class="inl">kycg test</code>
+    against transcription-factor binding sites (ReMap, 638 factors), the top hits are that
+    tissue's <i>lineage</i> regulators, no tuning. And a whole sample's methylation,
+    averaged over metagene coordinates, redraws the classic gene architecture. Click any
+    figure to enlarge; everything regenerates with the scripts below (plotted with
+    <a href="https://zhou-lab.github.io/cinderplot/">cinderplot</a>, no R, from
+    <a href="https://github.com/zhou-lab/kycg-examples">kycg-examples</a>).</p>
   <pre style="margin-bottom:14px"><code>git clone https://github.com/zhou-lab/kycg-examples
-bash kycg-examples/scripts/chromhmm_enrichment.sh</code></pre>
-  <div class="cols">
+bash kycg-examples/scripts/tissue_tfbs_enrichment.sh   <span class="cm"># the three TF panels</span>
+bash kycg-examples/scripts/metagene_profile.sh         <span class="cm"># the metagene profile</span></code></pre>
+  <div class="gallery">
     <figure>
-      <img src="figures/volcano.png"
-           alt="Volcano plot: log2 odds ratio against -log10 FDR, colored by significance"
-           loading="lazy">
-      <figcaption><b>Volcano.</b> <code>aes(estimate, neglog10_fdr, colour=sig)</code>.
-        States with no overlap are filtered first — their odds ratio is zero, so log2(OR)
-        saturates at <code>log2(DBL_MIN) = -1022</code> (matching knowYourCG) and a single
-        such point would compress every real effect size into one pixel column.</figcaption>
+      <div class="shot" tabindex="0">
+        <img src="figures/tissue_tfbs.png"
+             alt="Paired dot plot: top TFs for fetal brain and hepatocyte, disjoint signatures"
+             loading="lazy">
+        <button class="zoom" type="button" data-full="figures/tissue_tfbs.png" title="expand">⤢</button>
+        <div class="code"><pre><code><span class="cm"># tissue Hypo probes vs TF sites</span>
+kycg <span class="sub">test</span> -m MM285:TFBSrm *_hypo.cg
+cinderplot 'aes(factor(tf), neglog10_fdr,
+  colour=tissue, size=overlap)
+  + geom_point() + coord_flip()'</code></pre></div>
+      </div>
+      <figcaption><b>Two tissues, disjoint signatures.</b> Each tissue's top-8 TFs, shown for
+        both. Fetal brain → neuronal (<code>DLX</code>, <code>OTX2</code>, <code>PAX6</code>,
+        <code>LHX</code>); hepatocyte → hepatic (<code>HNF4A</code>, <code>PPARA</code>,
+        <code>RXRA</code>). Each is absent in the other.</figcaption>
     </figure>
     <figure>
-      <img src="figures/dot.png"
-           alt="Horizontal dot plot of ChromHMM states by -log10 FDR, sized by overlap"
-           loading="lazy">
-      <figcaption><b>Dot.</b> <code>aes(db, neglog10_fdr, size=overlap, colour=estimate) + coord_flip()</code>.
-        One row per state; point area is the overlap count, colour the log2 odds ratio.</figcaption>
+      <div class="shot" tabindex="0">
+        <img src="figures/brain_volcano.png"
+             alt="Volcano: fetal-brain hypomethylation vs TF binding, neuronal TFs labeled"
+             loading="lazy">
+        <button class="zoom" type="button" data-full="figures/brain_volcano.png" title="expand">⤢</button>
+        <div class="code"><pre><code>kycg <span class="sub">test</span> -a two.sided \
+  -m MM285:TFBSrm fetal_brain_hypo.cg
+cinderplot 'aes(estimate, neglog10_fdr,
+  colour=sig) + geom_point() + geom_text()'</code></pre></div>
+      </div>
+      <figcaption><b>Fetal brain — volcano.</b> Two-sided; enrichment (right) names the
+        neuronal factors, the depleted cloud (left) is CpGs unmethylated in every tissue.</figcaption>
     </figure>
     <figure>
-      <img src="figures/bar.png"
-           alt="Horizontal bar chart of ChromHMM states by -log10 FDR"
-           loading="lazy">
-      <figcaption><b>Bar.</b> <code>aes(db, neglog10_fdr) + geom_col() + coord_flip()</code>.
-        Quiescent chromatin and PMDs dominate, at <code>-log10 FDR ≈ 1546</code> — a
-        magnitude the linear <code>fdr</code> column underflows to 0.</figcaption>
+      <div class="shot" tabindex="0">
+        <img src="figures/hep_bar.png"
+             alt="Horizontal bar chart of top hepatocyte-enriched TFs by -log10 FDR"
+             loading="lazy">
+        <button class="zoom" type="button" data-full="figures/hep_bar.png" title="expand">⤢</button>
+        <div class="code"><pre><code>kycg <span class="sub">test</span> -m MM285:TFBSrm hepatocyte_hypo.cg
+cinderplot 'aes(factor(tf), neglog10_fdr)
+  + geom_col() + coord_flip()'</code></pre></div>
+      </div>
+      <figcaption><b>Hepatocyte — top TFs.</b> The hepatic nuclear receptors
+        (<code>HNF4A</code>, <code>PPARA</code>, <code>RXRA</code>) and the circadian core
+        the liver runs on.</figcaption>
     </figure>
     <figure>
-      <img src="figures/waterfall.png"
-           alt="Waterfall of enrichment ranked by log2 odds ratio, sized by -log10 FDR"
-           loading="lazy">
-      <figcaption><b>Waterfall.</b> <code>aes(index, estimate, size=neglog10_fdr) + geom_hline(0)</code>.
-        Enrichment ranked left to right; point area is significance, so the most
-        confident calls are the largest.</figcaption>
+      <div class="shot" tabindex="0">
+        <img src="figures/metagene.png"
+             alt="Metagene methylation profile: promoter dip, gene-body rise, downstream return"
+             loading="lazy">
+        <button class="zoom" type="button" data-full="figures/metagene.png" title="expand">⤢</button>
+        <div class="code"><pre><code><span class="cm"># sample beta over metagene bins</span>
+kycg <span class="sub">test</span> -m MM285:MetagenePC mm285_sample.cg
+cinderplot 'aes(pos, beta)
+  + geom_line() + geom_point()'</code></pre></div>
+      </div>
+      <figcaption><b>Gene architecture — metagene profile.</b> One sample's mean β over 30
+        metagene bins (<code class="inl">kycg test</code>'s <code>beta</code> column vs
+        <code>MetagenePC</code>): the textbook promoter/TSS hypomethylation dip, gene-body
+        hypermethylation rising toward 3′, back to baseline downstream.</figcaption>
     </figure>
   </div>
+  <div class="note">The signal tracks the <i>cells present</i>, not the organ name:
+    <code class="inl">fetal_liver</code> Hypo returns <code>GATA1</code>, <code>TAL1</code>,
+    <code>GATA2</code> — hematopoietic master regulators, because fetal liver is the site of
+    fetal hematopoiesis. The same command reproduces it.</div>
 </section>
 
 <section class="full">
@@ -563,6 +622,7 @@ log10 fdr   OK   worst 2.96e-12
 </footer>
 
 </div>
+<div class="lb" id="lb" aria-hidden="true"><img alt="full figure"></div>
 <script>
 (function(){
   // --- clipboard, with a file:// and older-browser fallback ---
@@ -596,6 +656,7 @@ log10 fdr   OK   worst 2.96e-12
     });
   });
   document.querySelectorAll('pre').forEach(function(pre){
+    if(pre.closest('.code'))return;          // gallery overlays get their own button below
     var b=document.createElement('button');
     b.className='copy';b.type='button';b.textContent='copy';
     var code=pre.querySelector('code');
@@ -608,6 +669,34 @@ log10 fdr   OK   worst 2.96e-12
     });
     pre.appendChild(b);
   });
+  // --- copy button for each gallery command, left of the zoom ---
+  document.querySelectorAll('.shot .code code').forEach(function(code){
+    var b=document.createElement('button');
+    b.className='copy gcopy';b.type='button';b.textContent='copy';
+    b.addEventListener('click',function(ev){
+      ev.stopPropagation();
+      navigator.clipboard.writeText(code.innerText).then(function(){
+        b.textContent='copied';b.classList.add('ok');
+        setTimeout(function(){b.textContent='copy';b.classList.remove('ok');},1200);
+      });
+    });
+    code.closest('.shot').appendChild(b);
+  });
+
+  // --- click any case-study figure (or its ⤢) to open it full-size ---
+  var lb=document.getElementById('lb'), lbimg=lb?lb.querySelector('img'):null;
+  if(lb&&lbimg){
+    document.querySelectorAll('.shot').forEach(function(s){
+      s.addEventListener('click',function(ev){
+        if(ev.target.closest('.copy'))return;   // let the copy button copy, not zoom
+        var z=s.querySelector('.zoom');
+        lbimg.src=z?z.getAttribute('data-full'):s.querySelector('img').src;
+        lb.classList.add('on');
+      });
+    });
+    lb.addEventListener('click',function(){lb.classList.remove('on');lbimg.src='';});
+    document.addEventListener('keydown',function(e){if(e.key==='Escape')lb.classList.remove('on');});
+  }
 })();
 
   /* The version is whatever the repository says it is: hardcoding it here is
