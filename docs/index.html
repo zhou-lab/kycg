@@ -47,6 +47,17 @@
      border-left:1px solid var(--accent)}
   .install .ana:hover{filter:brightness(.96)}
   .badge-ver:hover{background:var(--accent);color:#fff}
+  /* The agent action uses the same compact filled treatment as the install
+     action, but remains a separate pill because it copies a prompt. */
+  #agent-btn{font:inherit;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+     font-size:.74rem;cursor:pointer;border:1px solid var(--accent);
+     border-radius:6px;color:var(--on-accent);background:var(--accent);
+     padding:.42em .7em;line-height:1.15;display:inline-flex;align-items:center;
+     gap:.5em;white-space:nowrap;margin-left:4px}
+  #agent-btn:hover{filter:brightness(1.08)}
+  #agent-btn:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+  #agent-btn .ico{opacity:.75;font-size:.92em}
+  #agent-btn.done .ico::before{content:"✓"}
   /* "built against YAME vX.YZ" box on the title row; the version is filled by
      JS from the pinned submodule, so nothing here needs manual updating. */
   .builton{display:inline-flex;align-items:stretch;border:1px solid var(--accent);
@@ -56,6 +67,9 @@
   .builton .br{display:inline-flex;align-items:center;padding:.42em .6em;
      color:var(--accent);background:var(--accent-soft);
      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  /* the class sets display, which would otherwise beat the hidden attribute and
+     show an empty pill whenever the version lookup fails */
+  .builton[hidden]{display:none}
   .builton:hover .bl{filter:brightness(1.08)}
   .builton:hover .br{filter:brightness(.96)}
   .expand{color:var(--muted);margin:8px 0 12px;font-size:.9rem;max-width:82ch}
@@ -157,10 +171,14 @@
     <h1><b>K</b>now<b>Y</b>our<b>CG</b></h1>
     <span class="badge">cli</span><a class="badge badge-ver" id="ver"
       href="https://github.com/zhou-lab/kycg/tags">latest</a>
+    <button id="agent-btn" type="button"
+            data-cmd="Use kycg for functional enrichment analysis of DNA methylation at CpG resolution. Read https://zhou-lab.github.io/kycg/llms.txt first for installation, the verified knowledgebase store, the fetch/test/annotate commands, the result columns, the traps, and development guidance."
+            title="Copy a prompt for your coding agent"
+            aria-label="Copy a prompt for your coding agent"><span class="ico">⧉</span>agent prompt</button>
     <span class="install">
       <button id="install-btn" type="button"
               data-cmd="conda install -c zhou-lab -c conda-forge kycg"
-              title="Copy to clipboard"><span class="ico">⧉</span>conda install -c zhou-lab -c conda-forge kycg</button>
+              title="conda install -c zhou-lab -c conda-forge kycg — click to copy"><span class="ico">⧉</span>conda install</button>
       <a class="ana" href="https://anaconda.org/zhou-lab/kycg"
          title="anaconda.org/zhou-lab/kycg" rel="noopener">↗</a>
     </span>
@@ -634,16 +652,17 @@ log10 fdr   OK   worst 2.96e-12
     document.body.removeChild(t);done();
   }
 
-  // --- copy the install command ---
-  var ib=document.getElementById('install-btn');
-  if(ib){
-    ib.addEventListener('click',function(){
-      copy(ib.getAttribute('data-cmd'),function(){
-        ib.classList.add('done');
-        setTimeout(function(){ib.classList.remove('done');},1400);
+  // --- copy the header actions: install command and agent prompt ---
+  ['install-btn','agent-btn'].forEach(function(id){
+    var b=document.getElementById(id);
+    if(!b)return;
+    b.addEventListener('click',function(){
+      copy(b.getAttribute('data-cmd'),function(){
+        b.classList.add('done');
+        setTimeout(function(){b.classList.remove('done');},1400);
       });
     });
-  }
+  });
 
   // --- copy the PMID ---
   document.querySelectorAll('.cite .pmid').forEach(function(b){

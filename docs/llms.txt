@@ -1,0 +1,170 @@
+# kycg — agent reference
+# Canonical: https://zhou-lab.github.io/kycg/llms.txt
+# Human guide: https://zhou-lab.github.io/kycg/
+# Source: https://github.com/zhou-lab/kycg
+# For exact flags, always run: kycg <command> -h
+
+## What it is
+
+kycg is a C command-line reimplementation of the knowYourCG R/Bioconductor
+package: functional enrichment analysis of DNA methylation at CpG resolution,
+with YAME as the computational backend. It supersedes the knowYourCG sequencing
+workflow, and scales to whole-genome row spaces (29M CpGs) as well as arrays.
+
+Cite: Goldberg et al. KnowYourCG. Sci Adv 2025;11(43):eadw3027.
+doi:10.1126/sciadv.adw3027
+
+## Install
+
+  conda install -c zhou-lab -c conda-forge kycg
+
+Knowledgebases are NOT in the package — `kycg fetch` pulls them on demand. The
+binary carries only the registry of tags and digests it can verify.
+
+Source build (YAME is a submodule; `make` drives its `make lib`):
+
+  git clone --recurse-submodules https://github.com/zhou-lab/kycg
+  cd kycg && make            # make CURL=0 builds without fetch
+
+Dependencies are YAME's: vendored htslib, zlib, libm, pthreads. libcurl is
+optional and used only by `kycg fetch`. `kycg --version` prints the build, the
+YAME it links, the store, and whether curl is in.
+
+## Commands
+
+  kycg fetch      browse/download knowledgebases into the verified store
+  kycg test       set enrichment: query vs knowledgebases -> TSV
+  kycg annotate   label a table of probe IDs with the sets they fall in
+
+File inspection is `yame info` (kycg builds on YAME's .cx formats). Plotting is
+cinderplot, as a separate process — kycg emits TSV and nothing more.
+
+## fetch — the knowledgebase store
+
+  kycg fetch                    # browse everything (full-screen tree)
+  kycg fetch hg38               # open with hg38 checked; f starts the download
+  kycg fetch hg38:CGI,ChromHMM  # open with just those checked
+  kycg fetch -f hg38            # download now: no browser, no questions
+  kycg fetch | grep -v '^#'     # TSV catalogue, for scripts
+
+  -d DIR  store directory [$YAME_DATA_HOME, else the shared store]
+  -o SETS comma-separated subset by set name
+  -f      download now, no browser
+  -r      re-download even what is present and verified
+  -t TAG  InfiniumAnnotation tag, arrays only [v8]
+
+Nine collections: `hg38` (32 sets) and `mm10` (28) from KYCGKB_<genome>, plus
+MSA, EPICv2, EPIC, HM450, HM27, MM285, Mammal40 from InfiniumAnnotation.
+Fetched sets are ordinary files — a path works anywhere a set name does.
+
+Browser keys: arrows or j/k move, `→`/`←` unfold/fold a target, space checks a
+set, `r` checks the collection's recommended selection, `i` toggles the
+description pane, `f` fetches, `d` changes store, `t` tests (in `test`), `q`
+quits. Sets already present show ✓ and cannot be checked.
+
+Trust model: each channel publishes SHA256SUMS at a pinned tag; kycg pins
+sha256(SHA256SUMS) in the binary, verifies that file, then trusts the digests
+inside. Downloads land on a `.part` sibling and are renamed only after their
+digest matches. The store re-verifies with `shasum -a 256 -c SHA256SUMS` and no
+kycg code at all.
+
+## test — set enrichment
+
+  kycg test -m mm10:CGI            query.cg > results.tsv
+  kycg test -m mm10:CGI,ChromHMM   query.cg
+  kycg test -m mm10                query.cg   # everything cached for mm10
+  kycg test -m path/to/some.cm     query.cg   # a path is taken literally
+
+  -m SPEC  path or target[:sets]; repeatable [required]
+  -a STR   alternative: greater|less|two.sided [greater]
+  -G       correct FDR globally instead of within knowledgebase
+  -s FILE  sample names for the query
+  -M       load the knowledgebase into memory
+  -F       full file paths instead of basenames
+  -H       suppress the header line
+  -o FILE  write to FILE instead of stdout
+
+Per (query sample, knowledgebase record): the four contingency counts, a
+one-sided hypergeometric tail in log10, six effect sizes, and BH-corrected FDR.
+Columns:
+
+  query_file query db_file db group nU nQ nD overlap
+  estimate log10_p p_value fdr neglog10_fdr
+  cf_jaccard cf_mcc cf_overlap cf_npmi cf_dice
+  beta depth
+
+The first eight are `yame summary`'s columns renamed; the rest kycg adds.
+`estimate` is Log2OddsRatio at full precision.
+
+Pool knowledgebases into ONE invocation: `-m mm10` against 30 sets decompresses
+the query once, 30 processes decompress it 30 times.
+
+## annotate — label probe IDs
+
+  kycg annotate -m EPIC:CGI,ProbeType hits.tsv > annotated.tsv
+
+  -m SPEC  path or platform[:sets]; repeatable [required]
+  -p PLAT  platform, when -m is a plain path
+  -c COL   probe ID column: name or 1-based index [Probe_ID, else 1]
+  -i       indicator columns (0/1) per set, for modelling
+  -s SEP   separator when a probe is in several sets [,]
+  -H       input has no header line
+  -o FILE  write to FILE instead of stdout
+
+Keeps every column and row in order and appends one column per knowledgebase.
+Arrays only, and the platform is NAMED rather than inferred — a wrong guess
+would produce a full table of confident, wrong answers.
+
+## Traps
+
+- `p_value` and `fdr` read 0 for any strong result: they are 10^log10_p, which
+  underflows around log10_p = -308 while real enrichments run past -1500. Sort,
+  threshold and plot on `log10_p` / `neglog10_fdr`, which stay in log space.
+- FDR is corrected within one query sample and one knowledgebase (the family
+  knowYourCG's testEnrichment corrects over). Adding samples or knowledgebases
+  to one invocation does not change any FDR already reported. `-G` widens the
+  stratum (matching mtc_by_group=FALSE).
+- Everything is POSITIONAL: a `.cg` and a `.cm` are comparable only if row i is
+  the same CpG in both. kycg asserts equal row counts and fails loudly, but it
+  cannot detect two files that share a row count from different row spaces —
+  keeping them matched is the user's job.
+- kycg never infers a platform and never prompts off a TTY: a redirected stdout
+  makes `fetch` write plain TSV, a named target download without asking, and a
+  missing `-m` an error rather than a wait.
+- Downloading happens in `fetch` and nowhere else.
+- `-t` on a tag this build does not pin is refused, not silently fetched.
+
+## Registry — a build is coupled to a data generation
+
+Pinned tags, anchors and row counts are compiled into `src/registry.h`.
+Following an upstream tag:
+
+  tools/make_registry.sh v9 > src/registry.h && make
+  tools/check_dimensions.sh        # confirm pinned row counts still hold
+
+The trade is reproducibility for immediacy: a kycg release means an exact,
+known set of knowledgebases.
+
+## Correctness
+
+`make test` checks the hypergeometric tail and BH against R's `phyper()` /
+`p.adjust()` across small, array-scale, whole-genome and deep-tail regimes
+(worst relative error 2.6e-16). `tests/validate_vs_R.R` re-derives every column
+of a real run with the same calls knowYourCG makes. The tail uses Loader's
+saddle-point expansion (as R's `dhyper()` does); BH is applied in log space,
+since a linear-space BH would assign FDR 0 to every underflowed row.
+
+## Layout
+
+  src/hypergeo.{c,h}  log-space hypergeometric tail + BH (pure, no YAME)
+  src/enrich.{c,h}    effect sizes, FDR strata, TSV emission
+  src/store.{c,h}     store paths and enumeration
+  src/registry.h      generated: pinned tags, anchors, row counts
+  src/kbinfo.h        generated from data/knowledgebases.tsv
+  src/ui.{c,h}        terminal layer: tree browser, panels, TTY gating
+  src/fetch.c src/test.c src/main.c
+  tools/              generators for registry.h and kbinfo.h
+  external/YAME/      submodule
+
+`src/registry.h` and `src/kbinfo.h` are generated — edit the catalog/data
+inputs and regenerate; do not hand-edit them.
