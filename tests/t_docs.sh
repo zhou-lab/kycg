@@ -64,9 +64,11 @@ fi
 ## since YAME v1.50 each tool emits its own registry, so kycg ships
 ## tools/make_registry.sh and a doc pointing into the submodule would send the
 ## reader to a script that no longer exists there.
-[ -f "$root/tools/make_registry.sh" ] ||
-  { echo "  FAIL kycg has no tools/make_registry.sh; it emits its own registry now"
-    fails=$((fails + 1)); }
+if [ -d "$root/tools" ]; then
+  [ -f "$root/tools/make_registry.sh" ] ||
+    { echo "  FAIL kycg has no tools/make_registry.sh; it emits its own registry now"
+      fails=$((fails + 1)); }
+fi
 for f in "$root/README.md" "$root/docs/llms.txt"; do
   [ -f "$f" ] || continue
   n=$(basename "$f")
@@ -75,10 +77,17 @@ for f in "$root/README.md" "$root/docs/llms.txt"; do
       fails=$((fails + 1)); }
 done
 
-## and the generated header really is regenerable from the checked-in table
-if [ -x "$root/tools/make_registry.sh" ]; then
+## and the generated headers really are regenerable from the checked-in table.
+## Only in a tree that has the generators AND the catalog they read: a conda
+## test environment gets tests/ and docs/ as source_files, not tools/ and not
+## the YAME submodule, so there is nothing to regenerate from there.
+if [ -x "$root/tools/make_registry.sh" ] &&
+   [ -f "$root/external/YAME/tools/registry/lib.sh" ]; then
   ( cd "$root" && ./tools/make_registry.sh --check >/dev/null 2>&1 ) ||
     { echo "  FAIL src/registry.h is stale; run tools/make_registry.sh -o src/registry.h"
+      fails=$((fails + 1)); }
+  ( cd "$root" && ./tools/make_kbinfo.sh --check >/dev/null 2>&1 ) ||
+    { echo "  FAIL src/kbinfo.h is stale; run tools/make_kbinfo.sh -o src/kbinfo.h"
       fails=$((fails + 1)); }
 fi
 

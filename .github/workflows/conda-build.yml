@@ -78,8 +78,13 @@ jobs:
         # default but has changed before.
         run: conda install -n base -y "conda-build>=24.9" anaconda-client
 
+      # zhou-lab as well as conda-forge: the recipe's test phase requires the
+      # `yame` package (the suite packs its fixtures with it, and it is what
+      # the docs tell users to install alongside kycg), and yame is published
+      # on zhou-lab. Without the channel the TEST environment cannot solve and
+      # the build fails after compiling successfully.
       - name: Build package
-        run: conda build -c conda-forge --output-folder "$RUNNER_TEMP/bld" conda-recipe/
+        run: conda build -c zhou-lab -c conda-forge --output-folder "$RUNNER_TEMP/bld" conda-recipe/
 
       # The runner's glibc is far newer than users'. If the sysroot pin ever
       # comes loose, the binary silently picks up symbols no ordinary machine
