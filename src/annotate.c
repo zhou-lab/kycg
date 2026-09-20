@@ -131,7 +131,7 @@ static int ordering_load(const char *store, const char *platform,
             "kycg annotate: cannot read the probe ordering for %s.\n"
             "  expected: %s\n"
             "  It is fetched with any set for that platform:\n"
-            "      yame fetch %s\n", platform, path, platform);
+            "      yame fetch -y %s\n", platform, path, platform);
     return -1;
   }
 
@@ -401,7 +401,7 @@ int main_annotate(int argc, char *argv[]) {
     case 'o': out_path = optarg; break;
     case 'i': indicator = 1; break;
     case 'H': no_header = 1; break;
-    case 'h': return usage();
+    case 'h': usage(); return 0;
     default: return usage();
     }
   }

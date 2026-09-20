@@ -5,6 +5,8 @@ reimplementation of the [knowYourCG](https://bioconductor.org/packages/knowYourC
 R/Bioconductor package, with [YAME](https://github.com/zhou-lab/YAME) as its
 computational backend.
 
+[![coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fzhou-lab.github.io%2Fkycg%2Fcoverage.json)](tests/run.sh)
+
 **Cite:** Goldberg *et al.* KnowYourCG. *Sci Adv* 2025;11(43):eadw3027.
 [doi:10.1126/sciadv.adw3027](https://doi.org/10.1126/sciadv.adw3027)
 
@@ -28,8 +30,13 @@ knowYourCG sequencing workflow.
 ## Installing
 
 ```bash
-conda install -c zhou-lab -c conda-forge kycg
+conda install -c zhou-lab -c conda-forge kycg yame
 ```
+
+Install `yame` alongside kycg. kycg links libyame statically, so the backend
+*library* is inside the binary — but the `yame` *command* is a separate
+package, and it is what checks a row space (`yame info query.cg kb.cm`, below).
+kycg has no `info` subcommand of its own.
 
 Knowledgebases are not in the package — `kycg fetch` pulls them into your own
 store on demand. The compendium is hundreds of megabytes and versioned
@@ -46,8 +53,13 @@ YAME is a submodule; the build drives its `make lib` target automatically.
 ```bash
 git clone --recurse-submodules <this repo>
 cd kycg
-make
+make              # kycg, against YAME's libyame.a
+make yame-bin     # the yame command itself, at external/YAME/yame
 ```
+
+`make` drives YAME's `make lib` target, which builds the static library and
+nothing else. `make yame-bin` builds the submodule's own binary, for the
+`yame info` row-space check.
 
 If you already cloned without `--recurse-submodules`:
 
@@ -105,7 +117,7 @@ place with your folds and cursor where you left them. Only `q` exits.
 
 ```
     target    kind          rows        source           cached_sets
-❯ ▾ hg38      whole genome  29,401,795  KYCGKB_hg38 v2    4/32
+❯ ▾ hg38      whole genome  29,401,795  KYCGKB_hg38       4/32
    ├ [x] ABCompartment   ABCompartment.20220911.cm   9.5 KB  -
    ├  ✓  Blacklist       Blacklist.20220304.cm       3.1 KB  cached
    ├ [ ] CTCFbind        CTCFbind.20220911.cm        159 KB  -
@@ -123,52 +135,59 @@ kycg still downloads in `fetch` and nowhere else.
     -o SETS   comma-separated subset, by set name (CGI,ChromHMM,TFBS)
     -f        download now: no browser, no questions
     -r        re-download even what is present and verified
-    -t TAG    InfiniumAnnotation tag, arrays only [v8]
 ```
 
-Nine collections: `hg38` (32 sets) and `mm10` (28) from `KYCGKB_<genome>`,
-plus `MSA` `EPICv2` `EPIC` `HM450` `HM27` `MM285` `Mammal40` from
-InfiniumAnnotation. Fetched sets are ordinary files — pass one to
+Ten collections: `hg38` (32 sets), `mm10` (28) and `mm39` (1) from
+`KYCGKB_<genome>`, plus `MSA` `EPICv2` `EPIC` `HM450` `HM27` `MM285` `Mammal40`
+from InfiniumAnnotation. Fetched sets are ordinary files — pass one to
 `kycg test -m`.
 
-**One trust model for both channels.** Each publishes a `SHA256SUMS` at a
-pinned tag; kycg pins `sha256(SHA256SUMS)` in the binary, verifies that file
-after downloading it, then trusts every digest listed inside. Downloads land on
-a `.part` sibling and are renamed only after their digest matches, so an
-interrupted fetch cannot leave a file that later reads as valid. Afterwards the
-store is re-verifiable with `shasum -a 256 -c SHA256SUMS` and no kycg code at
-all. Because the anchor is the manifest rather than the file list, sets can be
-added upstream without rebuilding kycg.
+**One trust model for both channels: every file carries its own digest.**
+`src/registry.h` pins the sha256 of each file, and a download is verified
+against *that* — never against a manifest the same server served. Downloads
+land on a `.part` sibling and are renamed only after the digest matches, so an
+interrupted fetch cannot leave a file that later reads as valid. Afterwards
+kycg writes a `SHA256SUMS` derived from those same rows, so the store
+re-verifies with `sha256sum -c` and no kycg code at all.
+
+The consequence worth stating: a set published upstream with no row in the
+registry cannot be verified, so it is not offered. The table is the authority
+for what exists, and adding a set means regenerating the registry.
 
 The Zenodo deposits remain the citable archive and keep the DOIs
 ([hg38](https://doi.org/10.5281/zenodo.18175837),
 [mm10](https://doi.org/10.5281/zenodo.18175655)); they are recorded in the
 registry as provenance and are no longer the fetch path.
 
-**libcurl is optional.** `test` and `info` build and run without it;
+**libcurl is optional.** `test` and `annotate` build and run without it;
 only `fetch` needs it, and it says so plainly if the build lacks it. `CURL=0`
-forces it off.
+forces it off. (The row-space check the docs mention is `yame info`, a separate
+command — kycg has no `info` subcommand of its own.)
 
 ### A build is coupled to a generation of the data
 
 kycg pins a specific tag per collection, compiled into `src/registry.h`, and
-can verify only those. `--version` reports the build and the coupled YAME:
+can verify only those. `--version` (or `-v`) reports the build, the coupled
+YAME, the registry tag it can verify, and whether it can fetch:
 
 ```
 $ kycg --version
-kycg 0.4
-    built against  YAME v1.33
+kycg 0.5
+    built against  YAME v1.50
     store          ~/.local/share/yame   ($YAME_DATA_HOME unset; -d overrides)
+    registry       genomes@v4 InfiniumAnnotation@v8.1 KYCGKB@v2  (7 arrays, 3 genomes)
+    network        libcurl available
 ```
 
 Nothing updates on its own, deliberately: the digest a download is checked
 against is compiled in, so a tag this build does not pin is one it cannot
-verify, and `-t` on such a tag is refused rather than silently fetched.
+verify. Tags are per file, carried on each row of the table, so there is no
+global tag to override -- which is why `-t` no longer exists.
 Following an upstream tag is two commands and one generated file:
 
 ```bash
-tools/make_registry.sh v9 > src/registry.h && make
-tools/check_dimensions.sh          # confirm the pinned row counts still hold
+tools/make_registry.sh -o src/registry.h && make
+tools/check_dimensions.sh          # confirm the pinned row counts (needs yame)
 ```
 
 The trade is reproducibility for immediacy — a given kycg release means an
@@ -283,8 +302,8 @@ keystroke apart:
 
 ```
     target    kind          rows        source           cached_sets
-  ▸ hg38      whole genome  29,401,795  KYCGKB_hg38 v2    3/32
-❯ ▾ mm10      whole genome  21,867,837  KYCGKB_mm10 v2   28/28
+  ▸ hg38      whole genome  29,401,795  KYCGKB_hg38       3/32
+❯ ▾ mm10      whole genome  21,867,837  KYCGKB_mm10      28/28
     ├ CGI                CGI.20220904.cm            120 KB  cached
     ├ ChromHMM           ChromHMM.20220414.cm       857 KB  cached
     ├ PMD                PMD.20220911.cm           16.3 KB  cached
@@ -310,10 +329,11 @@ keystroke and must never reach the network.
 
 The picker, the browser and the tree are full-screen: they take the alternate
 screen buffer, scroll a fixed-height viewport, and hand the terminal back
-exactly as they found it. On a terminal that cannot support that — `NO_COLOR`,
-`TERM=dumb` — they are skipped entirely in favour of a numbered prompt and
-plain text carrying the same information. `kycg fetch` writes plain TSV whenever
-stdout is redirected, so piping into `cut` or `awk` is unaffected.
+exactly as they found it. `NO_COLOR` keeps them and drops only the colour — the
+current row is marked with a glyph, not ink — so a monochrome terminal stays
+usable. A terminal that cannot address the cursor (`TERM=dumb`) or a redirected
+stdout falls back instead: `kycg fetch` writes plain TSV (so piping into `cut`
+or `awk` is unaffected), and `test` / `annotate` require `-m`.
 
 ```
     -m SPEC   path or target[:sets]; repeatable [required]
@@ -455,7 +475,7 @@ src/enrich.{c,h}     effect sizes, FDR strata, ordering, TSV emission
 src/args.{c,h}       argv permutation so options may follow operands
 src/store.{c,h}      store paths, enumeration, member-name safety
 src/digest.{c,h}     sha256
-src/registry.h       generated: pinned tags, anchors, row counts, sizes
+src/registry.h       generated: per-file urls, digests, sizes, row counts
 src/kbinfo.h         generated: per-set provenance from data/knowledgebases.tsv
 src/ui.{c,h}         terminal layer: tree browser, panels, progress, TTY gating
 src/fetch.c          kycg fetch — catalogue, plan, verified download

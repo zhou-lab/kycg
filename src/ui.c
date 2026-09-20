@@ -80,7 +80,7 @@
 
 /* ------------------------------------------------------- capability probes */
 
-static int cached_fancy = -1, cached_inter = -1, cached_uni = -1;
+static int cached_fancy = -1, cached_screen = -1, cached_inter = -1, cached_uni = -1;
 
 int kycg_ui_fancy(void) {
   if (cached_fancy >= 0) return cached_fancy;
@@ -91,6 +91,19 @@ int kycg_ui_fancy(void) {
         && !(term && strcmp(term, "dumb") == 0);
   cached_fancy = ok;
   return ok;
+}
+
+/* Can we drive a full-screen widget? The alternate screen and cursor
+ * addressing need a real terminal, but they do NOT need colour -- NO_COLOR
+ * asks for no ink, not for no interface. So the browser and the pickers gate
+ * on this, while the palette gates on kycg_ui_fancy(). The current row is
+ * marked with a glyph, not colour, so a monochrome tree stays navigable. */
+int kycg_ui_screen(void) {
+  if (cached_screen >= 0) return cached_screen;
+  const char *term = getenv("TERM");
+  cached_screen = isatty(STDERR_FILENO)
+               && !(term && strcmp(term, "dumb") == 0);
+  return cached_screen;
 }
 
 int kycg_ui_interactive(void) {
@@ -409,7 +422,7 @@ static int panel_h = 0;
 int kycg_ui_panel_active(void) { return panel_h > 0; }
 
 void kycg_ui_panel_open(int height) {
-  if (!kycg_ui_fancy()) return;
+  if (!kycg_ui_screen()) return;
   int rows = term_rows();
   if (height < 1) height = 1;
   if (height > rows - 2) height = rows - 2;
@@ -507,7 +520,7 @@ void kycg_prog_begin(kycg_prog_t *p, const char *label, uint64_t total) {
   p->total = total;
   p->started = now_sec();
   p->last_draw = 0.0;
-  p->active = kycg_ui_fancy();
+  p->active = kycg_ui_screen();
 }
 
 /* Where a progress line goes: its own panel row inside a widget, or the
@@ -602,383 +615,6 @@ void kycg_ui_line(const char *glyph_color, const char *glyph,
   fflush(stderr);
 }
 
-/* --------------------------------------------------------------- prompts */
-
-/** Read a line from stdin, trimmed. Returns NULL on EOF. */
-static char *read_line(void) {
-  char buf[4096];
-  if (!fgets(buf, sizeof(buf), stdin)) return NULL;
-
-  size_t n = strlen(buf);
-  while (n && (buf[n-1] == '\n' || buf[n-1] == '\r')) buf[--n] = '\0';
-
-  char *p = buf;
-  while (*p && isspace((unsigned char)*p)) ++p;
-  size_t len = strlen(p);
-  while (len && isspace((unsigned char)p[len-1])) p[--len] = '\0';
-
-  return strdup(p);
-}
-
-int kycg_ui_confirm(const char *question, int default_yes) {
-  for (;;) {
-    fprintf(stderr, "%s%s%s %s [%s] ",
-            kycg_ui_bold(), question, kycg_ui_reset(),
-            kycg_ui_dim(), default_yes ? "Y/n" : "y/N");
-    fputs(kycg_ui_reset(), stderr);
-    fflush(stderr);
-
-    char *ans = read_line();
-    if (!ans) { fputc('\n', stderr); return 0; }   /* EOF declines */
-
-    if (!*ans) { free(ans); return default_yes; }
-    int y = (strcasecmp(ans, "y") == 0 || strcasecmp(ans, "yes") == 0);
-    int n = (strcasecmp(ans, "n") == 0 || strcasecmp(ans, "no") == 0);
-    free(ans);
-
-    if (y) return 1;
-    if (n) return 0;
-    fprintf(stderr, "  %sPlease answer y or n.%s\n",
-            kycg_ui_yellow(), kycg_ui_reset());
-  }
-}
-
-char *kycg_ui_ask(const char *question, const char *def) {
-  fprintf(stderr, "%s%s%s", kycg_ui_bold(), question, kycg_ui_reset());
-  if (def && *def)
-    fprintf(stderr, "\n  %s[%s]%s ", kycg_ui_dim(), def, kycg_ui_reset());
-  else
-    fputs(" ", stderr);
-  fflush(stderr);
-
-  char *ans = read_line();
-  if (!ans) return NULL;
-  if (!*ans && def) { free(ans); return strdup(def); }
-  return ans;
-}
-
-/** Render a numbered list, one item per line. */
-static void print_items(const char **items, const char **notes, size_t n) {
-  int width = 1;
-  for (size_t t = n; t >= 10; t /= 10) ++width;
-
-  for (size_t i = 0; i < n; ++i) {
-    fprintf(stderr, "  %s%*zu%s  %s",
-            kycg_ui_cyan(), width, i + 1, kycg_ui_reset(), items[i]);
-    if (notes && notes[i] && *notes[i])
-      fprintf(stderr, "  %s%s%s", kycg_ui_dim(), notes[i], kycg_ui_reset());
-    fputc('\n', stderr);
-  }
-}
-
-/* ------------------------------------------------- the in-place selector */
-
-/**
- * Shared engine for single- and multi-select.
- *
- * Draws a scrolling viewport with a cursor, redrawn in place on every
- * keypress. `flags` carries the selection in and out for multi-select mode and
- * is ignored for single-select. Returns the cursor index on accept, -1 on
- * cancel, or -2 when the terminal cannot do this and the caller should fall
- * back to the numbered prompt.
- *
- * The filter (/) matters more than it looks: a populated store lists dozens of
- * sets, and scrolling to "TFBSrm" past thirty neighbours is worse than typing
- * three characters.
- */
-static long select_widget(const char *title, const char **items,
-                          const char **notes, size_t n, int *flags, int multi) {
-  if (!n) return -1;
-  if (!kycg_ui_fancy() || raw_enter() != 0) return -2;
-
-  size_t *view = malloc(n * sizeof(size_t));   /* indices passing the filter */
-  if (!view) { raw_leave(); return -2; }
-
-  char filter[128] = {0};
-  int filtering = 0;
-  size_t cur = 0, top = 0, nview = 0;
-  frame_t f = {0};
-  long result = -1;
-  int done = 0;
-
-  while (!done) {
-    /* Rebuild the visible subset. */
-    nview = 0;
-    for (size_t i = 0; i < n; ++i)
-      if (!filter[0] || strcasestr(items[i], filter)) view[nview++] = i;
-
-    if (cur >= nview) cur = nview ? nview - 1 : 0;
-
-    int rows = term_rows();
-    int cols = term_cols();
-    /* Fixed height: the viewport is the screen, not the content. A window
-     * that resized itself as the list grew and shrank was the source of the
-     * leftover-line bug, and it makes scrolling feel unanchored. */
-    int avail = rows - 4;                       /* title, filter, footer */
-    if (avail < 3) avail = 3;
-
-    if (cur < top) top = cur;
-    if (avail > 0 && cur >= top + (size_t)avail) top = cur - (size_t)avail + 1;
-    if (top + (size_t)avail > nview) top = nview > (size_t)avail
-                                          ? nview - (size_t)avail : 0;
-
-    frame_begin(&f);
-
-    size_t chosen = 0;
-    if (multi) for (size_t i = 0; i < n; ++i) chosen += (size_t)(flags[i] != 0);
-
-    frame_line(&f, "%s%s%s", kycg_ui_bold(), title, kycg_ui_reset());
-
-    if (filtering || filter[0])
-      frame_line(&f, "  %ssearch:%s %s%s%s%s", kycg_ui_dim(), kycg_ui_reset(),
-                 kycg_ui_cyan(), filter, kycg_ui_reset(),
-                 filtering ? "_" : "");
-    else
-      frame_line(&f, "");
-
-    for (size_t k = 0; k < (size_t)avail; ++k) {
-      size_t vi = top + k;
-      if (vi >= nview) { frame_line(&f, ""); continue; }
-      size_t i = view[vi];
-
-      const char *mark = "  ";
-      if (multi) mark = flags[i] ? "[x]" : "[ ]";
-
-      char label[512];
-      int budget = cols - 10 - (notes && notes[i] ? (int)strlen(notes[i]) + 2 : 0);
-      if (budget < 12) budget = 12;
-      fit(items[i], budget, label, sizeof(label));
-
-      if (vi == cur)
-        frame_line(&f, "%s%s %s %s%s%s%s",
-                   kycg_ui_cyan(), kycg_ui_unicode() ? "❯" : ">",
-                   mark, kycg_ui_bold(), label, kycg_ui_reset(),
-                   notes && notes[i] ? "" : "");
-      else
-        frame_line(&f, "  %s %s%s%s", mark,
-                   kycg_ui_reset(), label, kycg_ui_reset());
-    }
-
-    /* Footer: what the keys do, and how much is selected. */
-    if (multi)
-      frame_line(&f, "%s  %zu/%zu shown  %s  %zu selected  %s  "
-                     "arrows move  space toggles  a/n all/none  / search  "
-                     "enter accept  esc cancel%s",
-                 kycg_ui_dim(), nview, n, kycg_ui_bullet(), chosen,
-                 kycg_ui_bullet(), kycg_ui_reset());
-    else
-      frame_line(&f, "%s  %zu/%zu shown  %s  arrows move  / search  "
-                     "enter select  esc cancel%s",
-                 kycg_ui_dim(), nview, n, kycg_ui_bullet(), kycg_ui_reset());
-
-    frame_finish(&f);
-    fflush(stderr);
-
-    char ch = 0;
-    keycode_t k = read_key(&ch);
-    if (interrupted) { result = -1; break; }
-
-    if (filtering) {
-      /* While filtering, printable keys extend the pattern. */
-      switch (k) {
-      case K_CHAR: {
-        size_t l = strlen(filter);
-        if (l + 1 < sizeof(filter)) { filter[l] = ch; filter[l+1] = '\0'; }
-        cur = top = 0;
-        continue;
-      }
-      case K_BACKSPACE: {
-        size_t l = strlen(filter);
-        if (l) filter[l-1] = '\0';
-        cur = top = 0;
-        continue;
-      }
-      case K_ESC:   filter[0] = '\0'; filtering = 0; cur = top = 0; continue;
-      case K_ENTER: filtering = 0; continue;
-      default: break;      /* arrows still navigate while filtering */
-      }
-    }
-
-    switch (k) {
-    case K_UP:   if (cur) --cur; break;
-    case K_DOWN: if (cur + 1 < nview) ++cur; break;
-    case K_PGUP: cur = (cur > (size_t)avail) ? cur - (size_t)avail : 0; break;
-    case K_PGDN: cur += (size_t)avail; if (cur >= nview) cur = nview ? nview-1 : 0; break;
-    case K_HOME: cur = 0; break;
-    case K_END:  cur = nview ? nview - 1 : 0; break;
-
-    case K_SPACE:
-      if (multi && nview) { size_t i = view[cur]; flags[i] = !flags[i]; }
-      if (cur + 1 < nview) ++cur;
-      break;
-
-    case K_ENTER:
-      if (!nview) break;
-      result = (long)view[cur];
-      done = 1;
-      break;
-
-    case K_ESC:
-      result = -1;
-      done = 1;
-      break;
-
-    case K_CHAR:
-      if (ch == 'j') { if (cur + 1 < nview) ++cur; }
-      else if (ch == 'k') { if (cur) --cur; }
-      else if (ch == '/') { filtering = 1; }
-      else if (ch == 'q') { result = -1; done = 1; }
-      else if (multi && ch == 'a') { for (size_t i = 0; i < n; ++i) flags[i] = 1; }
-      else if (multi && ch == 'n') { for (size_t i = 0; i < n; ++i) flags[i] = 0; }
-      else if (multi && ch == ' ') { /* handled above */ }
-      break;
-
-    case K_NONE:
-      result = -1;
-      done = 1;
-      break;
-
-    default: break;
-    }
-  }
-
-  /* raw_leave() drops the alternate screen, so the widget vanishes and the
-   * caller's summary lands on the user's original prompt line. */
-  free(view);
-  raw_leave();
-  return result;
-}
-
-long kycg_ui_choose(const char *title, const char **items, const char **notes,
-                    size_t n) {
-  if (!n) return -1;
-
-  long r = select_widget(title, items, notes, n, NULL, 0);
-  if (r != -2) {
-    if (r >= 0)
-      fprintf(stderr, "%s%s%s %s%s%s\n", kycg_ui_green(), kycg_ui_check(),
-              kycg_ui_reset(), kycg_ui_bold(), items[r], kycg_ui_reset());
-    return r;
-  }
-
-  /* Fallback: no usable terminal, so ask in one line. */
-  fprintf(stderr, "\n%s%s%s\n", kycg_ui_bold(), title, kycg_ui_reset());
-  print_items(items, notes, n);
-
-  for (;;) {
-    fprintf(stderr, "  %sselect 1-%zu%s ", kycg_ui_dim(), n, kycg_ui_reset());
-    fflush(stderr);
-
-    char *ans = read_line();
-    if (!ans) { fputc('\n', stderr); return -1; }
-
-    char *end = NULL;
-    long v = strtol(ans, &end, 10);
-    int clean = (end && end != ans && *end == '\0');
-    free(ans);
-
-    if (clean && v >= 1 && v <= (long)n) return v - 1;
-    fprintf(stderr, "  %sEnter a number between 1 and %zu.%s\n",
-            kycg_ui_yellow(), n, kycg_ui_reset());
-  }
-}
-
-/**
- * Parse "all" / "none" / "1-5,8,12" into the flag array.
- * Returns 0 on success, -1 if the spec is malformed.
- */
-static int parse_selection(const char *spec, int *flags, size_t n) {
-  if (strcasecmp(spec, "all") == 0 || strcmp(spec, "*") == 0) {
-    for (size_t i = 0; i < n; ++i) flags[i] = 1;
-    return 0;
-  }
-  if (strcasecmp(spec, "none") == 0) {
-    for (size_t i = 0; i < n; ++i) flags[i] = 0;
-    return 0;
-  }
-
-  for (size_t i = 0; i < n; ++i) flags[i] = 0;
-
-  const char *p = spec;
-  while (*p) {
-    while (*p == ',' || isspace((unsigned char)*p)) ++p;
-    if (!*p) break;
-
-    char *end = NULL;
-    long lo = strtol(p, &end, 10);
-    if (end == p) return -1;
-    long hi = lo;
-    p = end;
-
-    if (*p == '-') {
-      ++p;
-      hi = strtol(p, &end, 10);
-      if (end == p) return -1;
-      p = end;
-    }
-    if (lo > hi) { long t = lo; lo = hi; hi = t; }
-    if (lo < 1 || hi > (long)n) return -1;
-
-    for (long i = lo; i <= hi; ++i) flags[i-1] = 1;
-
-    while (isspace((unsigned char)*p)) ++p;
-    if (*p && *p != ',') return -1;
-  }
-  return 0;
-}
-
-int *kycg_ui_multiselect(const char *title, const char **items,
-                         const char **notes, size_t n, int default_all) {
-  if (!n) return NULL;
-
-  int *flags = calloc(n, sizeof(int));
-  if (!flags) return NULL;
-  if (default_all) for (size_t i = 0; i < n; ++i) flags[i] = 1;
-
-  long r = select_widget(title, items, notes, n, flags, 1);
-  if (r != -2) {
-    if (r < 0) { free(flags); return NULL; }
-    size_t chosen = 0;
-    for (size_t i = 0; i < n; ++i) chosen += (size_t)(flags[i] != 0);
-    if (!chosen) { free(flags); return NULL; }
-    fprintf(stderr, "%s%s%s %s%zu selected%s\n", kycg_ui_green(),
-            kycg_ui_check(), kycg_ui_reset(), kycg_ui_bold(), chosen,
-            kycg_ui_reset());
-    return flags;
-  }
-
-  /* Fallback: no usable terminal, so ask in one line. */
-  for (size_t i = 0; i < n; ++i) flags[i] = 0;
-  fprintf(stderr, "\n%s%s%s\n", kycg_ui_bold(), title, kycg_ui_reset());
-  print_items(items, notes, n);
-
-  for (;;) {
-    fprintf(stderr,
-            "  %sselect: 'all', 'none', or a list like 1-5,8  [%s]%s ",
-            kycg_ui_dim(), default_all ? "all" : "none", kycg_ui_reset());
-    fflush(stderr);
-
-    char *ans = read_line();
-    if (!ans) { fputc('\n', stderr); free(flags); return NULL; }
-
-    const char *spec = *ans ? ans : (default_all ? "all" : "none");
-    int rc = parse_selection(spec, flags, n);
-    free(ans);
-
-    if (rc == 0) {
-      size_t chosen = 0;
-      for (size_t i = 0; i < n; ++i) chosen += (size_t)(flags[i] != 0);
-      if (chosen) return flags;
-      fprintf(stderr, "  %sNothing selected.%s\n",
-              kycg_ui_yellow(), kycg_ui_reset());
-      continue;
-    }
-    fprintf(stderr, "  %sCould not read that. Use 'all', 'none', or "
-                    "numbers between 1 and %zu.%s\n",
-            kycg_ui_yellow(), n, kycg_ui_reset());
-  }
-}
-
 /* Colour for a row's style. Applied around already-measured text, so it can
  * never disturb the column arithmetic. */
 static const char *style_color(const unsigned char *styles, size_t i) {
@@ -1002,7 +638,7 @@ static const char *style_color(const unsigned char *styles, size_t i) {
  */
 int kycg_ui_browse(const char *title, const char *header,
                    const char **rows, const unsigned char *styles, size_t n) {
-  if (!n || !kycg_ui_fancy()) return -1;
+  if (!n || !kycg_ui_screen()) return -1;
   if (raw_enter() != 0) return -1;
 
   /* Measure: at most 8 columns, width = widest cell, capped. */
@@ -1208,7 +844,7 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
   kycg_ui_key_fn on_key = spec->on_key;
   void *ctx = spec->ctx;
 
-  if (!n_roots || !kycg_ui_fancy()) return -1;
+  if (!n_roots || !kycg_ui_screen()) return -1;
   if (raw_enter() != 0) return -1;
 
   const int picking = (spec->n_actions > 0);
@@ -1463,8 +1099,6 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
           if (node[i].checked && node[i].checked[j]) ++nsel;
       char acts[160];
       size_t ao = 0;
-      if (spec->recommend)
-        ao += (size_t)snprintf(acts + ao, sizeof(acts) - ao, "r recommended  ");
       if (spec->detail && spec->detail_key)
         ao += (size_t)snprintf(acts + ao, sizeof(acts) - ao, "%c %s  ",
                                spec->detail_key,
@@ -1561,15 +1195,23 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
     }
     else if (picking && key == K_CHAR && find_action(spec, ch) >= 0) {
       const kycg_ui_action_t *act = &spec->actions[find_action(spec, ch)];
+      /* A row can be checked and still carry no key: keys[] is the caller's
+       * identifier for a row, and a display-only row leaves it NULL. Space on
+       * a PARENT checks every child that is not already present, keyless ones
+       * included, so this is reachable with two keystrokes -- and the caller's
+       * accept() then strdup(NULL)s. Both loops therefore ask for a key, and
+       * they must agree: counting a row the accept loop skips would open the
+       * progress panel with nothing behind it. */
       size_t nsel = 0;
       for (size_t i = 0; i < n_roots; ++i)
         for (size_t j = 0; j < node[i].kids.n; ++j)
-          if (node[i].checked && node[i].checked[j]) ++nsel;
+          if (node[i].checked && node[i].checked[j] &&
+              node[i].kids.keys && node[i].kids.keys[j]) ++nsel;
       if (nsel) {
         for (size_t i = 0; i < n_roots; ++i)
           for (size_t j = 0; j < node[i].kids.n; ++j)
             if (node[i].checked && node[i].checked[j] && node[i].kids.keys &&
-                act->accept)
+                node[i].kids.keys[j] && act->accept)
               act->accept(ctx, roots[i], node[i].kids.keys[j]);
 
         if (!act->commit) {    /* caller wants the selection, not the work */
@@ -1629,30 +1271,6 @@ int kycg_ui_tree(const kycg_ui_tree_t *spec) {
       else if (picking && find_action(spec, ch) >= 0) { /* above */ }
       else if (ch == 'j') { if (cur + 1 < nflat) ++cur; }
       else if (ch == 'k') { if (cur) --cur; }
-      else if (picking && spec->recommend && ch == 'r' && nflat) {
-        /* Scoped to the collection under the cursor. Recommending across
-         * every collection at once would check sets for platforms the user is
-         * not working on, and open all of them to do it. */
-        size_t i = ri;
-        if (!node[i].loaded) {
-          if (expand) expand(ctx, roots[i], &node[i].kids);
-          if (node[i].kids.n) node[i].checked = calloc(node[i].kids.n, 1);
-          node[i].loaded = 1;
-        }
-        if (node[i].kids.n) node[i].expanded = 1;
-        for (size_t j = 0; j < node[i].kids.n; ++j) {
-          int req = node[i].kids.styles &&
-                    ((!spec->have_selectable &&
-                      node[i].kids.styles[j] == KYCG_ROW_HAVE) ||
-                     node[i].kids.styles[j] == KYCG_ROW_REQUIRED);
-          if (!req && node[i].checked && node[i].kids.keys &&
-              node[i].kids.keys[j])
-            /* Normalize to 0/1: checked[] is a flag, and a predicate that
-             * returned, say, 256 to mean "yes" would truncate to 0 here. */
-            node[i].checked[j] = spec->recommend(ctx, roots[i],
-                                                 node[i].kids.keys[j]) ? 1 : 0;
-        }
-      }
       else if (on_key && on_key(ctx, ch, nflat ? roots[ri] : NULL,
                                 (nflat && ci >= 0 && node[ri].kids.keys)
                                   ? node[ri].kids.keys[ci] : NULL)) {

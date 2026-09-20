@@ -93,15 +93,6 @@ void kycg_apply_fdr(kycg_result_t *res, size_t n, int by_group);
  */
 void kycg_sort_results(kycg_result_t *res, size_t n);
 
-/**
- * The display group for a knowledgebase file name.
- *
- * knowYourCG sets a DB's group to the knowledgebase file name, then strips it
- * for display: "KYCG.MSA.CGI.20220904" renders as "CGI" (drop the KYCG prefix,
- * the platform, and the trailing date). Names not matching that convention
- * are returned unchanged. Caller frees.
- */
-char *kycg_display_group(const char *db_file);
 
 /** Header line for the TSV emitted by kycg_write_results(). */
 void kycg_write_header(FILE *out);

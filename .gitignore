@@ -14,6 +14,12 @@
 CLAUDE.md
 TODO.md
 
+# dogfooding drop zone (tmp/README.md explains it): local intake only, the
+# same as YAME and methscope-cli, which track nothing under tmp/ either.
+# Notes left here are for whoever is at this checkout; anything that should
+# outlive it belongs in the labjournal org or an issue.
+/tmp/
+
 # editor / OS
 .DS_Store
 *~

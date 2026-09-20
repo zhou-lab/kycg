@@ -187,36 +187,6 @@ void kycg_sort_results(kycg_result_t *res, size_t n) {
   qsort(res, n, sizeof(kycg_result_t), result_cmp);
 }
 
-/* ------------------------------------------------------------ group naming */
-
-char *kycg_display_group(const char *db_file) {
-  if (!db_file) return NULL;
-
-  /* Only the "KYCG.<platform>.<group...>.<date>" convention is rewritten. */
-  if (strncmp(db_file, "KYCG.", 5) != 0) return strdup(db_file);
-
-  const char *rest = db_file + 5;
-
-  /* Split on '.', then drop the first field (platform) and the last (date),
-   * rejoining whatever is between them. */
-  size_t n_dots = 0;
-  for (const char *p = rest; *p; ++p) if (*p == '.') ++n_dots;
-  if (n_dots < 2) return strdup(db_file);   /* not enough fields to trim */
-
-  const char *beg = strchr(rest, '.');
-  if (!beg) return strdup(db_file);
-  ++beg;
-  const char *end = strrchr(rest, '.');
-  if (!end || end <= beg) return strdup(db_file);
-
-  size_t len = (size_t)(end - beg);
-  char *out = malloc(len + 1);
-  if (!out) return NULL;
-  memcpy(out, beg, len);
-  out[len] = '\0';
-  return out;
-}
-
 /* ------------------------------------------------------------------ output */
 
 void kycg_write_header(FILE *out) {

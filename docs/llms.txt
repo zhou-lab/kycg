@@ -16,7 +16,12 @@ doi:10.1126/sciadv.adw3027
 
 ## Install
 
-  conda install -c zhou-lab -c conda-forge kycg
+  conda install -c zhou-lab -c conda-forge kycg yame
+
+Install `yame` alongside kycg. kycg links libyame statically, so the backend
+library is inside the binary, but the `yame` COMMAND is a separate package and
+the documented row-space check (`yame info query.cg kb.cm`) needs it. kycg has
+no `info` subcommand of its own.
 
 Knowledgebases are NOT in the package — `kycg fetch` pulls them on demand. The
 binary carries only the registry of tags and digests it can verify.
@@ -25,10 +30,12 @@ Source build (YAME is a submodule; `make` drives its `make lib`):
 
   git clone --recurse-submodules https://github.com/zhou-lab/kycg
   cd kycg && make            # make CURL=0 builds without fetch
+  make yame-bin              # the yame COMMAND (make alone builds only libyame)
 
 Dependencies are YAME's: vendored htslib, zlib, libm, pthreads. libcurl is
-optional and used only by `kycg fetch`. `kycg --version` prints the build, the
-YAME it links, the store, and whether curl is in.
+optional and used only by `kycg fetch`. `kycg --version` (alias `-v`) prints
+the build, the YAME it links, the store, the registry tag it can verify, and
+whether curl is in. `-h`/`--help` (all levels) exit 0.
 
 ## Commands
 
@@ -51,22 +58,23 @@ cinderplot, as a separate process — kycg emits TSV and nothing more.
   -o SETS comma-separated subset by set name
   -f      download now, no browser
   -r      re-download even what is present and verified
-  -t TAG  InfiniumAnnotation tag, arrays only [v8]
 
-Nine collections: `hg38` (32 sets) and `mm10` (28) from KYCGKB_<genome>, plus
-MSA, EPICv2, EPIC, HM450, HM27, MM285, Mammal40 from InfiniumAnnotation.
-Fetched sets are ordinary files — a path works anywhere a set name does.
+Ten collections: `hg38` (32 sets), `mm10` (28) and `mm39` (1) from
+KYCGKB_<genome>, plus MSA, EPICv2, EPIC, HM450, HM27, MM285, Mammal40 from
+InfiniumAnnotation. Fetched sets are ordinary files — a path works anywhere a
+set name does.
 
 Browser keys: arrows or j/k move, `→`/`←` unfold/fold a target, space checks a
 set, `r` checks the collection's recommended selection, `i` toggles the
 description pane, `f` fetches, `d` changes store, `t` tests (in `test`), `q`
 quits. Sets already present show ✓ and cannot be checked.
 
-Trust model: each channel publishes SHA256SUMS at a pinned tag; kycg pins
-sha256(SHA256SUMS) in the binary, verifies that file, then trusts the digests
-inside. Downloads land on a `.part` sibling and are renamed only after their
-digest matches. The store re-verifies with `shasum -a 256 -c SHA256SUMS` and no
-kycg code at all.
+Trust model: EVERY FILE CARRIES ITS OWN DIGEST in src/registry.h, and a
+download is verified against that, never against a fetched manifest. Downloads
+land on a `.part` sibling and are renamed only after the digest matches. kycg
+then writes a SHA256SUMS derived from the same rows, so the store re-verifies
+with `sha256sum -c` and no kycg code. A set upstream with no row in the
+registry cannot be verified, so it is not offered.
 
 ## test — set enrichment
 
@@ -123,7 +131,8 @@ would produce a full table of confident, wrong answers.
 - FDR is corrected within one query sample and one knowledgebase (the family
   knowYourCG's testEnrichment corrects over). Adding samples or knowledgebases
   to one invocation does not change any FDR already reported. `-G` widens the
-  stratum (matching mtc_by_group=FALSE).
+  stratum to all knowledgebases (matching mtc_by_group=FALSE); the `group`
+  column then reads `(global)` instead of a file name.
 - Everything is POSITIONAL: a `.cg` and a `.cm` are comparable only if row i is
   the same CpG in both. kycg asserts equal row counts and fails loudly, but it
   cannot detect two files that share a row count from different row spaces —
@@ -131,16 +140,22 @@ would produce a full table of confident, wrong answers.
 - kycg never infers a platform and never prompts off a TTY: a redirected stdout
   makes `fetch` write plain TSV, a named target download without asking, and a
   missing `-m` an error rather than a wait.
+- `estimate` (= log2 odds ratio) is not always finite. Zero overlap makes the
+  odds ratio 0, and log2 clamps to a sentinel near -1022 (log2 of DBL_MIN);
+  infinite odds ratio lands near +1022. On a whole-genome query most sets have
+  no overlap, so most rows carry the sentinel — filter `abs(estimate) < 1000`
+  (or a tighter bound) before plotting `estimate`, as KYCG_plotVolcano does.
 - Downloading happens in `fetch` and nowhere else.
-- `-t` on a tag this build does not pin is refused, not silently fetched.
+- Tags are per file, so there is no global tag to override; `-t` is gone.
 
 ## Registry — a build is coupled to a data generation
 
-Pinned tags, anchors and row counts are compiled into `src/registry.h`.
+Per-file URLs, digests, sizes and row counts are compiled into
+`src/registry.h`, projected from YAME's shared table by kycg's own emitter.
 Following an upstream tag:
 
-  tools/make_registry.sh v9 > src/registry.h && make
-  tools/check_dimensions.sh        # confirm pinned row counts still hold
+  tools/make_registry.sh -o src/registry.h && make
+  tools/check_dimensions.sh        # confirm pinned row counts still hold (needs yame)
 
 The trade is reproducibility for immediacy: a kycg release means an exact,
 known set of knowledgebases.
@@ -159,7 +174,7 @@ since a linear-space BH would assign FDR 0 to every underflowed row.
   src/hypergeo.{c,h}  log-space hypergeometric tail + BH (pure, no YAME)
   src/enrich.{c,h}    effect sizes, FDR strata, TSV emission
   src/store.{c,h}     store paths and enumeration
-  src/registry.h      generated: pinned tags, anchors, row counts
+  src/registry.h      generated: per-file urls, digests, sizes, row counts
   src/kbinfo.h        generated from data/knowledgebases.tsv
   src/ui.{c,h}        terminal layer: tree browser, panels, TTY gating
   src/fetch.c src/test.c src/main.c

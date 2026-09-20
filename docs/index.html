@@ -123,6 +123,12 @@
   .full>h2 .m{color:var(--muted);font-weight:400;font-size:.85rem}
   .full>p{color:var(--muted);font-size:.88rem;margin:0 0 14px;max-width:98ch}
   .full h3{font-size:.8rem;margin:12px 0 6px;color:var(--fg);font-weight:700}
+  /* A block the reader is not meant to run carries data-norun with the reason;
+     one that is runnable carries data-example naming the docs/examples script
+     the gate runs. tests/t_docs.sh fails if a block declares neither. */
+  pre[data-norun]{border-left:3px dashed var(--muted);padding-left:11px}
+  pre[data-norun]::before{content:"not run here \2014 " attr(data-norun);
+    display:block;font-size:.72rem;color:var(--muted);margin-bottom:6px}
   /* figures live in the kycg-examples repo; see the note in the gallery */
   figure{margin:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--soft)}
   figure img{width:100%;height:auto;display:block;background:#fff}
@@ -177,8 +183,8 @@
             aria-label="Copy a prompt for your coding agent"><span class="ico">⧉</span>agent prompt</button>
     <span class="install">
       <button id="install-btn" type="button"
-              data-cmd="conda install -c zhou-lab -c conda-forge kycg"
-              title="conda install -c zhou-lab -c conda-forge kycg — click to copy"><span class="ico">⧉</span>conda install</button>
+              data-cmd="conda install -c zhou-lab -c conda-forge kycg yame"
+              title="conda install -c zhou-lab -c conda-forge kycg yame — click to copy"><span class="ico">⧉</span>conda install</button>
       <a class="ana" href="https://anaconda.org/zhou-lab/kycg"
          title="anaconda.org/zhou-lab/kycg" rel="noopener">↗</a>
     </span>
@@ -204,14 +210,27 @@
 
   <section class="card">
     <h2>Install <span class="m">— then fetch once</span></h2>
-    <pre><code><span class="cm"># build from source (YAME is a submodule)</span>
+    <pre data-example="10_install"><code><span class="cm"># both binaries, from conda</span>
+conda install -c zhou-lab -c conda-forge kycg yame
+
+<span class="cm"># or build from source (YAME is a submodule)</span>
 git clone --recurse-submodules \
   https://github.com/zhou-lab/kycg
-cd kycg &amp;&amp; make</code></pre>
+cd kycg &amp;&amp; make &amp;&amp; make yame-bin</code></pre>
+    <p style="margin-top:11px"><b>Install <code class="inl">yame</code> too.</b> kycg links
+      libyame statically, so the backend's <i>library</i> is inside the binary — but the
+      <code class="inl">yame</code> <i>command</i> is a separate package, and the row-space
+      check below needs it. From source, <code class="inl">make</code> builds only the
+      library; <code class="inl">make yame-bin</code> adds
+      <code class="inl">external/YAME/yame</code>.</p>
     <p style="margin-top:11px">Dependencies are YAME's — vendored htslib, zlib,
-      libm, libcurl — with YAME linked statically from a pinned submodule.
-      <code class="inl">kycg --version</code> reports the coupled YAME version.</p>
-    <pre><code><span class="cm"># guided: location, collection, sets, confirm</span>
+      libm, and libcurl for <code class="inl">fetch</code> (optional;
+      <code class="inl">make CURL=0</code> builds without it) — with YAME linked
+      statically from a pinned submodule.
+      <code class="inl">kycg --version</code> (or <code class="inl">-v</code>) reports the
+      coupled YAME version, the registry tag it can verify, and whether the build has
+      libcurl.</p>
+    <pre data-norun="the interactive browser; needs a terminal"><code><span class="cm"># guided: location, collection, sets, confirm</span>
 kycg <span class="sub">fetch</span>
 
 <span class="cm"># or name what you want outright</span>
@@ -230,11 +249,11 @@ kycg <span class="sub">fetch</span> hg38</code></pre>
     <h2>The store <span class="m">— fetch, verified</span></h2>
     <p>Knowledgebases lived in three places with three access patterns and no verification.
       <code class="inl">fetch</code> is the tie.</p>
-    <pre><code><span class="cm"># -f skips the browser: plan, then fetch</span>
+    <pre data-example="30_fetch"><code><span class="cm"># -f skips the browser: plan, then fetch</span>
 $ kycg <span class="sub">fetch</span> -f mm10:CGI
 
 ==&gt; Knowledgebase sets to download
-    mm10  •  KYCGKB_mm10 v2  •  ~/.local/share/yame/mm10/KYCG
+    mm10  •  KYCGKB_mm10  •  ~/.local/share/yame/mm10/KYCG
 
     CGI.20220904.cm                                  120 KB
     cpg_nocontig.cr                                 22.7 MB
@@ -250,7 +269,7 @@ $ kycg <span class="sub">fetch</span> -f mm10:CGI
       suite. A <code class="inl">.cm</code>
       in the store is an ordinary file that <code class="inl">kycg test -m</code> takes by path.
       No database, no lockfile, no bookkeeping.</p>
-    <pre><code>~/.local/share/yame/
+    <pre data-norun="a store layout, not a command"><code>~/.local/share/yame/
 ├ mm10/                   <span class="cm"># whole genome (KYCGKB_mm10)</span>
 │ ├ cpg_nocontig.cr         <span class="cm"># the row list</span>
 │ └ KYCG/
@@ -258,7 +277,6 @@ $ kycg <span class="sub">fetch</span> -f mm10:CGI
 │   └ SHA256SUMS
 └ MSA/                    <span class="cm"># array (InfiniumAnnotation)</span>
   ├ MSA.ordering.tsv.gz     <span class="cm"># probe ordering</span>
-  ├ SHA256SUMS              <span class="cm"># platform manifest</span>
   └ KYCG/
     ├ CGI.20220904.cm(+.idx)
     └ SHA256SUMS</code></pre>
@@ -269,28 +287,26 @@ $ kycg <span class="sub">fetch</span> -f mm10:CGI
   <section class="card">
     <h2>Pick what you need <span class="m">— r, i, -o</span></h2>
     <p>The full hg38 collection is 363&nbsp;MB. You rarely want all of it.</p>
-    <pre><code><span class="cm"># a tree — → unfolds a target in place</span>
+    <pre data-norun="the browser as it draws"><code><span class="cm"># a tree — → unfolds a target in place</span>
 $ kycg <span class="sub">fetch</span>
     target  kind          rows        source           cached_sets
-  <span class="sub">▸</span> hg38    whole genome  29,401,795  KYCGKB_hg38 v2   3/32
-<span class="sub">❯ ▾</span> mm10    whole genome  21,867,837  KYCGKB_mm10 v2  28/28
+  <span class="sub">▸</span> hg38    whole genome  29,401,795  KYCGKB_hg38      3/32
+<span class="sub">❯ ▾</span> mm10    whole genome  21,867,837  KYCGKB_mm10     28/28
     ├ CGI       CGI…cm       120 KB  cached
     ├ ChromHMM  ChromHMM…cm  857 KB  cached
     ├ PMD       PMD…cm      16.3 KB  cached
-  row 1 of 9 · → open  space select  <b>r</b> recommended  f fetch  <b>i</b> info  d store
+  row 1 of 10  •  0 selected  •  → open  ← close  space select  <b>i</b> close  f fetch  d store   q quit
 
 <span class="cm"># or name it directly — opens with those checked</span>
 $ kycg <span class="sub">fetch</span> hg38:CGI,ChromHMM
 
 <span class="cm"># no browser, no questions (scripts, Docker, Nextflow)</span>
 $ kycg <span class="sub">fetch</span> -f hg38:CGI,ChromHMM</code></pre>
-    <p style="margin-top:11px"><b>r</b> checks the recommended selection for that
-      collection — the dozen sets worth having before you know what you are looking
-      for, instead of all forty. <b>i</b> opens a pane answering what a set actually
+    <p style="margin-top:11px"><b>i</b> opens a pane answering what a set actually
       <i>is</i>. It is on by default and follows the cursor, so arrowing down walks
       you through the catalogue with each set explained as you reach it —
       <b>i</b> hides it when you want the full screen for scanning:</p>
-    <pre><code>  <b>TFBSrm</b>  Transcription factor binding sites, ReMap
+    <pre data-norun="the description pane, not a command"><code>  <b>TFBSrm</b>  Transcription factor binding sites, ReMap
 
   A larger, uniformly reprocessed TF binding compendium — around 1,188
   factors — built from published ChIP-seq rather than one lab's panel.
@@ -311,17 +327,17 @@ $ kycg <span class="sub">fetch</span> -f hg38:CGI,ChromHMM</code></pre>
     <h2>Test <span class="m">— the core</span></h2>
     <p>Hypergeometric tail, six effect sizes, stratified FDR. 21.8M rows in
       <b>0.12&nbsp;s</b>.</p>
-    <pre><code>kycg <span class="sub">test</span> -m ~/.local/share/yame/mm10/KYCG/ChromHMM.20220414.cm \
+    <pre data-example="50_test"><code>kycg <span class="sub">test</span> -m ~/.local/share/yame/mm10/KYCG/ChromHMM.20220414.cm \
   query.cg &gt; res.tsv</code></pre>
     <p style="margin-top:11px"><code class="inl">-m</code> is <b>repeatable</b> — this is what
       makes a store worth having. One pass, one table, one FDR correction:</p>
-    <pre><code>kycg <span class="sub">test</span> $(for f in ~/.local/share/yame/mm10/KYCG/*.cm; do
+    <pre data-example="51_test_store_glob"><code>kycg <span class="sub">test</span> $(for f in ~/.local/share/yame/mm10/KYCG/*.cm; do
         printf -- '-m %s ' $f; done) \
   query.cg &gt; res.tsv</code></pre>
     <p style="margin-top:11px">Omit <code class="inl">-m</code> on a terminal and kycg offers
       the store — filtered to the sets that share your query's row space, so the list
       cannot be picked wrong:</p>
-    <pre><code>$ kycg <span class="sub">test</span> onecell.cg
+    <pre data-norun="the picker, on a terminal"><code>$ kycg <span class="sub">test</span> onecell.cg
 
 Knowledgebases for 21,867,837 rows -- space to choose, t to test
     target  kind          rows        cached_sets
@@ -331,14 +347,15 @@ Knowledgebases for 21,867,837 rows -- space to choose, t to test
    ├ [x] ChromHMM               ChromHMM.20220414.cm             cached
    ├ [ ] ChromHMMfullStack      ChromHMMfullStack…cm             cached
   <span class="cm">…</span>
-  <span class="cm">→ open  space select  r recommended  i hide  f fetch  t test</span></code></pre>
+  <span class="cm">→ open  ← close  space select  i close  f fetch  t test   q quit</span></code></pre>
     <p style="margin-top:11px">It is the same browser <code class="inl">fetch</code> uses,
       showing only the collections whose row count matches the query. A set you do not
       have yet is still listed: check it, <code class="inl">f</code> to fetch it, then
-      <code class="inl">t</code> to test against it without leaving. Both fall back to
-      plain numbered text under <code class="inl">NO_COLOR</code> or
-      <code class="inl">TERM=dumb</code>, and <code class="inl">fetch</code> writes TSV
-      whenever stdout is redirected.</p>
+      <code class="inl">t</code> to test against it without leaving.
+      <code class="inl">NO_COLOR</code> keeps the widget and drops only the colour — the
+      cursor row is marked with a glyph, not ink. A terminal that cannot address the
+      cursor (<code class="inl">TERM=dumb</code>) or a redirected stdout falls back to
+      plain TSV instead.</p>
     <div class="note">Testing against 30 knowledgebases in 30 processes decompresses the
       query 30 times. Pooling them decompresses it <b>once</b>.</div>
   </section>
@@ -346,7 +363,7 @@ Knowledgebases for 21,867,837 rows -- space to choose, t to test
   <section class="card">
     <h2>Read the result <span class="m">— top hits</span></h2>
     <p>One row per (query&nbsp;sample, knowledgebase&nbsp;record), sorted by significance.</p>
-    <pre><code>$ kycg <span class="sub">test</span> -m ChromHMM.cm -m CGI.cm -m PMD.cm \
+    <pre data-example="52_test_read"><code>$ kycg <span class="sub">test</span> -m ChromHMM.cm -m CGI.cm -m PMD.cm \
     onecell.cg | cut -f3,4,10,13
 
 db_file          db         estimate  fdr
@@ -366,14 +383,17 @@ CGI…cm           Shore      0.196     9.17e-266</code></pre>
   <section class="card">
     <h2>Check the row space <span class="m">— yame info</span></h2>
     <p>Everything is <b>positional</b>: row <i>i</i> must mean the same CpG in the query and
-      in the knowledgebase. Confirm with <code class="inl">yame info</code> (kycg's backend)
-      before you test.</p>
-    <pre><code>$ yame <span class="sub">info</span> onecell.cg ChromHMM.20220414.cm
+      in the knowledgebase. Confirm with <code class="inl">yame info</code> before you test —
+      <code class="inl">yame</code> is kycg's backend but a <b>separate command</b>, from its
+      own package (<code class="inl">conda install -c zhou-lab -c conda-forge yame</code>, or
+      <code class="inl">make yame-bin</code> in a source tree). kycg itself has no
+      <code class="inl">info</code> subcommand.</p>
+    <pre data-example="40_rowspace"><code>$ yame <span class="sub">info</span> onecell.cg ChromHMM.20220414.cm
 File        Sample Ncol Nrow     Format UnitBytes Keys
 onecell.cg  1      NA   21867837 3      1         NA
 ChromHMM…cm 1      NA   21867837 2      1         N=19|Quies,…</code></pre>
     <p style="margin-top:11px">Mismatches fail loudly, naming both files and both counts:</p>
-    <pre><code><span class="hl">Row count mismatch: query 'small.cg' record '1'
+    <pre data-norun="an error, not a command"><code><span class="hl">Row count mismatch: query 'small.cg' record '1'
 has 5 rows but knowledgebase 'chromhmm.cm'
 record '1' has 21867837 rows.
 These files index different reference row
@@ -386,13 +406,41 @@ lists and cannot be compared.</span></code></pre>
   </section>
 
   <section class="card">
+    <h2>Annotate <span class="m">— label probes by set</span></h2>
+    <p>The lookup half of the same data <code class="inl">test</code> aggregates over:
+      <code class="inl">test</code> asks whether a group of probes is enriched somewhere,
+      <code class="inl">annotate</code> asks where one probe actually falls. It reads a
+      TSV of probe IDs and writes it back with one column added per knowledgebase.</p>
+    <pre data-example="60_annotate"><code>$ kycg <span class="sub">annotate</span> -m EPIC:CGI,ProbeType hits.tsv
+<span class="cm"># every input column and row kept, in order, plus:</span>
+Probe_ID     …   CGI     ProbeType
+cg00000029   …   opensea cg
+cg00000109   …   island  cg
+
+<span class="cm"># -i gives a 0/1 indicator column per set instead of names</span>
+$ kycg <span class="sub">annotate</span> -i -m EPIC:CGI hits.tsv</code></pre>
+    <div class="note">Arrays only, and the platform is <b>named</b>, never inferred: a
+      probe ID has no meaning without the ordering that gives it a row. A probe absent
+      from that ordering is reported as <code class="inl">NA</code> and counted, not
+      dropped.</div>
+  </section>
+
+  <section class="card">
     <h2>Plot <span class="m">— cinderplot, separately</span></h2>
     <p>kycg emits TSV; <a href="https://zhou-lab.github.io/cinderplot/">cinderplot</a> renders
       it as its own process. No linking, so Cairo never enters kycg's dependency surface.</p>
-    <pre><code><span class="cm"># volcano</span>
-cinderplot 'res.tsv
+    <pre data-example="70_plot"><code><span class="cm"># volcano — drop the zero-overlap sentinel first</span>
+awk -F'\t' 'NR==1||($10>-1000&&$10<1000)' res.tsv &gt; v.tsv
+cinderplot 'v.tsv
   + aes(estimate, neglog10_fdr)
   + geom_point() + theme_minimal()' -o v.pdf</code></pre>
+    <div class="note warn"><b><code class="inl">estimate</code> is not always finite.</b>
+      It is <code class="inl">log2</code> of the odds ratio, and zero overlap makes that
+      <code class="inl">log2(0)</code>, clamped to a sentinel near
+      <code class="inl">-1022</code> (infinite odds ratio lands near
+      <code class="inl">+1022</code>). On a whole-genome query most sets have no overlap,
+      so most rows carry it — filter <code class="inl">abs(estimate) &lt; 1000</code> before
+      plotting, exactly as <code class="inl">KYCG_plotVolcano</code> does.</div>
     <div class="note"><code class="inl">neglog10_fdr</code> is precomputed because cinderplot
       has no <code class="inl">-log10()</code> transform in aesthetics, and it is the y-axis
       of three separate plots. Any arithmetic a plot needs is done in C.</div>
@@ -410,9 +458,16 @@ cinderplot 'res.tsv
     figure to enlarge; everything regenerates with the scripts below (plotted with
     <a href="https://zhou-lab.github.io/cinderplot/">cinderplot</a>, no R, from
     <a href="https://github.com/zhou-lab/kycg-examples">kycg-examples</a>).</p>
-  <pre style="margin-bottom:14px"><code>git clone https://github.com/zhou-lab/kycg-examples
+  <pre data-example="80_case_studies" style="margin-bottom:14px"><code><span class="cm"># the plotting is cinderplot; install it alongside kycg and yame</span>
+conda install -c zhou-lab -c conda-forge cinderplot
+git clone https://github.com/zhou-lab/kycg-examples
 bash kycg-examples/scripts/tissue_tfbs_enrichment.sh   <span class="cm"># the three TF panels</span>
 bash kycg-examples/scripts/metagene_profile.sh         <span class="cm"># the metagene profile</span></code></pre>
+  <p style="font-size:.82rem;color:var(--muted);margin:-4px 0 14px">The
+    <code class="inl">kycg-examples</code> repo also carries the sample
+    <code class="inl">.cg</code> / <code class="inl">.cm</code> the snippets above use
+    (<code class="inl">onecell.cg</code> and friends) — neither the package nor the main
+    repo ships query data.</p>
   <div class="gallery">
     <figure>
       <div class="shot" tabindex="0">
@@ -420,7 +475,7 @@ bash kycg-examples/scripts/metagene_profile.sh         <span class="cm"># the me
              alt="Paired dot plot: top TFs for fetal brain and hepatocyte, disjoint signatures"
              loading="lazy">
         <button class="zoom" type="button" data-full="figures/tissue_tfbs.png" title="expand">⤢</button>
-        <div class="code"><pre><code><span class="cm"># tissue Hypo probes vs TF sites</span>
+        <div class="code"><pre data-norun="the shape of the call; the runnable form is in kycg-examples"><code><span class="cm"># tissue Hypo probes vs TF sites</span>
 kycg <span class="sub">test</span> -m MM285:TFBSrm *_hypo.cg
 cinderplot 'aes(factor(tf), neglog10_fdr,
   colour=tissue, size=overlap)
@@ -437,7 +492,7 @@ cinderplot 'aes(factor(tf), neglog10_fdr,
              alt="Volcano: fetal-brain hypomethylation vs TF binding, neuronal TFs labeled"
              loading="lazy">
         <button class="zoom" type="button" data-full="figures/brain_volcano.png" title="expand">⤢</button>
-        <div class="code"><pre><code>kycg <span class="sub">test</span> -a two.sided \
+        <div class="code"><pre data-norun="the shape of the call; the runnable form is in kycg-examples"><code>kycg <span class="sub">test</span> -a two.sided \
   -m MM285:TFBSrm fetal_brain_hypo.cg
 cinderplot 'aes(estimate, neglog10_fdr,
   colour=sig) + geom_point() + geom_text()'</code></pre></div>
@@ -451,7 +506,7 @@ cinderplot 'aes(estimate, neglog10_fdr,
              alt="Horizontal bar chart of top hepatocyte-enriched TFs by -log10 FDR"
              loading="lazy">
         <button class="zoom" type="button" data-full="figures/hep_bar.png" title="expand">⤢</button>
-        <div class="code"><pre><code>kycg <span class="sub">test</span> -m MM285:TFBSrm hepatocyte_hypo.cg
+        <div class="code"><pre data-norun="the shape of the call; the runnable form is in kycg-examples"><code>kycg <span class="sub">test</span> -m MM285:TFBSrm hepatocyte_hypo.cg
 cinderplot 'aes(factor(tf), neglog10_fdr)
   + geom_col() + coord_flip()'</code></pre></div>
       </div>
@@ -465,7 +520,7 @@ cinderplot 'aes(factor(tf), neglog10_fdr)
              alt="Metagene methylation profile: promoter dip, gene-body rise, downstream return"
              loading="lazy">
         <button class="zoom" type="button" data-full="figures/metagene.png" title="expand">⤢</button>
-        <div class="code"><pre><code><span class="cm"># sample beta over metagene bins</span>
+        <div class="code"><pre data-norun="the shape of the call; the runnable form is in kycg-examples"><code><span class="cm"># sample beta over metagene bins</span>
 kycg <span class="sub">test</span> -m MM285:MetagenePC mm285_sample.cg
 cinderplot 'aes(pos, beta)
   + geom_line() + geom_point()'</code></pre></div>
@@ -484,7 +539,7 @@ cinderplot 'aes(pos, beta)
 
 <section class="full">
   <h2>What the store holds <span class="m">— the comprehensive list</span></h2>
-  <p>Nine collections behind one command. Sequencing sets index a whole-genome CpG reference
+  <p>Ten collections behind one command. Sequencing sets index a whole-genome CpG reference
     and ship with the <code class="inl">cpg_nocontig.cr</code> that defines it; array sets index
     a platform's probe ordering. The two are byte-compatible and semantically incompatible —
     that is exactly why <code class="inl">kycg test</code> checks row counts.</p>
@@ -493,8 +548,8 @@ cinderplot 'aes(pos, beta)
       <h3>Whole genome — one repo each</h3>
       <div class="scroll"><table class="t">
         <tr><th>Target</th><th>Sets</th><th>Size</th><th>Source</th></tr>
-        <tr><td><code>hg38</code></td><td>32</td><td>363 MB</td><td>KYCGKB_hg38 v2</td></tr>
-        <tr><td><code>mm10</code></td><td>28</td><td>266 MB</td><td>KYCGKB_mm10 v2</td></tr>
+        <tr><td><code>hg38</code></td><td>32</td><td>363 MB</td><td>KYCGKB_hg38</td></tr>
+        <tr><td><code>mm10</code></td><td>28</td><td>266 MB</td><td>KYCGKB_mm10</td></tr>
       </table></div>
       <p style="font-size:.79rem;color:var(--muted);margin:8px 0 0">
         ChromHMM · CGI · TFBS · PMD · rmsk · HM (histone marks) · ABCompartment ·
@@ -518,28 +573,31 @@ cinderplot 'aes(pos, beta)
 
 <section class="full">
   <h2>Integrity <span class="m">— two channels, two publishers, two digests</span></h2>
-  <p>Both channels publish a <code class="inl">SHA256SUMS</code> at a pinned tag, and kycg
-    pins its digest at build time — so in neither case is kycg trusting a digest it fetched at
-    run time. Anchoring on the manifest rather than the file list is what lets upstream add a
-    set without a kycg rebuild.</p>
+  <p><b>Every file carries its own digest, compiled in.</b> A download is verified against
+    what <i>this build</i> says the file is — never against a manifest the same server served,
+    which is why the mirror you fetch from is untrusted infrastructure. The trade is
+    deliberate: a set published upstream with no row in the registry cannot be verified, so it
+    is not offered. The table is the authority for what exists.</p>
   <div class="cols3">
     <div>
-      <h3>Arrays — a sha256 chain</h3>
-      <p style="font-size:.79rem;color:var(--muted);margin:0 0 8px">InfiniumAnnotation ships a
-        <code class="inl">SHA256SUMS</code> per directory. The pin is
-        <code class="inl">sha256(SHA256SUMS)</code>; every file chains from it. Anchoring on the
-        manifest rather than each file means upstream can add a set without a kycg rebuild.</p>
-      <pre><code>{ "MSA", "cc63264354f71f43…" }</code></pre>
+      <h3>One row per file</h3>
+      <p style="font-size:.79rem;color:var(--muted);margin:0 0 8px">The registry is projected
+        from YAME's shared table by <code class="inl">tools/make_registry.sh</code>, kycg's own
+        emitter. Each row carries the URL, the digest and the size, so planning a fetch needs
+        no network at all — and neither does browsing the catalogue.</p>
+      <pre data-norun="the compiled registry, not a command"><code>{ "CGI.20220904.cm",
+  "https://raw.githubusercontent.com/…",
+  "99c3ede80a2d7833…", 122892 }</code></pre>
     </div>
     <div>
-      <h3>Whole genome — the same chain</h3>
-      <p style="font-size:.79rem;color:var(--muted);margin:0 0 8px">The
-        <code class="inl">KYCGKB_&lt;genome&gt;</code> repositories publish a
-        <code class="inl">SHA256SUMS</code> too, so both channels are one code path and one
-        digest. Zenodo keeps the DOI and remains the citable archive; it is no longer the
-        fetch path.</p>
-      <pre><code>{ "hg38", "KYCGKB_hg38", "v2",
-  "8e0594ade2936a7b…" }</code></pre>
+      <h3>Tags are per file</h3>
+      <p style="font-size:.79rem;color:var(--muted);margin:0 0 8px">Each row's key names its
+        source and the immutable tag it came from, so one collection can move while the rest
+        stay put — and there is no global tag left to override, which is why
+        <code class="inl">-t</code> is gone. Zenodo keeps the DOI and remains the citable
+        archive; it is no longer the fetch path.</p>
+      <pre data-norun="the compiled registry, not a command"><code>zhou-lab/genomes@v4:hg38/cpg_nocontig.cr
+zhou-lab/KYCGKB_hg38@v2:CGI.20220904.cm</code></pre>
     </div>
     <div>
       <h3>Verify it yourself</h3>
@@ -547,8 +605,14 @@ cinderplot 'aes(pos, beta)
         <code class="inl">.part</code> sibling and are renamed only after the digest matches, so
         an interrupted fetch cannot leave a file that later reads as valid. The store is
         re-checkable with no kycg code at all:</p>
-      <pre><code>cd ~/.local/share/yame/MSA/KYCG
-shasum -a 256 -c SHA256SUMS</code></pre>
+      <pre data-example="90_verify_store"><code>cd ~/.local/share/yame/MSA/KYCG
+shasum -a 256 -c --ignore-missing SHA256SUMS</code></pre>
+      <p style="font-size:.79rem;color:var(--muted);margin:8px 0 0"><code class="inl">--ignore-missing</code>
+        matters because you rarely hold every set the directory could hold: the manifest
+        kycg writes describes the directory, not the subset you fetched. It is derived from
+        the registry rows for that directory alone, so it no longer lists the genome row list
+        stored a level up — the old "missing <code class="inl">cpg_nocontig.cr</code>" that
+        was indistinguishable from a partial fetch is gone.</p>
     </div>
   </div>
 </section>
@@ -566,7 +630,7 @@ shasum -a 256 -c SHA256SUMS</code></pre>
         <tr><th>Column</th><th>Meaning</th></tr>
         <tr><td><code>query_file</code>, <code>query</code></td><td>the .cg and the sample in it</td></tr>
         <tr><td><code>db_file</code>, <code>db</code></td><td>the .cm and the record in it</td></tr>
-        <tr><td><code>group</code></td><td>FDR stratum (the knowledgebase)</td></tr>
+        <tr><td><code>group</code></td><td>FDR stratum: the knowledgebase, or <code>(global)</code> under <code>-G</code></td></tr>
         <tr><td><code>nU nQ nD overlap</code></td><td>the 2×2 table: universe, query, database, overlap</td></tr>
         <tr><td><code>beta</code>, <code>depth</code></td><td>mean over the record — knowYourCG's <code>dbStats</code>, free</td></tr>
       </table></div>
@@ -598,16 +662,19 @@ shasum -a 256 -c SHA256SUMS</code></pre>
   <div class="cols3">
     <div>
       <h3>Unit — vs phyper / p.adjust</h3>
-      <pre><code>$ make test
-all checks passed
-(worst relative error: <span class="sub">2.6e-16</span>)</code></pre>
+      <pre data-norun="the suite&#39;s own output; `make test` runs it"><code>$ make test
+ok    test_hypergeo        <span class="cm"># worst relative error 2.6e-16</span>
+ok    test_enrich
+...
+ok    t_usage
+<span class="sub">15 passed, 0 failed</span></code></pre>
       <p style="font-size:.79rem;color:var(--muted);margin:8px 0 0">Across four regimes: small,
         array-scale (486K), whole-genome (29M), and the deep tail at
         <code class="inl">log10 p ≈ -584141</code>.</p>
     </div>
     <div>
       <h3>End to end — every column</h3>
-      <pre><code>$ Rscript tests/validate_vs_R.R res.tsv
+      <pre data-norun="an R parity run; needs R and knowYourCG"><code>$ Rscript tests/validate_vs_R.R res.tsv
 log10_p     OK   worst 4.09e-12
 estimate    OK   worst 4.75e-10
 log10 fdr   OK   worst 2.96e-12

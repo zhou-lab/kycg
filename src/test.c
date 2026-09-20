@@ -250,12 +250,11 @@ static void run_pair(results_t *v, cdata_t *c_qry, cdata_t *c_mask,
    * same comparison, but they report it from deep in the library; surfacing it
    * here lets us say which files were involved and what to do about it. */
   if (c_mask->n && c_qry->n != c_mask->n) {
-    wzfatal("[%s:%d] Row count mismatch: query '%s' record '%s' has %" PRIu64
-            " rows but knowledgebase '%s' record '%s' has %" PRIu64 " rows.\n"
-            "These files index different reference row lists and cannot be "
-            "compared.\n",
-            __func__, __LINE__, fname_qry, sq, c_qry->n, fname_mask, sm,
-            c_mask->n);
+    wzfatal("kycg test: row count mismatch. Query '%s' record '%s' has %"
+            PRIu64 " rows but knowledgebase '%s' record '%s' has %" PRIu64
+            " rows.\nThese files index different reference row lists and "
+            "cannot be compared.\n",
+            fname_qry, sq, c_qry->n, fname_mask, sm, c_mask->n);
   }
 
   /* summarize1 takes non-const char* but does not modify the names. */
@@ -277,7 +276,7 @@ static void run_pair(results_t *v, cdata_t *c_qry, cdata_t *c_mask,
      * grouping from either direction: attr(db,"group") is set to the
      * knowledgebase name, and determine_group() otherwise falls back to
      * MFile. See enrich.c. */
-    r.group = strdup(fname_mask);
+    r.group = strdup(conf->by_group ? fname_mask : "(global)");
 
     r.nU  = st[i].n_u;
     r.nQ  = st[i].n_q;
@@ -348,7 +347,7 @@ int main_test(int argc, char *argv[]) {
       else if (strcmp(optarg, "two.sided") == 0) conf.alt = KYCG_ALT_TWO_SIDED;
       else { usage(); wzfatal("Unknown alternative: %s.\n", optarg); }
       break;
-    case 'h': return usage();
+    case 'h': usage(); return 0;
     default: usage(); wzfatal("Unrecognized option: %c.\n", c);
     }
   }

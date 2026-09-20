@@ -1,7 +1,7 @@
 #!/bin/sh
 # Verify the row-space dimensions pinned in src/registry.h against live data.
 #
-#   tools/check_dimensions.sh          # needs a built ./kycg and network
+#   tools/check_dimensions.sh          # needs yame on PATH and network
 #
 # WHY A SEPARATE SCRIPT
 #   The dimensions are pinned rather than derived because they are needed
@@ -23,8 +23,12 @@ set -eu
 
 cd "$(dirname "$0")/.."
 
-if [ ! -x ./kycg ]; then
-    echo "check_dimensions.sh: build kycg first (make)" >&2
+# The row count of a .cm is read with `yame info` -- kycg links libyame but
+# ships no `info` subcommand of its own. Prefer a yame on PATH, else the one
+# built beside the submodule.
+YAME=${YAME:-$(command -v yame || echo external/YAME/yame)}
+if [ ! -x "$YAME" ] && ! command -v "$YAME" >/dev/null 2>&1; then
+    echo "check_dimensions.sh: need yame on PATH (or run 'make yame-bin')" >&2
     exit 1
 fi
 
@@ -39,7 +43,7 @@ echo "Verifying row-space dimensions in src/registry.h"
 # gained fields twice already, and a positional pattern fails silently when it
 # does -- printing a clean header and checking nothing, which is worse than an
 # error. This keys on the field names in the struct instead.
-python3 - "$tmp" <<'PY'
+YAME="$YAME" python3 - "$tmp" <<'PY'
 import re, subprocess, sys, os, json, urllib.request
 
 tmp = sys.argv[1]
@@ -82,9 +86,15 @@ for label, url, want in rows:
             o.write(r.read())
     except Exception:
         print(f"  {label:<12} {'SKIP':<12} could not fetch probe"); continue
-    out = subprocess.run(["./kycg", "info", probe],
+    yame = os.environ.get("YAME", "yame")
+    out = subprocess.run([yame, "info", probe],
                          capture_output=True, text=True).stdout.splitlines()
-    got = out[1].split("\t")[4] if len(out) > 1 else "?"
+    got = "?"
+    if len(out) > 1:
+        hdr = out[0].split("\t")
+        col = hdr.index("Nrow") if "Nrow" in hdr else 3
+        f = out[1].split("\t")
+        got = f[col] if col < len(f) else "?"
     if got == want:
         print(f"  {label:<12} {'OK':<12} {got}")
     else:

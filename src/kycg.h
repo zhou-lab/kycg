@@ -23,7 +23,7 @@
 
 #include "ui.h"
 
-#define KYCG_VERSION "0.4"
+#define KYCG_VERSION "0.5"
 
 /*
  * Shared styling for help text. Each expands to an empty string off a TTY (see
@@ -91,11 +91,10 @@ void kycg_catalogue_free(kycg_catalogue_t *v, size_t n);
  * exactly the same thing in both trees -- a second implementation would be
  * free to drift, which is the failure this project exists to avoid.
  *
- * kycg_kb_recommended matches kycg_ui_preselect_fn; kycg_kb_detail matches
+ * kycg_kb_detail matches
  * kycg_ui_detail_fn and backs the `i` pane, which stays open while the cursor
  * moves.
  */
-int kycg_kb_recommended(void *ctx, const char *root, const char *key);
 void kycg_kb_detail(void *ctx, const char *root, const char *child_key,
                     int cols, kycg_ui_detail_t *out);
 

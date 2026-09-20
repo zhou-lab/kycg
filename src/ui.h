@@ -341,12 +341,6 @@ typedef struct {
    * the plain catalogue view. */
   const char          *open_root;
   kycg_ui_preselect_fn preselect;
-
-  /* Bound to `r` when set: opens every collection and checks the rows this
-   * accepts. A curated default matters because the catalogue is large and
-   * most of it is situational -- the answer to "which of these should I
-   * actually use" should be one keystroke, not a reading exercise. */
-  kycg_ui_preselect_fn recommend;
   void *ctx;
 } kycg_ui_tree_t;
 
