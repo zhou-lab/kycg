@@ -168,10 +168,13 @@ if [ -f "$man" ]; then
   check_has "with the pinned digest" "$SETSHA" "$(cat "$man")"
   ## the companion lives in another directory, so it is not this one's business
   check_lacks "it does not list the ordering" "ordering" "$(cat "$man")"
-  ## and it is a real sha256sum file: the store re-verifies with no kycg code
-  ( cd "$YAME_DATA_HOME/EPIC/KYCG" && sha256sum -c --ignore-missing SHA256SUMS ) \
+  ## and it is a real sha256sum file: the store re-verifies with no kycg code.
+  ## GNU coreutils calls the tool sha256sum; macOS ships shasum -a 256.
+  SUM=$(command -v sha256sum || command -v shasum)
+  case $SUM in *shasum) SUM="$SUM -a 256";; esac
+  ( cd "$YAME_DATA_HOME/EPIC/KYCG" && $SUM -c --ignore-missing SHA256SUMS ) \
       >/dev/null 2>&1 ||
-    { echo "  FAIL the derived manifest does not verify with sha256sum -c"
+    { echo "  FAIL the derived manifest does not verify with $SUM -c"
       fails=$((fails + 1)); }
 fi
 
@@ -206,7 +209,7 @@ echo ok > mode
 ## `yame info` is TAB separated; Nrow is the fourth column.
 rows=$("$YAME" info "$dest" 2>/dev/null | tail -1 | cut -f4)
 if [ -n "$rows" ] && [ "$rows" -gt 0 ] 2>/dev/null; then
-  awk -v n="$rows" 'BEGIN{for(i=0;i<n;i++) print i%7==0}' > q.txt
+  awk -v n="$rows" 'BEGIN{for(i=0;i<n;i++) print (i%7==0)}' > q.txt
   pack_binary q.txt query.cg
   out=$("$KYCG" test -m EPIC:Blacklist query.cg 2>&1); rc=$?
   check "a fetched set resolves by name in kycg test" 0 "$rc"
@@ -274,7 +277,7 @@ if have_pty; then
   "$KYCG" fetch -f EPIC:Blacklist </dev/null >/dev/null 2>&1
   nrow=$("$YAME" info "$dest" 2>/dev/null | tail -1 | cut -f4)
   if [ -n "$nrow" ] && [ "$nrow" -gt 0 ] 2>/dev/null; then
-    awk -v n="$nrow" 'BEGIN{for(i=0;i<n;i++) print i%9==0}' > big.txt
+    awk -v n="$nrow" 'BEGIN{for(i=0;i<n;i++) print (i%9==0)}' > big.txt
     pack_binary big.txt big.cg
     out=$(PTY_SETTLE=3 PTY_BEAT=1.2 PTY_TAIL=4 \
           pty_drive "$KYCG test big.cg" \

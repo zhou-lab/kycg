@@ -151,7 +151,7 @@ done
 ## man page; a renamed column there is a silently broken downstream script.
 if [ -f "$root/docs/llms.txt" ]; then
   d=$(mktemp -d); trap 'rm -rf "$d"' EXIT
-  awk 'BEGIN{for(i=0;i<40;i++) print i%3==0}'      > "$d/q.txt"
+  awk 'BEGIN{for(i=0;i<40;i++) print (i%3==0)}'      > "$d/q.txt"
   awk 'BEGIN{for(i=0;i<40;i++) print (i<20)?"A":"B"}' > "$d/s.txt"
   pack_binary "$d/q.txt" "$d/q.cg"
   pack_state  "$d/s.txt" "$d/kb.cm"
