@@ -61,7 +61,7 @@ OBJECTS := $(SOURCES:$(SRC_DIR)/%.c=$(SRC_DIR)/%.o)
 # Everything except the CLI dispatcher, so tests can link the library half.
 LIBOBJECTS = $(filter-out $(SRC_DIR)/main.o, $(OBJECTS))
 
-.PHONY: all build debug clean distclean test yame install
+.PHONY: all build debug clean distclean test test-bins test-docs coverage yame yame-bin install
 
 all: build
 
@@ -82,6 +82,16 @@ debug: clean build
 # Delegate to YAME's own `lib` target; it builds htslib as a prerequisite.
 yame:
 	$(MAKE) -C $(YAME_DIR) lib
+
+# The yame COMMAND, which `lib` does not build. kycg has no `info` subcommand:
+# checking that a query and a knowledgebase index the same row space is
+# `yame info`, and the docs tell users to run it, so a source tree has to be
+# able to produce it. Packaged users get it from the separate `yame` conda
+# package; this target is the source-build equivalent. Not a prerequisite of
+# `build` -- kycg links the library, not the binary.
+yame-bin:
+	$(MAKE) -C $(YAME_DIR) build
+	@echo "built $(YAME_DIR)/yame -- add it to PATH, or install the yame conda package"
 
 $(YAME_LIB) $(YAME_HTSLIB): yame
 
@@ -126,13 +136,41 @@ TEST_SRC := $(wildcard $(TEST_DIR)/*.c)
 TEST_BIN := $(TEST_SRC:$(TEST_DIR)/%.c=$(TEST_DIR)/%)
 
 TEST_OBJ = $(SRC_DIR)/hypergeo.o $(SRC_DIR)/enrich.o $(SRC_DIR)/args.o \
-           $(SRC_DIR)/store.o
+           $(SRC_DIR)/store.o $(SRC_DIR)/digest.o
 
 $(TEST_DIR)/%: $(TEST_DIR)/%.c $(TEST_OBJ) $(YAME_LIB)
 	$(CC) $(CFLAGS) -o $@ $< $(TEST_OBJ) $$($(YAME_DIR)/yame-config --libs)
 
-test: $(TEST_BIN)
-	@for t in $(TEST_BIN); do echo "== $$t"; ./$$t || exit 1; done
+# The whole suite: the C unit binaries above, then the command-level tests in
+# tests/t_*.sh. `yame-bin` is a prerequisite because those tests pack their
+# own fixtures with `yame pack` -- kycg reads what yame writes, so a committed
+# fixture would quietly become a format the current YAME no longer produces.
+test: test-bins yame-bin
+	bash $(TEST_DIR)/run.sh
+
+# The documented-workflow gate: every runnable block on the page, as a reader
+# would run it, against THIS checkout's binaries. Deliberately NOT part of
+# `make test` and never run in CI or a conda build -- it needs the network, a
+# git clone and a few minutes. The sandbox persists between runs, so a second
+# run downloads nothing. On the HPC run it under sbatch (release SOP step 4b).
+#
+#   make test-docs
+#   KYCG_DOCS_SANDBOX=~/tmp/kycg/docs_gate make test-docs
+#   KYCG_DOCS_BIN=/path/to/env/bin make test-docs     # test an installed copy
+test-docs: build yame-bin
+	python3 $(TEST_DIR)/docs_gate.py
+
+# Just the unit binaries. `make` builds the CLI only, so a coverage run that
+# wants the unit tests too has to ask for them by name -- without this they
+# are simply absent from the scratch tree and run.sh skips them, which reads
+# as a suite that passes while measuring nothing of hypergeo.c or digest.c.
+test-bins: $(TEST_BIN)
+
+# Line coverage of the suite over src/, in a scratch copy: the instrumented
+# binary is built -O0 and drops .gcda beside itself, so it must never become
+# the one in the repo. Rewrites docs/coverage.json, which CI checks.
+coverage: build yame-bin
+	scripts/coverage.sh
 
 ###################
 ###   install   ###

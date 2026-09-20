@@ -34,6 +34,21 @@ requirements:
     - libcurl
 
 test:
+  requires:
+    # The suite packs its own fixtures with `yame pack`, so it needs the yame
+    # COMMAND -- which kycg does not ship: it links libyame statically but
+    # installs one binary. That is also exactly what a user needs for the
+    # documented `yame info` row-space check, so depending on it here tests
+    # the install instructions as well as the code.
+    - yame
+  source_files:
+    # The command-level tests, and the docs they check the binary against.
+    # Run against the INSTALLED package rather than a build tree: conda-build
+    # rewrites library paths at install time, so on macOS a binary in the
+    # build directory cannot load libz yet.
+    - tests/
+    - docs/
+    - README.md
   commands:
     # --version prints the knowledgebase tags this build can verify, so it
     # exercises the compiled-in registry rather than just the binary loading.
@@ -44,6 +59,8 @@ test:
     # than at run time. libcurl is no longer kycg's concern -- YAME owns and
     # requires it -- so there is nothing to probe on that front.
     - kycg --version | grep -qE "YAME[[:space:]]+v[0-9]"
+    # The suite itself: statistics, options, error paths, docs consistency.
+    - KYCG=kycg YAME=yame bash tests/run.sh
 
 about:
   home: https://github.com/zhou-lab/kycg
