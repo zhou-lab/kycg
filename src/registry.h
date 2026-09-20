@@ -425,6 +425,6 @@ static const kycg_seq_reg_t KYCG_SEQ_REGISTRY[] = {
 };
 
 /* The upstream sources this build carries rows from, and their tags. */
-#define KYCG_REGISTRY_TAGS "genomes@v4 InfiniumAnnotation@v8.1 KYCGKB@v2"
+#define KYCG_REGISTRY_TAGS "InfiniumAnnotation@v8.1 KYCGKB@v2 genomes@v4"
 
 #endif /* _KYCG_REGISTRY_H */

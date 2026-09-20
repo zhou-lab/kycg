@@ -20,6 +20,13 @@
 ## Regeneration is byte-reproducible, which is what --check asserts.
 set -euo pipefail
 
+## Byte-reproducibility is the whole contract here -- CI regenerates and
+## compares -- so the collation every sort and comparison uses must not depend
+## on the developer's locale. Without this, `sort` orders the tag summary one
+## way under en_US.UTF-8 and another under C, and the header is "stale" on any
+## machine whose locale differs from the one that last generated it.
+export LC_ALL=C
+
 cd "$(dirname "$0")/.."
 . external/YAME/tools/registry/lib.sh
 

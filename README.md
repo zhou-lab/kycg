@@ -175,7 +175,7 @@ $ kycg --version
 kycg 0.5
     built against  YAME v1.50
     store          ~/.local/share/yame   ($YAME_DATA_HOME unset; -d overrides)
-    registry       genomes@v4 InfiniumAnnotation@v8.1 KYCGKB@v2  (7 arrays, 3 genomes)
+    registry       InfiniumAnnotation@v8.1 KYCGKB@v2 genomes@v4  (7 arrays, 3 genomes)
     network        libcurl available
 ```
 
