@@ -5,7 +5,11 @@ reimplementation of the [knowYourCG](https://bioconductor.org/packages/knowYourC
 R/Bioconductor package, with [YAME](https://github.com/zhou-lab/YAME) as its
 computational backend.
 
+[![build](https://github.com/zhou-lab/kycg/actions/workflows/conda-build.yml/badge.svg)](https://github.com/zhou-lab/kycg/actions/workflows/conda-build.yml)
+[![conda](https://img.shields.io/conda/vn/zhou-lab/kycg?label=conda)](https://anaconda.org/zhou-lab/kycg)
+[![license](https://img.shields.io/badge/license-BSD--2--Clause%20(academic)%20%2F%20commercial-blue.svg)](LICENSE)
 [![coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fzhou-lab.github.io%2Fkycg%2Fcoverage.json)](tests/run.sh)
+[![docs](https://img.shields.io/badge/docs-online-blueviolet)](https://zhou-lab.github.io/kycg/)
 
 **Cite:** Goldberg *et al.* KnowYourCG. *Sci Adv* 2025;11(43):eadw3027.
 [doi:10.1126/sciadv.adw3027](https://doi.org/10.1126/sciadv.adw3027)
@@ -67,7 +71,7 @@ If you already cloned without `--recurse-submodules`:
 git submodule update --init --recursive
 ```
 
-Dependencies are YAME's: vendored htslib, zlib, libm, pthreads. Nothing else.
+Dependencies are YAME's: vendored htslib, zlib, libm, pthreads, librt.
 libcurl is optional and used only by `kycg fetch`; `make CURL=0` forces it off,
 and `kycg --version` reports whether a build has it.
 
@@ -170,8 +174,8 @@ YAME, the registry tag it can verify, and whether it can fetch:
 
 ```
 $ kycg --version
-kycg 0.6
-    built against  YAME v1.52
+kycg 0.7
+    built against  YAME v1.53
     store          ~/.local/share/yame   ($YAME_DATA_HOME unset; -d overrides)
     registry       InfiniumAnnotation@v8.1 KYCGKB@v2 genomes@v4  (7 arrays, 3 genomes)
     network        libcurl available
@@ -506,4 +510,14 @@ binary build against them directly.
 
 ## License
 
-AGPL-3.0-or-later, matching YAME.
+Academic and non-profit research use is under the 2-Clause BSD License;
+commercial use or transfer goes through Dr. Wanding Zhou (zhouw3@chop.edu).
+Copyright (C) 2026-present The Children's Hospital of Philadelphia. See
+[`LICENSE`](LICENSE) for the terms.
+
+This is not a standard SPDX identifier, so GitHub reports the repository as
+"Other" and shows no license in the sidebar. That is expected.
+
+kycg links libyame statically from the pinned YAME submodule, which carries
+the same terms as of YAME v1.53, so the distributed binary and this
+repository's sources are governed alike.

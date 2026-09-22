@@ -1,5 +1,5 @@
 {% set name = "kycg" %}
-{% set version = "0.6" %}
+{% set version = "0.7" %}
 
 package:
   name: {{ name }}
@@ -64,8 +64,8 @@ test:
 
 about:
   home: https://github.com/zhou-lab/kycg
-  license: AGPL-3.0-or-later
-  license_family: AGPL
+  license: LicenseRef-CHOP-Academic-BSD-2-Clause
+  license_family: OTHER
   license_file: LICENSE
   summary: Functional analysis of DNA methylation at CpG resolution — set enrichment over a curated knowledgebase compendium.
   description: |

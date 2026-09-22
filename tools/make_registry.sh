@@ -105,8 +105,8 @@ emit() {
  * The two registries below do not own their files; they name a slice of
  * KYCG_FILES. Rows are grouped by store directory, so a slice is contiguous.
  *
- * SPDX-License-Identifier: AGPL-3.0-or-later
- * Copyright (C) 2026-present Wanding Zhou
+ * SPDX-License-Identifier: LicenseRef-CHOP-Academic-BSD-2-Clause
+ * Copyright (C) 2026-present The Children's Hospital of Philadelphia.
  */
 #ifndef _KYCG_REGISTRY_H
 #define _KYCG_REGISTRY_H

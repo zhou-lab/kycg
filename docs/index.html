@@ -227,7 +227,7 @@ cd kycg &amp;&amp; make &amp;&amp; make yame-bin</code></pre>
       library; <code class="inl">make yame-bin</code> adds
       <code class="inl">external/YAME/yame</code>.</p>
     <p style="margin-top:11px">Dependencies are YAME's — vendored htslib, zlib,
-      libm, and libcurl for <code class="inl">fetch</code> (optional;
+      libm, pthreads and librt, plus libcurl for <code class="inl">fetch</code> (optional;
       <code class="inl">make CURL=0</code> builds without it) — with YAME linked
       statically from a pinned submodule.
       <code class="inl">kycg --version</code> (or <code class="inl">-v</code>) reports the
@@ -714,7 +714,8 @@ log10 fdr   OK   worst 2.96e-12
   over <a href="https://zhou-lab.github.io/YAME/">YAME</a>. Full usage, the
   trust model, and validation against the R package are in the
   <a href="https://github.com/zhou-lab/kycg/blob/main/README.md">README</a>.
-  AGPL-3.0-or-later. · <a href="https://github.com/zhou-lab/kycg">github.com/zhou-lab/kycg</a>
+  BSD-2-Clause for academic and non-profit research use; commercial use via
+  zhouw3@chop.edu. · <a href="https://github.com/zhou-lab/kycg">github.com/zhou-lab/kycg</a>
 </footer>
 
 </div>

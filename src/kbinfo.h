@@ -9,8 +9,8 @@
  * Keyed on the set name -- the part of a filename before the first dot -- so a
  * single entry covers every genome and platform that publishes that set.
  *
- * SPDX-License-Identifier: AGPL-3.0-or-later
- * Copyright (C) 2026-present Wanding Zhou
+ * SPDX-License-Identifier: LicenseRef-CHOP-Academic-BSD-2-Clause
+ * Copyright (C) 2026-present The Children's Hospital of Philadelphia.
  */
 #ifndef _KYCG_KBINFO_H
 #define _KYCG_KBINFO_H

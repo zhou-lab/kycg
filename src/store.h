@@ -1,21 +1,16 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: LicenseRef-CHOP-Academic-BSD-2-Clause
 /**
  * This file is part of kycg.
  *
- * Copyright (C) 2026-present Wanding Zhou
+ * Copyright (C) 2026-present The Children's Hospital of Philadelphia.
  *
- * kycg is free software: you can redistribute it and/or modify it under the
- * terms of the GNU Affero General Public License as published by the Free
- * Software Foundation, either version 3 of the License, or (at your option)
- * any later version.
+ * Use of this software is available to academic and non-profit institutions
+ * for research purposes subject to the terms of the 2-Clause BSD License.
+ * For use or transfers of the software to commercial entities, please inquire
+ * with Dr. Wanding Zhou at zhouw3@chop.edu.
  *
- * kycg is distributed in the hope that it will be useful, but WITHOUT ANY
- * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for
- * more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with kycg.  If not, see <https://www.gnu.org/licenses/>.
+ * See the LICENSE file at the root of this repository for the full terms and
+ * the warranty disclaimer.
  */
 
 #ifndef _KYCG_STORE_H
