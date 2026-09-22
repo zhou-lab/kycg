@@ -22,8 +22,9 @@
 #define _KYCG_H
 
 #include "ui.h"
+#include "assets.h"
 
-#define KYCG_VERSION "0.5"
+#define KYCG_VERSION "0.6"
 
 /*
  * Shared styling for help text. Each expands to an empty string off a TTY (see
@@ -137,6 +138,13 @@ size_t kycg_pick_sets(const kycg_pick_target_t *targets, size_t n_targets,
  * already reported.
  */
 size_t kycg_resolve_or_offer(const char *spec, const char *verb, char ***out);
+
+/**
+ * kycg's compiled registry in the shape libyame's store API takes: what
+ * yame_store_resolve() reads to turn a name into a file, and yame_file_state()
+ * to say whether the file on disk is the one this build pins.
+ */
+const yame_fetch_cfg_t *kycg_fetch_cfg(void);
 
 /* fetch is prefixed kycg_ to avoid colliding with libyame's own main_fetch:
  * kycg links YAME's summary.o, which pulls fetch.o (yame_browse_pick) into the

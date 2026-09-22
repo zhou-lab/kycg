@@ -95,19 +95,17 @@ strip comment lines before parsing. `→` unfolds a target, `space`
 checks a set, `f` fetches everything checked, `d` points the browser at a different store. Sets already present show a green ✓ and cannot be checked —
 there is nothing to ask for. `kycg fetch` with no target simply opens it.
 
-Two keys answer the questions the columns cannot. `r` checks that collection's
-recommended selection in one keypress — the dozen or so sets worth having
-before you know what you are looking for, rather than all forty. `i` describes
-the set under the cursor: what the annotation means for methylation, the
-upstream database, the publication, and what was done to it on the way in.
+One key answers the question the columns cannot. `i` describes the set under
+the cursor: what the annotation means for methylation, the upstream database,
+the publication, and what was done to it on the way in.
 The pane is open by default and follows the cursor, so arrowing down walks the
 catalogue with each set explained as you reach it. It collapses on collection
 rows, where the columns already say what there is to say. `i` hides it when you
 want the full screen for scanning.
-That last one is the answer to "is `TFBSrm` the same as `TFBS`, differently
+That pane is the answer to "is `TFBSrm` the same as `TFBS`, differently
 filtered?" — it is not; `rm` is ReMap. The text lives in
 [`data/knowledgebases.tsv`](data/knowledgebases.tsv) and is compiled into the
-binary, so both keys work with no network and no data files to find. Fields
+binary, so it works with no network and no data files to find. Fields
 nobody has been able to establish read `not recorded` rather than being hidden.
 
 Fetching does not leave the browser. The plan, the confirmation and the
@@ -121,7 +119,7 @@ place with your folds and cursor where you left them. Only `q` exits.
    ├ [x] ABCompartment   ABCompartment.20220911.cm   9.5 KB  -
    ├  ✓  Blacklist       Blacklist.20220304.cm       3.1 KB  cached
    ├ [ ] CTCFbind        CTCFbind.20220911.cm        159 KB  -
-  row 4 of 42  •  1 selected  •  → open  ← close  space select  r recommended  i hide  f fetch  d store   q quit
+  row 4 of 42  •  1 selected  •  → open  ← close  space select  i close  f fetch  d store   q quit
 ```
 
 **Nothing is asked when nobody can answer.** The original rule was
@@ -172,8 +170,8 @@ YAME, the registry tag it can verify, and whether it can fetch:
 
 ```
 $ kycg --version
-kycg 0.5
-    built against  YAME v1.50
+kycg 0.6
+    built against  YAME v1.52
     store          ~/.local/share/yame   ($YAME_DATA_HOME unset; -d overrides)
     registry       InfiniumAnnotation@v8.1 KYCGKB@v2 genomes@v4  (7 arrays, 3 genomes)
     network        libcurl available
@@ -183,10 +181,25 @@ Nothing updates on its own, deliberately: the digest a download is checked
 against is compiled in, so a tag this build does not pin is one it cannot
 verify. Tags are per file, carried on each row of the table, so there is no
 global tag to override -- which is why `-t` no longer exists.
+
+A digest is also checked when a file is *read*, not only when it is fetched.
+A store filled by an older kycg, by another tool at another tag, or by hand
+says so on the first command that uses it:
+
+```
+kycg annotate: .../EPIC/KYCG/CGI.20220904.cm is not the copy this build pins; using it anyway.
+  EPIC/KYCG/CGI.20220904.cm comes from an earlier release of zhou-lab/InfiniumAnnotation
+  than this build pins; replace it with: yame fetch -y -f EPIC/KYCG/CGI.20220904.cm
+```
+
+It is a warning and the run continues: a set whose digest moved is nearly
+always still the set you meant. A file that is missing outright is an error,
+since there is nothing to go on with.
+
 Following an upstream tag is two commands and one generated file:
 
 ```bash
-tools/make_registry.sh -o src/registry.h && make
+make registry && make
 tools/check_dimensions.sh          # confirm the pinned row counts (needs yame)
 ```
 
@@ -285,7 +298,7 @@ Knowledgebases for 21,867,837 rows -- space to choose, t to test
 ❯ ▾ mm10    whole genome  21,867,837  28
    ├ [x] CGI          CGI.20220904.cm            cached
    ├ [ ] EvoCons      EvoCons.20220314.cm        -
-  row 3 of 30 · 1 selected · → open  ← close  space select  r recommended  i hide  f fetch  t test  q quit
+  row 3 of 30  •  1 selected  •  → open  ← close  space select  i close  f fetch  t test  q quit
 ```
 
 It lists everything a collection publishes, not just what you have — so if the

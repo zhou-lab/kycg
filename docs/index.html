@@ -89,10 +89,13 @@
   .cite .pmid.done{color:var(--on-accent);background:var(--accent)}
   .links{font-size:.85rem;color:var(--muted)}
   .links a{font-weight:600}.links span{opacity:.4;margin:0 8px}
+  /* Masonry columns so a short card never leaves a hole. Three at most: a
+     fourth column on a wide screen makes each card narrow enough that the
+     code blocks inside wrap, which is the opposite of scannable. Same steps
+     as the YAME page. */
   .grid{column-count:1;column-gap:16px}
-  @media(min-width:640px){.grid{column-count:2}}
-  @media(min-width:980px){.grid{column-count:3}}
-  @media(min-width:1440px){.grid{column-count:4}}
+  @media(min-width:700px){.grid{column-count:2}}
+  @media(min-width:1120px){.grid{column-count:3}}
   .card{break-inside:avoid;margin:0 0 16px;border:1px solid var(--line);border-radius:13px;background:var(--card);
      padding:13px 15px 15px;box-shadow:var(--shadow);transition:border-color .16s,box-shadow .16s,transform .16s}
   .card:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));transform:translateY(-2px)}
@@ -577,17 +580,25 @@ cinderplot 'aes(pos, beta)
     what <i>this build</i> says the file is — never against a manifest the same server served,
     which is why the mirror you fetch from is untrusted infrastructure. The trade is
     deliberate: a set published upstream with no row in the registry cannot be verified, so it
-    is not offered. The table is the authority for what exists.</p>
+    is not offered. The table is the authority for what exists. The check is not only at
+    download time: a file is classified again when it is <i>read</i>, so a store filled by an
+    older kycg, by another tool at another tag, or by hand says so on the first command that
+    uses it — a warning, and the run continues; a file that is absent is an error naming the
+    fetch that gets it.</p>
   <div class="cols3">
     <div>
       <h3>One row per file</h3>
       <p style="font-size:.79rem;color:var(--muted);margin:0 0 8px">The registry is projected
         from YAME's shared table by <code class="inl">tools/make_registry.sh</code>, kycg's own
-        emitter. Each row carries the URL, the digest and the size, so planning a fetch needs
-        no network at all — and neither does browsing the catalogue.</p>
-      <pre data-norun="the compiled registry, not a command"><code>{ "CGI.20220904.cm",
+        emitter, into the row type the whole suite shares
+        (<code class="inl">yame_asset_file_t</code>). Each row carries the key, the store path,
+        the URL, the digest, the size and the prose — so planning a fetch needs no network at
+        all, and neither does browsing the catalogue.</p>
+      <pre data-norun="the compiled registry, not a command"><code>{ "zhou-lab/InfiniumAnnotation@v8.1:EPIC/KYCG/CGI.20220904.cm",
+  "EPIC/KYCG/CGI.20220904.cm",
   "https://raw.githubusercontent.com/…",
-  "99c3ede80a2d7833…", 122892 }</code></pre>
+  "e5ab587e836d60c6…", 320296,
+  "CpG islands", "CpG-dense, usually promoter-associated…", … }</code></pre>
     </div>
     <div>
       <h3>Tags are per file</h3>

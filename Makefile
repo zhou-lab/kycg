@@ -61,7 +61,7 @@ OBJECTS := $(SOURCES:$(SRC_DIR)/%.c=$(SRC_DIR)/%.o)
 # Everything except the CLI dispatcher, so tests can link the library half.
 LIBOBJECTS = $(filter-out $(SRC_DIR)/main.o, $(OBJECTS))
 
-.PHONY: all build debug clean distclean test test-bins test-docs coverage yame yame-bin install
+.PHONY: all build debug clean distclean test test-bins test-docs coverage registry yame yame-bin install
 
 all: build
 
@@ -165,6 +165,23 @@ test-docs: build yame-bin
 # are simply absent from the scratch tree and run.sh skips them, which reads
 # as a suite that passes while measuring nothing of hypergeo.c or digest.c.
 test-bins: $(TEST_BIN)
+
+###################
+###  generated  ###
+###################
+
+# The two generated headers, projected from YAME's shared file table in the
+# pinned submodule: src/registry.h (per-file urls, digests, sizes and row
+# counts) and src/kbinfo.h (what each set is, for the browser's info pane).
+#
+# Regenerate with every submodule bump -- that bump IS a catalog bump, and a
+# header left behind describes the previous one. Both are committed, and
+# `make test` runs each generator with --check, so a forgotten regeneration
+# fails the suite rather than shipping quietly. Emission is offline and
+# locale-pinned, so it reproduces byte for byte wherever it runs.
+registry:
+	./tools/make_registry.sh -o src/registry.h
+	./tools/make_kbinfo.sh -o src/kbinfo.h
 
 # Line coverage of the suite over src/, in a scratch copy: the instrumented
 # binary is built -O0 and drops .gcda beside itself, so it must never become

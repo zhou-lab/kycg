@@ -65,16 +65,18 @@ InfiniumAnnotation. Fetched sets are ordinary files — a path works anywhere a
 set name does.
 
 Browser keys: arrows or j/k move, `→`/`←` unfold/fold a target, space checks a
-set, `r` checks the collection's recommended selection, `i` toggles the
-description pane, `f` fetches, `d` changes store, `t` tests (in `test`), `q`
-quits. Sets already present show ✓ and cannot be checked.
+set, `i` toggles the description pane, `f` fetches, `d` changes store, `t`
+tests (in `test`), `q` quits. Sets already present show ✓ and cannot be checked.
 
 Trust model: EVERY FILE CARRIES ITS OWN DIGEST in src/registry.h, and a
 download is verified against that, never against a fetched manifest. Downloads
 land on a `.part` sibling and are renamed only after the digest matches. kycg
 then writes a SHA256SUMS derived from the same rows, so the store re-verifies
 with `sha256sum -c` and no kycg code. A set upstream with no row in the
-registry cannot be verified, so it is not offered.
+registry cannot be verified, so it is not offered. The digest is checked again
+when a file is READ: a copy this build does not pin warns and the command
+proceeds; a file that is absent is an error naming the `yame fetch` that gets
+it.
 
 ## test — set enrichment
 
@@ -154,7 +156,7 @@ Per-file URLs, digests, sizes and row counts are compiled into
 `src/registry.h`, projected from YAME's shared table by kycg's own emitter.
 Following an upstream tag:
 
-  tools/make_registry.sh -o src/registry.h && make
+  make registry && make        # regenerates src/registry.h and src/kbinfo.h
   tools/check_dimensions.sh        # confirm pinned row counts still hold (needs yame)
 
 The trade is reproducibility for immediacy: a kycg release means an exact,

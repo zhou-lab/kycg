@@ -113,25 +113,44 @@ static void ordering_free(ordering_t *o) {
  * The row index of a probe is its line number after the header; nothing else
  * in the file matters here. The M/U/col columns describe the bead design and
  * are irrelevant to set membership.
+ *
+ * The file is asked for by its store path, through the resolver every tool in
+ * the suite shares, so the path, the state and the sentence that repairs a
+ * missing file are libyame's answers rather than four kycg guesses. The policy
+ * on top of them is the suite's: a file this build does not pin is a warning
+ * and the run continues (an ordering rarely changes, and stopping an analysis
+ * over a digest helps nobody), a file that is not there at all is fatal.
  */
 static int ordering_load(const char *store, const char *platform,
                          ordering_t *out) {
-  char path[4096], legacy[4096];
-  snprintf(path, sizeof(path),
-           "%s/%s/%s.ordering.tsv.gz",
-           store, platform, platform);
-  snprintf(legacy, sizeof(legacy),
-           "%s/InfiniumAnnotation/%s/%s.ordering.tsv.gz",
-           store, platform, platform);
+  char spec[4096], path[4096], advice[1024] = {0};
+  snprintf(spec, sizeof(spec), "%s/%s.ordering.tsv.gz", platform, platform);
 
-  gzFile fp = gzopen(path, "rb");
-  if (!fp) fp = gzopen(legacy, "rb");   /* one-release fallback (pre-v1.33) */
+  yame_store_state_t st = yame_store_resolve(kycg_fetch_cfg(), spec, store,
+                                             path, sizeof(path), NULL,
+                                             advice, sizeof(advice));
+  if (st == YAME_STORE_STALE)
+    fprintf(stderr,
+            "kycg annotate: the %s ordering on disk is not the one this build "
+            "pins;\n  using it anyway. %s\n", platform, advice);
+
+  gzFile fp = (st == YAME_STORE_CURRENT || st == YAME_STORE_STALE)
+            ? gzopen(path, "rb") : NULL;
+  if (!fp) {
+    /* One-release fallback: a store fetched before YAME v1.33 keyed the
+     * ordering under InfiniumAnnotation/, which the registry no longer lists,
+     * so the resolver cannot see it. */
+    char legacy[4096];
+    snprintf(legacy, sizeof(legacy),
+             "%s/InfiniumAnnotation/%s/%s.ordering.tsv.gz",
+             store, platform, platform);
+    fp = gzopen(legacy, "rb");
+  }
   if (!fp) {
     fprintf(stderr,
-            "kycg annotate: cannot read the probe ordering for %s.\n"
-            "  expected: %s\n"
-            "  It is fetched with any set for that platform:\n"
-            "      yame fetch -y %s\n", platform, path, platform);
+            "kycg annotate: cannot read the probe ordering for %s.\n", platform);
+    if (advice[0]) fprintf(stderr, "  %s\n", advice);
+    else fprintf(stderr, "  Fetch that one file:\n      yame fetch %s\n", spec);
     return -1;
   }
 

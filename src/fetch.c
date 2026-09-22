@@ -186,23 +186,45 @@ static const kycg_seq_reg_t *find_seq(const char *name) {
 }
 
 
+/**
+ * kycg's registry, in the shape libyame's store API reads.
+ *
+ * One table, one description of the store, shared with yame, sesame-cli and
+ * methscope: KYCG_FILES is an array of yame_asset_file_t, so the resolver and
+ * the state check below need no kycg-specific adapter. The store root is the
+ * suite's ($YAME_DATA_HOME), hence no tool_env. The fetch commands printed in
+ * the advice say `yame fetch`, which is the truth: `kycg fetch` is a browser
+ * over knowledgebases and does not take a file name.
+ *
+ * no_prompt is set because every kycg command that resolves a name -- annotate
+ * reaching for an ordering -- is in the middle of an analysis, where a picker
+ * would be an ambush. An ambiguous name is an error naming the candidates.
+ */
+const yame_fetch_cfg_t *kycg_fetch_cfg(void) {
+  static const yame_fetch_cfg_t cfg = {
+    KYCG_FILES, KYCG_N_FILES, "yame", NULL, 1
+  };
+  return &cfg;
+}
+
+
 /* ------------------------------------------------------- one collection */
 
 /**
  * A fetchable collection, whichever channel it comes from.
  *
  * The two channels differ only in where their files sit and what they are
- * called. Both publish a SHA256SUMS at a pinned tag, both verify against an
- * anchor compiled in here, and both name their sets the same way -- so past
- * this struct there is one code path. That was not true while the whole-genome
- * sets came from Zenodo, which had no manifest and forced a parallel
- * implementation pinned file-by-file against md5.
+ * called. Both pin every file by its own compiled digest and both name their
+ * sets the same way -- so past this struct there is one code path. That was not
+ * true while the whole-genome sets came from Zenodo, which had no manifest and
+ * forced a parallel implementation pinned file-by-file against md5.
  */
 typedef struct coll_s {
   const char        *target;      /* "hg38" or "MSA", as the user types it */
   char               dir[4096];   /* where the sets land in the store      */
   char               source[256]; /* provenance, for display               */
-  const kycg_file_t *sets;        /* the compiled set list, NULL-terminated */
+  const yame_asset_file_t *sets;  /* a slice of KYCG_FILES, not terminated  */
+  size_t             n_set_files; /* rows in that slice, .idx included      */
   uint64_t           n_sets;      /* .cm sets, excluding .idx sidecars      */
 
   /* The companion: the file that gives a row index its identity. For a genome
@@ -213,7 +235,7 @@ typedef struct coll_s {
    * as a choice. Since genomes v4 the genome companion comes from a different
    * repository than the sets -- which costs nothing here, because every file
    * carries its own URL. */
-  const kycg_file_t *comp;        /* NULL when there is none               */
+  const yame_asset_file_t *comp;  /* NULL when there is none               */
   char               comp_name[256];
   char               comp_dir[4096];  /* where the companion LANDS in store */
 } coll_t;
@@ -234,10 +256,12 @@ static int coll_for(const char *target, const char *store, coll_t *c) {
     snprintf(c->dir, sizeof(c->dir), "%s/%s/KYCG", store, sr->genome);
     snprintf(c->source, sizeof(c->source), "KYCGKB_%s", sr->genome);
     c->sets = sr->sets;
+    c->n_set_files = sr->n_set_files;
     c->n_sets = sr->n_sets;
-    c->comp = (sr->comp && sr->comp->name) ? sr->comp : NULL;
+    c->comp = sr->comp;
     if (c->comp) {
-      snprintf(c->comp_name, sizeof(c->comp_name), "%s", c->comp->name);
+      snprintf(c->comp_name, sizeof(c->comp_name), "%s",
+               yame_file_name(c->comp));
       /* The genome index lands at the genome unit root, one level UP from
        * KYCG/, matching its browser address and where yame puts it. */
       snprintf(c->comp_dir, sizeof(c->comp_dir), "%s/%s", store, sr->genome);
@@ -251,10 +275,12 @@ static int coll_for(const char *target, const char *store, coll_t *c) {
     snprintf(c->dir, sizeof(c->dir), "%s/%s/KYCG", store, ar->platform);
     snprintf(c->source, sizeof(c->source), "InfiniumAnnotation");
     c->sets = ar->sets;
+    c->n_set_files = ar->n_set_files;
     c->n_sets = ar->n_sets;
-    c->comp = (ar->comp && ar->comp->name) ? ar->comp : NULL;
+    c->comp = ar->comp;
     if (c->comp) {
-      snprintf(c->comp_name, sizeof(c->comp_name), "%s", c->comp->name);
+      snprintf(c->comp_name, sizeof(c->comp_name), "%s",
+               yame_file_name(c->comp));
       /* The probe ordering is canonical one level UP, at the platform parent,
        * matching the remote and sesame-cli. */
       snprintf(c->comp_dir, sizeof(c->comp_dir), "%s/%s", store, ar->platform);
@@ -266,16 +292,16 @@ static int coll_for(const char *target, const char *store, coll_t *c) {
 }
 
 /** The compiled record for one file of this collection, or NULL. */
-static const kycg_file_t *coll_file_of(const coll_t *c, const char *name) {
-  for (const kycg_file_t *f = c->sets; f && f->name; ++f)
-    if (strcmp(f->name, name) == 0) return f;
-  if (c->comp && strcmp(c->comp->name, name) == 0) return c->comp;
+static const yame_asset_file_t *coll_file_of(const coll_t *c, const char *name) {
+  for (size_t i = 0; i < c->n_set_files; ++i)
+    if (strcmp(yame_file_name(&c->sets[i]), name) == 0) return &c->sets[i];
+  if (c->comp && strcmp(yame_file_name(c->comp), name) == 0) return c->comp;
   return NULL;
 }
 
 /** Published size of a file, or 0 when unknown. Display only. */
 static uint64_t coll_size_of(const coll_t *c, const char *name) {
-  const kycg_file_t *f = coll_file_of(c, name);
+  const yame_asset_file_t *f = coll_file_of(c, name);
   return f ? f->size : 0;
 }
 
@@ -637,12 +663,14 @@ static int build_plan(const coll_t *c, const fetch_conf_t *conf, plan_t *plan) {
   snprintf(plan->target, sizeof(plan->target), "%s", c->target);
   snprintf(plan->source, sizeof(plan->source), "%s", c->source);
 
-  for (const kycg_file_t *f = c->sets; f->name; ++f) {
-    if (!passes_filter(f->name, conf->only)) continue;
+  for (size_t i = 0; i < c->n_set_files; ++i) {
+    const yame_asset_file_t *f = &c->sets[i];
+    const char *fname = yame_file_name(f);
+    if (!passes_filter(fname, conf->only)) continue;
     ++plan->n_sets;
     plan_item_t *it = plan_add(plan);
     if (!it) break;
-    snprintf(it->name, sizeof(it->name), "%s", f->name);
+    snprintf(it->name, sizeof(it->name), "%s", fname);
     snprintf(it->url, sizeof(it->url), "%s", f->url);
     snprintf(it->sha, sizeof(it->sha), "%s", f->sha256);
     it->size = f->size;
@@ -655,7 +683,7 @@ static int build_plan(const coll_t *c, const fetch_conf_t *conf, plan_t *plan) {
   if (c->comp) {
     plan_item_t *it = plan_add(plan);
     if (it) {
-      snprintf(it->name, sizeof(it->name), "%s", c->comp->name);
+      snprintf(it->name, sizeof(it->name), "%s", yame_file_name(c->comp));
       snprintf(it->url, sizeof(it->url), "%s", c->comp->url);
       snprintf(it->sha, sizeof(it->sha), "%s", c->comp->sha256);
       it->size = c->comp->size;
@@ -671,14 +699,14 @@ static int build_plan(const coll_t *c, const fetch_conf_t *conf, plan_t *plan) {
    * there checks what the directory is supposed to hold. The companion is not
    * in it: it lands in a different directory, whose manifest is not ours. */
   size_t cap = 0;
-  for (const kycg_file_t *f = c->sets; f->name; ++f)
-    cap += strlen(f->sha256) + strlen(f->name) + 4;
+  for (size_t i = 0; i < c->n_set_files; ++i)
+    cap += strlen(c->sets[i].sha256) + strlen(yame_file_name(&c->sets[i])) + 4;
   plan->sums_text = malloc(cap + 1);
   if (plan->sums_text) {
     size_t o = 0;
-    for (const kycg_file_t *f = c->sets; f->name; ++f)
+    for (size_t i = 0; i < c->n_set_files; ++i)
       o += (size_t)snprintf(plan->sums_text + o, cap + 1 - o, "%s  %s\n",
-                            f->sha256, f->name);
+                            c->sets[i].sha256, yame_file_name(&c->sets[i]));
     plan->sums_len = o;
   }
 
@@ -1281,8 +1309,8 @@ static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
              chave ? "cached" : "always fetched");
   }
 
-  for (const kycg_file_t *f = c.sets; f && f->name; ++f) {
-    const char *nm = f->name;
+  for (size_t i = 0; i < c.n_set_files; ++i) {
+    const char *nm = yame_file_name(&c.sets[i]);
     if (!is_selectable(nm)) continue;
     /* Already shown above, out of alphabetical order and on purpose. */
     if (c.comp_name[0] && strcmp(nm, c.comp_name) == 0) continue;
@@ -1863,6 +1891,27 @@ size_t kycg_pick_sets(const kycg_pick_target_t *targets, size_t n_targets,
  *
  * Returns the number of paths (0 on failure, with the reason already printed).
  */
+/**
+ * Say so when a file about to be read is not the one this build pins.
+ *
+ * The digest is checked when a file is fetched, which leaves a gap: a store
+ * filled by an older kycg, by another tool at another tag, or by hand is read
+ * without anyone asking whether it still matches. libyame answers that per
+ * file, so the check is one call and the policy is the suite's -- warn, name
+ * the repair, and carry on. Stopping would be worse: a set whose digest moved
+ * is nearly always still the set the user means, and an analysis halted over
+ * it has no way forward that this message does not already give.
+ */
+static void warn_if_stale(const char *verb, char **paths, size_t n) {
+  for (size_t i = 0; i < n; ++i) {
+    char advice[1024] = {0};
+    if (yame_store_state(kycg_fetch_cfg(), paths[i], advice, sizeof(advice))
+        != YAME_STORE_STALE) continue;
+    fprintf(stderr, "kycg %s: %s is not the copy this build pins; using it "
+                    "anyway.\n  %s\n", verb, paths[i], advice);
+  }
+}
+
 size_t kycg_resolve_or_offer(const char *spec, const char *verb, char ***out) {
   *out = NULL;
 
@@ -1886,6 +1935,7 @@ size_t kycg_resolve_or_offer(const char *spec, const char *verb, char ***out) {
                 "kycg %s: nothing in the store matches '%s'.\n"
                 "  Run `kycg fetch` to see what is available.\n", verb, spec);
     }
+    if (np) warn_if_stale(verb, *out, np);
     return np;
   }
 
@@ -1991,6 +2041,7 @@ size_t kycg_resolve_or_offer(const char *spec, const char *verb, char ***out) {
     *out = NULL;
     return 0;
   }
+  warn_if_stale(verb, *out, np);
   return np;
 }
 
@@ -2053,18 +2104,18 @@ kycg_catalogue_t *kycg_catalogue(const char *target, const char *store,
   coll_t c;
   if (coll_for(target, kycg_store_root(store), &c) != 0) return NULL;
 
-  size_t n_files = 0;
-  for (const kycg_file_t *f = c.sets; f && f->name; ++f) ++n_files;
-  kycg_catalogue_t *v = calloc(n_files ? n_files : 1, sizeof(kycg_catalogue_t));
+  kycg_catalogue_t *v = calloc(c.n_set_files ? c.n_set_files : 1,
+                               sizeof(kycg_catalogue_t));
   if (!v) { *n = 0; return NULL; }
   size_t k = 0;
 
-  for (const kycg_file_t *f = c.sets; f && f->name; ++f) {
-    size_t l = strlen(f->name);
-    if (l <= 3 || strcmp(f->name + l - 3, ".cm") != 0) continue;
+  for (size_t i = 0; i < c.n_set_files; ++i) {
+    const char *nm = yame_file_name(&c.sets[i]);
+    size_t l = strlen(nm);
+    if (l <= 3 || strcmp(nm + l - 3, ".cm") != 0) continue;
     char path[4600];
-    snprintf(path, sizeof(path), "%s/%s", c.dir, f->name);
-    v[k].name = strdup(f->name);
+    snprintf(path, sizeof(path), "%s/%s", c.dir, nm);
+    v[k].name = strdup(nm);
     v[k].cached = kycg_store_is_file(path);
     if (v[k].name) ++k;
   }
@@ -2125,8 +2176,8 @@ static uint64_t count_cached(const coll_t *c) {
      * shared drive may hold a .cm this build has no row for; reporting zero
      * for the directory would be a worse answer than ignoring that file. */
     if (!c->sets) { ++n; continue; }
-    for (const kycg_file_t *f = c->sets; f->name; ++f)
-      if (strcmp(f->name, e->d_name) == 0) { ++n; break; }
+    for (size_t i = 0; i < c->n_set_files; ++i)
+      if (strcmp(yame_file_name(&c->sets[i]), e->d_name) == 0) { ++n; break; }
   }
   closedir(d);
   return n;
@@ -2199,8 +2250,8 @@ static int browse_catalogue(int argc, char *argv[]) {
          * touches the network -- which is what makes this safe to print from
          * a script without it triggering a download nobody asked for. */
         rows_t rows = {0};
-        for (const kycg_file_t *f = c.sets; f && f->name; ++f) {
-          const char *nm = f->name;
+        for (size_t i = 0; i < c.n_set_files; ++i) {
+          const char *nm = yame_file_name(&c.sets[i]);
           if (!is_selectable(nm)) continue;
           if (!passes_filter(nm, only)) continue;
           char setn[256], path[4400], hb[24];
