@@ -1,27 +1,34 @@
-<h1 align="center">KnowYourCG 2</h1>
+<div align="center">
 
-<p align="center">
-<a href="https://github.com/zhou-lab/kycg/actions/workflows/conda-build.yml"><img src="https://github.com/zhou-lab/kycg/actions/workflows/conda-build.yml/badge.svg" alt="build"></a>
-<a href="https://anaconda.org/zhou-lab/kycg"><img src="https://img.shields.io/conda/vn/zhou-lab/kycg?label=conda" alt="conda"></a>
-<a href="LICENSE"><img src="https://img.shields.io/badge/license-BSD--2--Clause%20(academic)%20%2F%20commercial-blue.svg" alt="license"></a>
-<a href="tests/run.sh"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fzhou-lab.github.io%2Fkycg%2Fcoverage.json" alt="coverage"></a>
-<a href="https://zhou-lab.github.io/kycg/"><img src="https://img.shields.io/badge/docs-online-blueviolet" alt="docs"></a>
-</p>
+# KnowYourCG 2
 
-Functional analysis of DNA methylation at CpG resolution. KnowYourCG 2 is the
-C implementation of
+[![build](https://github.com/zhou-lab/kycg/actions/workflows/conda-build.yml/badge.svg)](https://github.com/zhou-lab/kycg/actions/workflows/conda-build.yml)
+[![conda](https://img.shields.io/conda/vn/zhou-lab/kycg?label=conda)](https://anaconda.org/zhou-lab/kycg)
+[![license](https://img.shields.io/badge/license-BSD--2--Clause%20(academic)%20%2F%20commercial-blue.svg)](LICENSE)
+[![coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fzhou-lab.github.io%2Fkycg%2Fcoverage.json)](tests/run.sh)
+[![docs](https://img.shields.io/badge/docs-online-blueviolet)](https://zhou-lab.github.io/kycg/)
+[![language](https://img.shields.io/badge/C-C99-00599C)](src/kycg.h)
+[![row spaces](https://img.shields.io/badge/row%20spaces-arrays%20%7C%2029M%20CpG%20genomes-brightgreen)](https://zhou-lab.github.io/kycg/)
+[![vs R](https://img.shields.io/badge/stats%20vs%20R-machine%20precision-success)](tests/validate_vs_R.R)
+
+**CpG-set enrichment as a single C binary** — fetch verified knowledgebases,
+test a query set, annotate a probe table. Arrays and whole genomes, no R.
+
+📖 **[Documentation](https://zhou-lab.github.io/kycg/)** ·
+🧬 [KnowYourCG v1 (R/Bioconductor)](https://bioconductor.org/packages/knowYourCG/) ·
+🔬 [Validated against it](tests/validate_vs_R.R)
+
+</div>
+
+KnowYourCG 2 is the second implementation of
 [KnowYourCG](https://bioconductor.org/packages/knowYourCG/), built directly on
 [YAME](https://github.com/zhou-lab/YAME)'s bit-packed CpG formats and run from
 the command line. The binary is `kycg`.
 
 The Bioconductor R package is KnowYourCG v1 and continues on the 1.x series;
-this is v2. Statistics agree between them — the C is validated against the R
-to floating-point tolerance.
-
-**[Full documentation](https://zhou-lab.github.io/kycg/)** — the whole
-workflow, the output schema, the trust model, case studies, and validation
-against the R package. One self-contained page, and every runnable block on it
-is tested against the binary on each release.
+this is v2. They are parallel implementations rather than an upgrade path —
+one is an R package, the other a command-line tool — and their statistics
+agree to floating-point tolerance.
 
 **Cite:** Goldberg *et al.* KnowYourCG. *Sci Adv* 2025;11(43):eadw3027.
 [doi:10.1126/sciadv.adw3027](https://doi.org/10.1126/sciadv.adw3027)
@@ -50,8 +57,9 @@ kycg --version                    # build, coupled YAME, registry tags
 ```
 
 Each subcommand takes `-h`. Everything else — what the store holds, how to
-read a result, how the digests work — is on the
-[documentation page](https://zhou-lab.github.io/kycg/).
+read a result, how the digests work, the case studies — is on the
+[documentation page](https://zhou-lab.github.io/kycg/), one self-contained
+page whose every runnable block is tested against the binary on each release.
 
 ## Build from source
 
