@@ -3,7 +3,7 @@
 ##
 ## Nothing here touches the network. YAME_ASSETS_MIRROR replaces the scheme
 ## and host of every URL and keeps the path, so a local server standing at
-## mirror/zhou-lab/InfiniumAnnotation/raw/v8.1/... is served exactly what
+## mirror/zhou-lab/InfiniumAnnotation/<tag>/... is served exactly what
 ## github.com would be asked for. Verification is untouched: the manifests in
 ## tests/fixtures are the REAL published ones, whose sha256 is the anchor
 ## compiled into this build, and the one .cm fixture is the real file whose
@@ -23,7 +23,13 @@ command -v python3 >/dev/null || { echo "  skip: no python3 for the mirror"; exi
 new_workdir
 
 ## ---- the mirror tree ---------------------------------------------------- ##
-TAG=v8.1
+## The tag follows the submoduled YAME, never a literal here. src/registry.h
+## is projected from that submodule's tools/registry/files.tsv, so the tag the
+## binary requests moves with every catalog bump -- a pinned v8.1 turns the
+## NEXT bump into seven mirror 404s that read as a fetch bug. --version prints
+## what THIS binary compiled, which is exactly the tag it will ask for.
+TAG=$("$KYCG" --version | grep -oE 'InfiniumAnnotation@v[0-9.]+' | cut -d@ -f2)
+[ -n "$TAG" ] || { echo "  skip: --version reports no InfiniumAnnotation tag"; exit 0; }
 ## Since YAME v1.50 the URL rule is raw.githubusercontent.com/<org>/<repo>/
 ## <tag>/<path>, and YAME_ASSETS_MIRROR keeps everything after the host.
 tree=mirror/zhou-lab/InfiniumAnnotation/$TAG
