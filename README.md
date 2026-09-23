@@ -1,6 +1,6 @@
-<div align="center">
+<h1 align="center">KnowYourCG 2</h1>
 
-# KnowYourCG 2
+<div align="center">
 
 [![build](https://github.com/zhou-lab/kycg/actions/workflows/conda-build.yml/badge.svg)](https://github.com/zhou-lab/kycg/actions/workflows/conda-build.yml)
 [![conda](https://img.shields.io/conda/vn/zhou-lab/kycg?label=conda)](https://anaconda.org/zhou-lab/kycg)
