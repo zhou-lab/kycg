@@ -19,7 +19,7 @@
 #include "ui.h"
 #include "assets.h"
 
-#define KYCG_VERSION "0.7"
+#define KYCG_VERSION "2.0.0"
 
 /*
  * Shared styling for help text. Each expands to an empty string off a TTY (see

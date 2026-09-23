@@ -1,4 +1,4 @@
-# kycg — agent reference
+# KnowYourCG 2 (binary: kycg) — agent reference
 # Canonical: https://zhou-lab.github.io/kycg/llms.txt
 # Human guide: https://zhou-lab.github.io/kycg/
 # Source: https://github.com/zhou-lab/kycg
@@ -6,10 +6,12 @@
 
 ## What it is
 
-kycg is a C command-line reimplementation of the knowYourCG R/Bioconductor
-package: functional enrichment analysis of DNA methylation at CpG resolution,
-with YAME as the computational backend. It supersedes the knowYourCG sequencing
-workflow, and scales to whole-genome row spaces (29M CpGs) as well as arrays.
+KnowYourCG 2 is the C implementation of KnowYourCG: functional enrichment
+analysis of DNA methylation at CpG resolution, with YAME as the computational
+backend. The binary is `kycg`. It scales to whole-genome row spaces (29M CpGs)
+as well as arrays. The Bioconductor R package is KnowYourCG v1 and continues
+on the 1.x series; the two are parallel implementations, not an upgrade path,
+and their statistics agree to floating-point tolerance.
 
 Cite: Goldberg et al. KnowYourCG. Sci Adv 2025;11(43):eadw3027.
 doi:10.1126/sciadv.adw3027
