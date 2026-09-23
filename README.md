@@ -1,4 +1,12 @@
-# KnowYourCG 2
+<h1 align="center">KnowYourCG 2</h1>
+
+<p align="center">
+<a href="https://github.com/zhou-lab/kycg/actions/workflows/conda-build.yml"><img src="https://github.com/zhou-lab/kycg/actions/workflows/conda-build.yml/badge.svg" alt="build"></a>
+<a href="https://anaconda.org/zhou-lab/kycg"><img src="https://img.shields.io/conda/vn/zhou-lab/kycg?label=conda" alt="conda"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-BSD--2--Clause%20(academic)%20%2F%20commercial-blue.svg" alt="license"></a>
+<a href="tests/run.sh"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fzhou-lab.github.io%2Fkycg%2Fcoverage.json" alt="coverage"></a>
+<a href="https://zhou-lab.github.io/kycg/"><img src="https://img.shields.io/badge/docs-online-blueviolet" alt="docs"></a>
+</p>
 
 Functional analysis of DNA methylation at CpG resolution. KnowYourCG 2 is the
 C implementation of
@@ -9,12 +17,6 @@ the command line. The binary is `kycg`.
 The Bioconductor R package is KnowYourCG v1 and continues on the 1.x series;
 this is v2. Statistics agree between them — the C is validated against the R
 to floating-point tolerance.
-
-[![build](https://github.com/zhou-lab/kycg/actions/workflows/conda-build.yml/badge.svg)](https://github.com/zhou-lab/kycg/actions/workflows/conda-build.yml)
-[![conda](https://img.shields.io/conda/vn/zhou-lab/kycg?label=conda)](https://anaconda.org/zhou-lab/kycg)
-[![license](https://img.shields.io/badge/license-BSD--2--Clause%20(academic)%20%2F%20commercial-blue.svg)](LICENSE)
-[![coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fzhou-lab.github.io%2Fkycg%2Fcoverage.json)](tests/run.sh)
-[![docs](https://img.shields.io/badge/docs-online-blueviolet)](https://zhou-lab.github.io/kycg/)
 
 **[Full documentation](https://zhou-lab.github.io/kycg/)** — the whole
 workflow, the output schema, the trust model, case studies, and validation
