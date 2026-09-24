@@ -343,14 +343,16 @@ $ kycg <span class="sub">fetch</span> -f hg38:CGI,ChromHMM</code></pre>
     <pre data-norun="the picker, on a terminal"><code>$ kycg <span class="sub">test</span> onecell.cg
 
 Knowledgebases for 21,867,837 rows -- space to choose, t to test
-    target  kind          rows        cached_sets
-<span class="sub">❯ ▾</span> mm10    whole genome  21,867,837  28
-   ├ [ ] Blacklist              Blacklist.20220304.cm            cached
-   ├ [x] CGI                    CGI.20220904.cm                  cached
-   ├ [x] ChromHMM               ChromHMM.20220414.cm             cached
-   ├ [ ] ChromHMMfullStack      ChromHMMfullStack…cm             cached
+        TARGET   KIND          ROWS                    TAG        IN STORE
+  ▪ MOUSE
+  ▾ [*] mm10     genome  21,867,837                    mixed ▰▱▱▱▱    4/29
+  └── ▾ [*] KYCG        sets                           v2    ▰▱▱▱▱    3/28
+      ├──   [ ] Blacklist.20220304.cm                  v2            636 B
+      ├──   [x] CGI.20220904.cm                        v2         120.0 KB
+      ├──   [x] ChromHMM.20220414.cm                   v2         857.4 KB
+<span class="sub">❯</span>     ├──   [ ] ChromHMMfullStack.20231222.cm          v2           6.1 MB
   <span class="cm">…</span>
-  <span class="cm">→ open  ← close  space select  i close  f fetch  t test   q quit</span></code></pre>
+  <span class="cm">row 7 of 31  •  2 selected  •  i info  f fetch  t test  h keys  q quit</span></code></pre>
     <p style="margin-top:11px">It is the same browser <code class="inl">fetch</code> uses,
       showing only the collections whose row count matches the query. A set you do not
       have yet is still listed: check it, <code class="inl">f</code> to fetch it, then

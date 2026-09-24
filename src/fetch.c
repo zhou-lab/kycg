@@ -1101,6 +1101,7 @@ int kycg_main_fetch(int argc, char *argv[]) {
 
 /* ------------------------------------------------ the catalogue browser */
 
+
 static int browse_usage(void) {
   fprintf(stderr, "\n");
   fprintf(stderr, "Usage: kycg fetch [options] [target ...]\n");
@@ -1687,134 +1688,14 @@ void kycg_kb_detail(void *ctx, const char *root, const char *child_key,
  * used less.
  */
 
-/**
- * State for offering the store as a tree, the same widget `kycg fetch` uses.
- *
- * Roots are the collections the caller offered; children are the sets actually
- * cached under them, which by construction share that collection's row space.
- * So the list cannot contain a choice the caller would then have to refuse.
+/*
+ * The picker's own tree machinery -- pickctx_t and the pk_* callbacks that
+ * built its roots, unfolded them, collected the checked rows and fetched
+ * them -- is gone. yame_browse_pick_opt does all of it, over the same
+ * registry, and brings the TAG column, the group rows and the facet search
+ * kycg's copy never had.
  */
-typedef struct {
-  const char *root;        /* store root */
-  const char *preselect;   /* comma-separated set names to arrive checked */
 
-  char        **rows;      /* root row text, tab-separated */
-  unsigned char *styles;
-  char        **names;     /* the target name for each root */
-  size_t        n, m;
-
-  char        **chosen;    /* paths picked, filled on accept */
-  size_t        n_chosen, m_chosen;
-} pickctx_t;
-
-static void pk_add_target(pickctx_t *p, const char *name, const char *kind,
-                            uint64_t rows) {
-  char **paths = NULL;
-  size_t n_cached = kycg_resolve_spec(name, NULL, &paths);
-  kycg_free_specs(paths, n_cached);
-
-  if (p->n == p->m) {
-    /* `p->x = realloc(p->x, ...)` loses the original on failure, and returning
-     * without updating p->m left the arrays grown but the capacity stale --
-     * the next call re-entered this branch, realloc(NULL) handed back a fresh
-     * block, every prior name leaked, and pick_free() then freed garbage.
-     * Adopt each block only once it has succeeded, and update m last. */
-    size_t want = p->m ? p->m * 2 : 16;
-    char **nr = realloc(p->rows, want * sizeof(char *));
-    if (!nr) return;
-    p->rows = nr;
-    char **nn = realloc(p->names, want * sizeof(char *));
-    if (!nn) return;
-    p->names = nn;
-    unsigned char *ns = realloc(p->styles, want);
-    if (!ns) return;
-    p->styles = ns;
-    p->m = want;
-  }
-
-  char buf[512], rb[32];
-  snprintf(buf, sizeof(buf), "%s\t%s\t%s\t%zu",
-           name, kind, commify(rows, rb, sizeof(rb)), n_cached);
-  /* Both strings must land before n advances: a NULL row reaches
-   * yame_ui_tree(), whose strchr() on it would crash. */
-  char *row_s = strdup(buf), *name_s = strdup(name);
-  if (!row_s || !name_s) { free(row_s); free(name_s); return; }
-  p->rows[p->n] = row_s;
-  p->names[p->n] = name_s;
-  /* Dim a collection with nothing in it: it is listed so the user learns it
-   * exists and could be fetched, not because it can be tested against. */
-  p->styles[p->n] = n_cached ? YAME_ROW_HAVE : YAME_ROW_MISSING;
-  ++p->n;
-}
-
-static void pk_expand(void *ctx, const char *row, yame_ui_kids_t *out) {
-  (void)ctx;
-
-  char target[128];
-  const char *tab = strchr(row, '\t');
-  size_t len = tab ? (size_t)(tab - row) : strlen(row);
-  if (len >= sizeof(target)) len = sizeof(target) - 1;
-  memcpy(target, row, len);
-  target[len] = '\0';
-
-  /* Everything the collection publishes, not just what is here: seeing what
-   * is missing is half the point, since f can fetch it and t can then test
-   * against it without leaving. */
-  size_t n = 0;
-  kycg_catalogue_t *cat = kycg_catalogue(target, NULL, &n);
-  if (!cat) {
-    kid_push(out, YAME_ROW_MISSING, NULL,
-                   "catalogue unavailable - try: kycg fetch %s", target);
-    return;
-  }
-
-  for (size_t i = 0; i < n; ++i) {
-    char key[512], setn[256];
-    snprintf(key, sizeof(key), "%s:%s", target, cat[i].name);
-    const char *dot = strchr(cat[i].name, '.');
-    size_t l = dot ? (size_t)(dot - cat[i].name) : strlen(cat[i].name);
-    if (l >= sizeof(setn)) l = sizeof(setn) - 1;
-    memcpy(setn, cat[i].name, l);
-    setn[l] = '\0';
-    kid_push(out, cat[i].cached ? YAME_ROW_HAVE : YAME_ROW_MISSING, key,
-                   "%-22.22s %-32.32s %s", setn, cat[i].name,
-                   cat[i].cached ? "cached" : "-");
-  }
-  kycg_catalogue_free(cat, n);
-}
-
-static void pk_accept(void *ctx, const char *root, const char *key) {
-  (void)root;
-  pickctx_t *p = ctx;
-  if (p->n_chosen == p->m_chosen) {
-    size_t want = p->m_chosen ? p->m_chosen * 2 : 16;
-    char **v = realloc(p->chosen, want * sizeof(char *));
-    if (!v) return;
-    p->chosen = v; p->m_chosen = want;
-  }
-  p->chosen[p->n_chosen] = strdup(key);
-  if (p->chosen[p->n_chosen]) ++p->n_chosen;
-}
-
-/** f in the picker: fetch whatever is checked but not yet here, then stay. */
-/* Returns whether anything changed, so the tree reloads its children; see
- * on_commit above for why 0 after a fetch shows a stale screen. */
-static int pk_commit_fetch(void *ctx) {
-  pickctx_t *p = ctx;
-  int fetched = p->n_chosen != 0;
-  if (fetched) kycg_fetch_specs(p->chosen, p->n_chosen, NULL);
-  for (size_t i = 0; i < p->n_chosen; ++i) free(p->chosen[i]);
-  p->n_chosen = 0;
-  return fetched;
-}
-
-static void pk_free(pickctx_t *p) {
-  for (size_t i = 0; i < p->n; ++i) { free(p->rows[i]); free(p->names[i]); }
-  free(p->rows); free(p->names); free(p->styles);
-  for (size_t i = 0; i < p->n_chosen; ++i) free(p->chosen[i]);
-  free(p->chosen);
-  memset(p, 0, sizeof(*p));
-}
 /**
  * Offer `targets` in the browser and return what the user chose.
  *
@@ -1827,16 +1708,6 @@ static void pk_free(pickctx_t *p) {
  * user quit without choosing, and (size_t)-1 when the terminal cannot host
  * the browser at all.
  */
-static int pk_preselect(void *ctx, const char *root, const char *key) {
-  (void)root;
-  pickctx_t *p = ctx;
-  /* This picker keys children "target:file" so the caller can resolve them
-   * later; passes_filter wants the bare filename. */
-  const char *file = key ? strchr(key, ':') : NULL;
-  file = file ? file + 1 : key;
-  return passes_filter(file, p->preselect) ? 1 : 0;
-}
-
 size_t kycg_pick_sets(const kycg_pick_target_t *targets, size_t n_targets,
                       const char *title, char verb_key, const char *verb,
                       const char *open_target, const char *preselect,
@@ -1844,56 +1715,72 @@ size_t kycg_pick_sets(const kycg_pick_target_t *targets, size_t n_targets,
   *out = NULL;
   if (!n_targets) return 0;
 
-  pickctx_t pc = {0};
-  pc.root = kycg_store_root(NULL);
-  pc.preselect = preselect;
-  for (size_t i = 0; i < n_targets; ++i)
-    pk_add_target(&pc, targets[i].name, targets[i].kind, targets[i].rows);
+  /* yame_browse_pick_opt answers 0 both for "the user quit" and "this
+   * terminal cannot host a widget", and the callers need them apart: quitting
+   * is a choice, an unusable terminal is advice to pass -m. The widget gates
+   * on yame_ui_fancy(), so asking it first separates the two without YAME
+   * having to report it. */
+  if (!yame_ui_fancy()) return (size_t)-1;
 
-  yame_ui_tree_t spec = {0};
-  spec.title = title;
-  spec.header = "target\tkind\trows\tcached_sets";
-  spec.roots = pc.rows;
-  spec.root_styles = pc.styles;
-  spec.n_roots = pc.n;
-  spec.expand = pk_expand;
-  /* Two verbs on one screen: fetch what is missing, then act on it. f keeps
-   * the browser open (it has a commit); the caller's verb ends it and the
-   * selection is what gets used. */
-  spec.actions[0].key = 'f';
-  spec.actions[0].verb = "fetch";
-  spec.actions[0].accept = pk_accept;
-  spec.actions[0].commit = pk_commit_fetch;
-  spec.actions[1].key = verb_key;
-  spec.actions[1].verb = verb;
-  spec.actions[1].accept = pk_accept;
-  spec.actions[1].commit = NULL;
-  spec.n_actions = 2;
-  /* Cached sets are the ones worth acting on, so they stay checkable. */
-  spec.have_selectable = 1;
-  /* The same callbacks the fetch browser uses, so a set is recommended and
-   * described identically whichever tree you reached it through. */
-  spec.detail_key = 'i';
-  spec.detail_verb = "info";
-  spec.detail = kycg_kb_detail;
-  spec.ctx = &pc;
-  /* Open on the collection the caller cares about, with the sets it is
-   * waiting for already checked, so the only thing left to do is press f. */
-  if (open_target && *open_target) {
-    spec.open_root = open_target;
-    if (preselect && *preselect) spec.preselect = pk_preselect;
+  const char *units[32];
+  size_t n_units = 0;
+  for (size_t i = 0; i < n_targets && n_units < 32; ++i)
+    units[n_units++] = targets[i].name;
+
+  yame_pick_opt_t opt;
+  memset(&opt, 0, sizeof(opt));
+  opt.units     = units;
+  opt.n_units   = n_units;
+  opt.title     = title;
+  opt.verb_key  = verb_key;
+  opt.verb      = verb;
+  opt.open_unit = (open_target && *open_target) ? open_target : NULL;
+  opt.preselect = (preselect && *preselect) ? preselect : NULL;
+  opt.store     = NULL;                   /* kycg's own store resolution */
+  /* Knowledgebase sets and nothing else. A unit also holds its ordering and
+   * its row list, and the browser would offer those as choices -- but a test
+   * cannot run against a row list, so picking one could only ever end in
+   * "skipping mm10:cpg_nocontig.cr: not in the store", after the user had
+   * already chosen it. Narrowing here keeps the old picker's guarantee that
+   * every row on screen is something the verb can actually take. */
+  opt.offer     = "*/KYCG/*.cm";
+
+  char **paths = NULL;
+  size_t np = yame_browse_pick_opt(kycg_fetch_cfg(), &opt, &paths);
+  if (!np) { kycg_free_specs(paths, 0); return 0; }
+
+  /* The browser hands back store paths; every caller here wants the
+   * "unit:file" spec it already knows how to resolve. Both parts are in the
+   * path -- <store>/<unit>/KYCG/<file> -- so this reads them back off it
+   * rather than keeping a parallel record that could disagree with what was
+   * actually fetched. */
+  const char *store = kycg_store_root(NULL);
+  size_t storelen = store ? strlen(store) : 0;
+
+  char **specs = calloc(np, sizeof(char *));
+  if (!specs) { kycg_free_specs(paths, np); return 0; }
+  size_t n = 0;
+
+  for (size_t i = 0; i < np; ++i) {
+    const char *rel = paths[i];
+    if (storelen && strncmp(rel, store, storelen) == 0) {
+      rel += storelen;
+      while (*rel == '/') ++rel;
+    }
+    const char *slash = strchr(rel, '/');
+    const char *base = strrchr(paths[i], '/');
+    base = base ? base + 1 : paths[i];
+    if (!slash) continue;               /* not under the store; nothing to name */
+
+    char spec[640];
+    snprintf(spec, sizeof(spec), "%.*s:%s", (int)(slash - rel), rel, base);
+    specs[n] = strdup(spec);
+    if (specs[n]) ++n;
   }
+  kycg_free_specs(paths, np);
 
-  int rc = yame_ui_tree(&spec);
-  if (rc < 0) { pk_free(&pc); return (size_t)-1; }
-  if (rc != 2 || !pc.n_chosen) { pk_free(&pc); return 0; }
-
-  /* Hand the chosen specs over; pk_free must not release them. */
-  *out = pc.chosen;
-  size_t n = pc.n_chosen;
-  pc.chosen = NULL;
-  pc.n_chosen = 0;
-  pk_free(&pc);
+  if (!n) { free(specs); return 0; }
+  *out = specs;
   return n;
 }
 
@@ -2146,24 +2033,6 @@ kycg_catalogue_t *kycg_catalogue(const char *target, const char *store,
 
   *n = k;
   return v;
-}
-
-int kycg_fetch_specs(char *const *specs, size_t n, const char *store) {
-  picks_t p = {0};
-  for (size_t i = 0; i < n; ++i) {
-    /* Split "mm10:CGI.20220904.cm" the way the picker hands it over. */
-    const char *colon = strchr(specs[i], ':');
-    if (!colon || !colon[1]) continue;
-    char target[128];
-    size_t len = (size_t)(colon - specs[i]);
-    if (len >= sizeof(target)) len = sizeof(target) - 1;
-    memcpy(target, specs[i], len);
-    target[len] = '\0';
-    picks_add(&p, target, colon + 1);
-  }
-  int rc = p.n ? fetch_picked(&p, store) : 0;
-  picks_free(&p);
-  return rc;
 }
 
 /**

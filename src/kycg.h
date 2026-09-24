@@ -60,13 +60,6 @@ size_t kycg_resolve_spec_ex(const char *spec, const char *store, char ***out,
                             char **missing);
 void kycg_free_specs(char **v, size_t n);
 
-/**
- * Fetch these specs into the store. Renders into the widget's panel when one
- * is open, so it can be called from inside a browser without leaving it.
- * Returns 0 on success.
- */
-int kycg_fetch_specs(char *const *specs, size_t n, const char *store);
-
 /** One set a collection publishes, and whether it is here. */
 typedef struct {
   char *name;
