@@ -73,7 +73,7 @@
 #include "args.h"
 #include "store.h"
 #include "registry.h"
-#include "ui.h"
+#include "yame_ui.h"
 
 /* YAME (submodule) */
 #include "cfile.h"
@@ -429,7 +429,7 @@ int main_annotate(int argc, char *argv[]) {
   char **picked = NULL;
   size_t n_picked = 0;
   if (!n_specs) {
-    if (!kycg_ui_interactive()) {
+    if (!yame_ui_interactive()) {
       usage();
       wzfatal("Please supply -m.\n");
     }

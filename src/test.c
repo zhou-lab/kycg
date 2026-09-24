@@ -66,7 +66,7 @@
 #include "enrich.h"
 #include "store.h"
 #include "registry.h"
-#include "ui.h"
+#include "yame_ui.h"
 
 /* YAME (submodule) */
 #include "cfile.h"
@@ -151,7 +151,7 @@ static int usage(void) {
           KYCG_H_NOTE, KYCG_H_OFF);
 
   fprintf(o, "    %s%s p_value and fdr underflow to 0 for strong results. Sort and%s\n",
-          KYCG_H_WARN, kycg_ui_unicode() ? "!" : "!", KYCG_H_OFF);
+          KYCG_H_WARN, yame_ui_unicode() ? "!" : "!", KYCG_H_OFF);
   fprintf(o, "      %sthreshold on log10_p and neglog10_fdr, which stay in log space.%s\n\n",
           KYCG_H_NOTE, KYCG_H_OFF);
 
@@ -354,7 +354,7 @@ int main_test(int argc, char *argv[]) {
   /* No -m: offer the store in the same tree `kycg fetch` uses. Only on a
    * terminal -- a pipeline that forgot -m must fail loudly rather than wait
    * for an answer nobody is there to give. */
-  if (!n_masks && kycg_ui_interactive()) {
+  if (!n_masks && yame_ui_interactive()) {
     if (optind >= argc) {
       usage();
       wzfatal("Please supply a query file.\n");
@@ -408,7 +408,7 @@ int main_test(int argc, char *argv[]) {
       size_t np = kycg_resolve_spec(chosen[i], NULL, &paths);
       if (!np) {
         fprintf(stderr, "  %sskipping %s: not in the store%s\n",
-                kycg_ui_yellow(), chosen[i], kycg_ui_reset());
+                yame_ui_yellow(), chosen[i], yame_ui_reset());
         continue;
       }
       for (size_t j = 0; j < np; ++j) {

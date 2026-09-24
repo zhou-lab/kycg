@@ -81,7 +81,7 @@
 #include "digest.h"
 #include "registry.h"
 #include "store.h"
-#include "ui.h"
+#include "yame_ui.h"
 #include "kbinfo.h"
 #include "assets.h"
 
@@ -466,7 +466,7 @@ size_t kycg_resolve_spec_ex(const char *spec, const char *store, char ***out,
       if (strcmp(a, b) == 0 && how[k-1] == KYCG_MATCH_SET) {
         fprintf(stderr,
                 "%skycg: %s has more than one version; using %s%s\n",
-                kycg_ui_dim(), b, pb ? pb + 1 : v[i], kycg_ui_reset());
+                yame_ui_dim(), b, pb ? pb + 1 : v[i], yame_ui_reset());
         free(v[k-1]);
         v[k-1] = v[i];        /* the later one sorts newer */
         how[k-1] = how[i];
@@ -568,14 +568,14 @@ static void plan_show(const plan_t *p) {
   }
 
   fprintf(stderr, "\n%s==>%s %sKnowledgebase sets to download%s\n",
-          kycg_ui_cyan(), kycg_ui_reset(), kycg_ui_bold(), kycg_ui_reset());
+          yame_ui_cyan(), yame_ui_reset(), yame_ui_bold(), yame_ui_reset());
   fprintf(stderr, "    %s%s  %s  %s  %s  %s%s\n\n",
-          kycg_ui_dim(), p->target, kycg_ui_bullet(), p->source,
-          kycg_ui_bullet(), p->dir, kycg_ui_reset());
+          yame_ui_dim(), p->target, yame_ui_bullet(), p->source,
+          yame_ui_bullet(), p->dir, yame_ui_reset());
 
   if (!n_todo) {
     fprintf(stderr, "    %severything selected is already present and "
-                    "verified.%s\n\n", kycg_ui_dim(), kycg_ui_reset());
+                    "verified.%s\n\n", yame_ui_dim(), yame_ui_reset());
     return;
   }
 
@@ -585,8 +585,8 @@ static void plan_show(const plan_t *p) {
     if (it->size) {
       char hb[24];
       fprintf(stderr, "    %-46s %s%8s%s\n", it->name,
-              kycg_ui_dim(), kycg_ui_human(it->size, hb, sizeof(hb)),
-              kycg_ui_reset());
+              yame_ui_dim(), yame_ui_human(it->size, hb, sizeof(hb)),
+              yame_ui_reset());
     } else {
       fprintf(stderr, "    %s\n", it->name);
     }
@@ -595,17 +595,17 @@ static void plan_show(const plan_t *p) {
   fputc('\n', stderr);
   if (p->sizes_known) {
     char hb[24];
-    fprintf(stderr, "    %s%zu file(s), %s%s", kycg_ui_bold(), n_todo,
-            kycg_ui_human(bytes_todo, hb, sizeof(hb)), kycg_ui_reset());
+    fprintf(stderr, "    %s%zu file(s), %s%s", yame_ui_bold(), n_todo,
+            yame_ui_human(bytes_todo, hb, sizeof(hb)), yame_ui_reset());
   } else {
     /* The array channel publishes no sizes; saying so beats inventing them. */
     fprintf(stderr, "    %s%zu file(s)%s%s (sizes not published by this "
-                    "channel)%s", kycg_ui_bold(), n_todo, kycg_ui_reset(),
-            kycg_ui_dim(), kycg_ui_reset());
+                    "channel)%s", yame_ui_bold(), n_todo, yame_ui_reset(),
+            yame_ui_dim(), yame_ui_reset());
   }
   if (n_have)
     fprintf(stderr, "%s   %zu already present, skipped%s",
-            kycg_ui_dim(), n_have, kycg_ui_reset());
+            yame_ui_dim(), n_have, yame_ui_reset());
   fprintf(stderr, "\n\n");
 }
 
@@ -620,9 +620,9 @@ static void plan_show(const plan_t *p) {
  *
  * Progress: yame_assets_download_verify() calls back through a
  * yame_fetch_opt_t, so kycg's spinner is wired to it by forwarding on_progress
- * to kycg_prog_update. The kycg_prog_t is passed as the callback user-data. */
+ * to yame_prog_update. The yame_prog_t is passed as the callback user-data. */
 static void fetch_on_progress(void *ud, uint64_t now, uint64_t total) {
-  kycg_prog_update((kycg_prog_t *)ud, now, total);
+  yame_prog_update((yame_prog_t *)ud, now, total);
 }
 
 
@@ -765,8 +765,8 @@ static int execute_plan(const plan_t *plan, tally_t *t) {
     snprintf(path, sizeof(path), "%s/%s",
              it->destdir[0] ? it->destdir : plan->dir, it->name);
 
-    kycg_prog_t pr;
-    kycg_prog_begin(&pr, it->name, it->size);
+    yame_prog_t pr;
+    yame_prog_begin(&pr, it->name, it->size);
 
     /* The whole download-verify-rename dance -- per-pid ".part" + O_EXCL, the
      * sha256 check against the pinned digest, the atomic rename -- is libyame's
@@ -778,7 +778,7 @@ static int execute_plan(const plan_t *plan, tally_t *t) {
     char *err = NULL;
     if (yame_assets_download_verify(it->url, it->sha, path, &opt, NULL, &err)
         != 0) {
-      kycg_prog_done(&pr, err ? err : "download failed", 0);
+      yame_prog_done(&pr, err ? err : "download failed", 0);
       free(err);
       ++t->n_fail;
       continue;
@@ -788,7 +788,7 @@ static int execute_plan(const plan_t *plan, tally_t *t) {
     uint64_t sz = (stat(path, &st) == 0) ? (uint64_t)st.st_size : 0;
 
     char hb[24];
-    kycg_prog_done(&pr, kycg_ui_human(sz, hb, sizeof(hb)), 1);
+    yame_prog_done(&pr, yame_ui_human(sz, hb, sizeof(hb)), 1);
     ++t->n_got;
     t->bytes_got += sz;
   }
@@ -990,7 +990,7 @@ int kycg_main_fetch(int argc, char *argv[]) {
    * so the download is seen before it starts and can be narrowed in the same
    * screen. -f skips straight to fetching, and so does a non-terminal, which
    * is what keeps scripts working. */
-  if (!conf.direct && kycg_ui_interactive()) {
+  if (!conf.direct && yame_ui_interactive()) {
     char *lav[8];
     int lac = 0;
     lav[lac++] = "fetch";
@@ -1087,12 +1087,12 @@ int kycg_main_fetch(int argc, char *argv[]) {
   if (t.n_got || t.n_skip || t.n_fail) {
     char hb[24];
     fprintf(stderr, "\n%s%s%s %" PRIu64 " fetched (%s)",
-            kycg_ui_green(), kycg_ui_check(), kycg_ui_reset(),
-            t.n_got, kycg_ui_human(t.bytes_got, hb, sizeof(hb)));
+            yame_ui_green(), yame_ui_check(), yame_ui_reset(),
+            t.n_got, yame_ui_human(t.bytes_got, hb, sizeof(hb)));
     if (t.n_skip) fprintf(stderr, ", %" PRIu64 " already current", t.n_skip);
     if (t.n_fail)
       fprintf(stderr, ", %s%" PRIu64 " FAILED%s",
-              kycg_ui_red(), t.n_fail, kycg_ui_reset());
+              yame_ui_red(), t.n_fail, yame_ui_reset());
     fprintf(stderr, ".\n");
   }
 
@@ -1155,11 +1155,21 @@ static void rows_free(rows_t *r) {
 }
 
 /** Browse if stdout is a terminal, else write TSV. `comment` is a leading
- *  '#' line preserved in plain mode and folded into the title when browsing. */
+ *  '#' line preserved in plain mode and folded into the title when browsing.
+ *
+ *  The viewer is yame_ui_tree with no expand and no actions -- a tree whose
+ *  rows never unfold IS the flat pager, so this is the same screen the
+ *  deleted yame_ui_browse drew, from the one widget everything else uses.
+ *  A terminal that cannot host it returns -1 and the TSV below stands in. */
 static void rows_emit(rows_t *r, const char *comment, const char *header) {
-  if (isatty(STDOUT_FILENO) &&
-      kycg_ui_browse(comment ? comment : "kycg fetch", header,
-                     (const char **)r->a, r->st, r->n) == 0) {
+  yame_ui_tree_t spec;
+  memset(&spec, 0, sizeof(spec));
+  spec.title       = comment ? comment : "kycg fetch";
+  spec.header      = header;
+  spec.roots       = r->a;
+  spec.root_styles = r->st;
+  spec.n_roots     = r->n;
+  if (isatty(STDOUT_FILENO) && yame_ui_tree(&spec) >= 0) {
     rows_free(r);
     return;
   }
@@ -1218,12 +1228,21 @@ static void picks_free(picks_t *p) {
   memset(p, 0, sizeof(*p));
 }
 
-/** Records one checked row; the target is the first field of its parent. */
+/**
+ * Records one checked row; the target is the first component of its path.
+ *
+ * yame_ui_tree hands a callback the node's PATH, not the row it displays:
+ * a root is its first tab-separated field ("EPIC") and a child is that joined
+ * to its key with '/' ("EPIC/CGI.20220904.cm"). So the target ends at the
+ * first '/' or tab, whichever comes first. Cutting only at the tab -- which
+ * is what a root row needs, and all the old in-tree browser ever saw -- makes
+ * every target the whole path, and then nothing resolves and the fetch is
+ * silently empty.
+ */
 static void on_pick(void *ctx, const char *root, const char *key) {
   listctx_t *lc = ctx;
   char target[128];
-  const char *tab = strchr(root, '\t');
-  size_t len = tab ? (size_t)(tab - root) : strlen(root);
+  size_t len = strcspn(root, "/\t");
   if (len >= sizeof(target)) len = sizeof(target) - 1;
   memcpy(target, root, len);
   target[len] = '\0';
@@ -1231,7 +1250,7 @@ static void on_pick(void *ctx, const char *root, const char *key) {
 }
 
 /* Append one preformatted child line to an expansion. */
-static void kid_push(kycg_ui_kids_t *k, unsigned char style, const char *key,
+static void kid_push(yame_ui_kids_t *k, unsigned char style, const char *key,
                      const char *fmt, ...) {
   char **v = realloc(k->rows, (k->n + 1) * sizeof(char *));
   if (!v) return;
@@ -1268,7 +1287,7 @@ static void kid_push(kycg_ui_kids_t *k, unsigned char style, const char *key,
  */
 static void refresh_overview(listctx_t *lc);
 
-static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
+static void expand_target(void *ctx, const char *row, yame_ui_kids_t *out) {
   listctx_t *lc = ctx;
 
   char target[128];
@@ -1298,9 +1317,9 @@ static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
     uint64_t csz = coll_size_of(&c, c.comp_name);
     char setn[256];
     set_name_of(c.comp_name, setn, sizeof(setn));
-    kid_push(out, chave ? KYCG_ROW_HAVE : KYCG_ROW_REQUIRED, NULL,
+    kid_push(out, chave ? YAME_ROW_HAVE : YAME_ROW_REQUIRED, NULL,
              "%-22.22s %-32.32s %9s  %s", setn, c.comp_name,
-             csz ? kycg_ui_human(csz, hb, sizeof(hb)) : "",
+             csz ? yame_ui_human(csz, hb, sizeof(hb)) : "",
              chave ? "cached" : "always fetched");
   }
 
@@ -1316,9 +1335,9 @@ static void expand_target(void *ctx, const char *row, kycg_ui_kids_t *out) {
     int have = kycg_store_is_file(path);
 
     uint64_t sz = coll_size_of(&c, nm);
-    kid_push(out, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING, nm,
+    kid_push(out, have ? YAME_ROW_HAVE : YAME_ROW_MISSING, nm,
              "%-22.22s %-32.32s %9s  %s", setn, nm,
-             sz ? kycg_ui_human(sz, hb, sizeof(hb)) : "",
+             sz ? yame_ui_human(sz, hb, sizeof(hb)) : "",
              have ? "cached" : "-");
   }
 }
@@ -1349,7 +1368,7 @@ static void build_overview(const char *root, rows_t *rows) {
 
     /* Green means "something here is usable", dim means "nothing yet". How
      * much is in the count. */
-    rows_push(rows, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
+    rows_push(rows, have ? YAME_ROW_HAVE : YAME_ROW_MISSING,
               "%s\twhole genome\t%s\t%s\t%s",
               r->genome, commify(r->rows, rb, sizeof(rb)), c.source, cnt);
   }
@@ -1364,7 +1383,7 @@ static void build_overview(const char *root, rows_t *rows) {
     char rb[32], cnt[64];
     if (nt) snprintf(cnt, sizeof(cnt), "%" PRIu64 "/%" PRIu64, nc, nt);
     else    snprintf(cnt, sizeof(cnt), "%" PRIu64, nc);
-    rows_push(rows, nc ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
+    rows_push(rows, nc ? YAME_ROW_HAVE : YAME_ROW_MISSING,
               "%s\tarray\t%s\t%s\t%s",
               r->platform, commify(r->rows, rb, sizeof(rb)), c.source, cnt);
   }
@@ -1402,7 +1421,7 @@ static int fetch_picked(const picks_t *picks, const char *store) {
     fprintf(stderr, "kycg: this build has no network support.\n");
     return 1;
   }
-  kycg_ui_panel_open(4);
+  yame_ui_panel_open(4);
 
   tally_t t = {0};
   int rc = 0;
@@ -1454,20 +1473,20 @@ static int fetch_picked(const picks_t *picks, const char *store) {
     if (!n_todo) { t.n_skip += plan.n; plan_free(&plan); continue; }
 
     char hb[24];
-    kycg_ui_panel_line(0, "  %s%s%s  %s  %zu file(s)%s%s  %s  %s%s%s",
-                       kycg_ui_bold(), plan.target, kycg_ui_reset(),
-                       kycg_ui_bullet(), n_todo,
+    yame_ui_panel_line(0, "  %s%s%s  %s  %zu file(s)%s%s  %s  %s%s%s",
+                       yame_ui_bold(), plan.target, yame_ui_reset(),
+                       yame_ui_bullet(), n_todo,
                        bytes ? ", " : "",
-                       bytes ? kycg_ui_human(bytes, hb, sizeof(hb)) : "",
-                       kycg_ui_bullet(),
-                       kycg_ui_dim(), plan.dir, kycg_ui_reset());
+                       bytes ? yame_ui_human(bytes, hb, sizeof(hb)) : "",
+                       yame_ui_bullet(),
+                       yame_ui_dim(), plan.dir, yame_ui_reset());
 
-    if (!kycg_ui_panel_confirm(3, "Proceed?", 1)) {
-      kycg_ui_panel_line(3, "  %scancelled%s", kycg_ui_dim(), kycg_ui_reset());
+    if (!yame_ui_panel_confirm(3, "Proceed?", 1)) {
+      yame_ui_panel_line(3, "  %scancelled%s", yame_ui_dim(), yame_ui_reset());
       plan_free(&plan);
       continue;
     }
-    kycg_ui_panel_line(3, " ");
+    yame_ui_panel_line(3, " ");
 
     if (execute_plan(&plan, &t) != 0) rc = 1;
     plan_free(&plan);
@@ -1478,21 +1497,21 @@ static int fetch_picked(const picks_t *picks, const char *store) {
   if (t.n_got || t.n_skip || t.n_fail) {
     char hb[24], line[512];
     int o = snprintf(line, sizeof(line), "%" PRIu64 " fetched (%s)",
-                     t.n_got, kycg_ui_human(t.bytes_got, hb, sizeof(hb)));
+                     t.n_got, yame_ui_human(t.bytes_got, hb, sizeof(hb)));
     if (t.n_skip)
       o += snprintf(line + o, sizeof(line) - (size_t)o,
                     ", %" PRIu64 " already current", t.n_skip);
     if (t.n_fail)
       snprintf(line + o, sizeof(line) - (size_t)o,
                ", %" PRIu64 " FAILED", t.n_fail);
-    kycg_ui_panel_line(0, "  %s%s%s %s%s",
-                       t.n_fail ? kycg_ui_red() : kycg_ui_green(),
-                       t.n_fail ? kycg_ui_cross() : kycg_ui_check(),
-                       kycg_ui_reset(), line, kycg_ui_reset());
-    kycg_ui_panel_pause(3, "press any key to return to the browser");
+    yame_ui_panel_line(0, "  %s%s%s %s%s",
+                       t.n_fail ? yame_ui_red() : yame_ui_green(),
+                       t.n_fail ? yame_ui_cross() : yame_ui_check(),
+                       yame_ui_reset(), line, yame_ui_reset());
+    yame_ui_panel_pause(3, "press any key to return to the browser");
   }
 
-  kycg_ui_panel_close();
+  yame_ui_panel_close();
   return (rc || t.n_fail) ? 1 : 0;
 }
 
@@ -1500,12 +1519,18 @@ static int fetch_picked(const picks_t *picks, const char *store) {
 /**
  * `f` in the browser: fetch everything checked, drawing into the panel so the
  * catalogue stays on screen, then refresh the counts.
+ *
+ * Returns whether anything changed. yame_ui_tree reloads the children it is
+ * showing when a commit says 1; answering 0 after a fetch leaves the screen
+ * insisting that what just downloaded is still missing.
  */
-static void on_commit(void *ctx) {
+static int on_commit(void *ctx) {
   listctx_t *lc = ctx;
-  if (lc->picks.n) fetch_picked(&lc->picks, lc->root);
+  int fetched = lc->picks.n != 0;
+  if (fetched) fetch_picked(&lc->picks, lc->root);
   picks_free(&lc->picks);
   refresh_overview(lc);
+  return fetched;
 }
 
 /* ------------------------------------------------- provenance panel layout */
@@ -1540,9 +1565,9 @@ static void lay_free(info_lay_t *L) {
 
 static void lay_head(info_lay_t *L, const char *setn, const char *title) {
   char buf[1024];
-  snprintf(buf, sizeof(buf), "  %s%s%s  %s%s%s", kycg_ui_bold(), setn,
-           kycg_ui_reset(), kycg_ui_cyan(), title ? title : "",
-           kycg_ui_reset());
+  snprintf(buf, sizeof(buf), "  %s%s%s  %s%s%s", yame_ui_bold(), setn,
+           yame_ui_reset(), yame_ui_cyan(), title ? title : "",
+           yame_ui_reset());
   lay_push(L, buf);
   lay_push(L, "");
 }
@@ -1558,7 +1583,7 @@ static void lay_wrap(info_lay_t *L, const char *label, const char *text) {
   if (!text || !*text) return;
 
   const int gutter = label ? 14 : 2;   /* "  processing  " is the widest */
-  int avail = (L->cols > 0 ? L->cols : kycg_ui_cols()) - gutter - 2;
+  int avail = (L->cols > 0 ? L->cols : yame_ui_cols()) - gutter - 2;
   if (avail < 20) avail = 20;
 
   const char *p = text;
@@ -1579,8 +1604,8 @@ static void lay_wrap(info_lay_t *L, const char *label, const char *text) {
 
     char buf[1024], head[64];
     if (label && first)
-      snprintf(head, sizeof(head), "  %s%-*s%s", kycg_ui_dim(), gutter - 4,
-               label, kycg_ui_reset());
+      snprintf(head, sizeof(head), "  %s%-*s%s", yame_ui_dim(), gutter - 4,
+               label, yame_ui_reset());
     else
       snprintf(head, sizeof(head), "%*s", gutter, "");
 
@@ -1604,7 +1629,7 @@ static void lay_wrap(info_lay_t *L, const char *label, const char *text) {
  * table and the wrapping is a few hundred bytes of formatting.
  */
 void kycg_kb_detail(void *ctx, const char *root, const char *child_key,
-                    int cols, kycg_ui_detail_t *out) {
+                    int cols, yame_ui_detail_t *out) {
   (void)ctx;
   (void)root;                 /* the set name is enough to describe a set */
   out->rows = NULL;
@@ -1629,8 +1654,8 @@ void kycg_kb_detail(void *ctx, const char *root, const char *child_key,
     if (!k) {
       char buf[512];
       snprintf(buf, sizeof(buf), "  %s%s%s  %s(nothing recorded about this set)%s",
-               kycg_ui_bold(), setn, kycg_ui_reset(),
-               kycg_ui_dim(), kycg_ui_reset());
+               yame_ui_bold(), setn, yame_ui_reset(),
+               yame_ui_dim(), yame_ui_reset());
       lay_push(&L, buf);
     } else {
       lay_head(&L, setn, k->title);
@@ -1711,18 +1736,18 @@ static void pk_add_target(pickctx_t *p, const char *name, const char *kind,
   snprintf(buf, sizeof(buf), "%s\t%s\t%s\t%zu",
            name, kind, commify(rows, rb, sizeof(rb)), n_cached);
   /* Both strings must land before n advances: a NULL row reaches
-   * kycg_ui_tree(), whose strchr() on it would crash. */
+   * yame_ui_tree(), whose strchr() on it would crash. */
   char *row_s = strdup(buf), *name_s = strdup(name);
   if (!row_s || !name_s) { free(row_s); free(name_s); return; }
   p->rows[p->n] = row_s;
   p->names[p->n] = name_s;
   /* Dim a collection with nothing in it: it is listed so the user learns it
    * exists and could be fetched, not because it can be tested against. */
-  p->styles[p->n] = n_cached ? KYCG_ROW_HAVE : KYCG_ROW_MISSING;
+  p->styles[p->n] = n_cached ? YAME_ROW_HAVE : YAME_ROW_MISSING;
   ++p->n;
 }
 
-static void pk_expand(void *ctx, const char *row, kycg_ui_kids_t *out) {
+static void pk_expand(void *ctx, const char *row, yame_ui_kids_t *out) {
   (void)ctx;
 
   char target[128];
@@ -1738,7 +1763,7 @@ static void pk_expand(void *ctx, const char *row, kycg_ui_kids_t *out) {
   size_t n = 0;
   kycg_catalogue_t *cat = kycg_catalogue(target, NULL, &n);
   if (!cat) {
-    kid_push(out, KYCG_ROW_MISSING, NULL,
+    kid_push(out, YAME_ROW_MISSING, NULL,
                    "catalogue unavailable - try: kycg fetch %s", target);
     return;
   }
@@ -1751,7 +1776,7 @@ static void pk_expand(void *ctx, const char *row, kycg_ui_kids_t *out) {
     if (l >= sizeof(setn)) l = sizeof(setn) - 1;
     memcpy(setn, cat[i].name, l);
     setn[l] = '\0';
-    kid_push(out, cat[i].cached ? KYCG_ROW_HAVE : KYCG_ROW_MISSING, key,
+    kid_push(out, cat[i].cached ? YAME_ROW_HAVE : YAME_ROW_MISSING, key,
                    "%-22.22s %-32.32s %s", setn, cat[i].name,
                    cat[i].cached ? "cached" : "-");
   }
@@ -1772,11 +1797,15 @@ static void pk_accept(void *ctx, const char *root, const char *key) {
 }
 
 /** f in the picker: fetch whatever is checked but not yet here, then stay. */
-static void pk_commit_fetch(void *ctx) {
+/* Returns whether anything changed, so the tree reloads its children; see
+ * on_commit above for why 0 after a fetch shows a stale screen. */
+static int pk_commit_fetch(void *ctx) {
   pickctx_t *p = ctx;
-  if (p->n_chosen) kycg_fetch_specs(p->chosen, p->n_chosen, NULL);
+  int fetched = p->n_chosen != 0;
+  if (fetched) kycg_fetch_specs(p->chosen, p->n_chosen, NULL);
   for (size_t i = 0; i < p->n_chosen; ++i) free(p->chosen[i]);
   p->n_chosen = 0;
+  return fetched;
 }
 
 static void pk_free(pickctx_t *p) {
@@ -1821,7 +1850,7 @@ size_t kycg_pick_sets(const kycg_pick_target_t *targets, size_t n_targets,
   for (size_t i = 0; i < n_targets; ++i)
     pk_add_target(&pc, targets[i].name, targets[i].kind, targets[i].rows);
 
-  kycg_ui_tree_t spec = {0};
+  yame_ui_tree_t spec = {0};
   spec.title = title;
   spec.header = "target\tkind\trows\tcached_sets";
   spec.roots = pc.rows;
@@ -1855,7 +1884,7 @@ size_t kycg_pick_sets(const kycg_pick_target_t *targets, size_t n_targets,
     if (preselect && *preselect) spec.preselect = pk_preselect;
   }
 
-  int rc = kycg_ui_tree(&spec);
+  int rc = yame_ui_tree(&spec);
   if (rc < 0) { pk_free(&pc); return (size_t)-1; }
   if (rc != 2 || !pc.n_chosen) { pk_free(&pc); return 0; }
 
@@ -1985,7 +2014,7 @@ size_t kycg_resolve_or_offer(const char *spec, const char *verb, char ***out) {
     return 0;
   }
 
-  if (!kycg_ui_interactive()) {
+  if (!yame_ui_interactive()) {
     fprintf(stderr,
             "kycg %s: '%s' is published for %s but not in the store.\n"
             "  fetch it with:  kycg fetch -f %s:%s\n",
@@ -2063,12 +2092,12 @@ static int on_list_key(void *ctx, char key, const char *root,
   char buf[4096];
   snprintf(buf, sizeof(buf), "%s", lc->root);
 
-  kycg_ui_panel_open(3);
-  kycg_ui_panel_line(0, "  %s%s%s", kycg_ui_dim(),
+  yame_ui_panel_open(3);
+  yame_ui_panel_line(0, "  %s%s%s", yame_ui_dim(),
                      "store directory (enter to accept, esc to cancel)",
-                     kycg_ui_reset());
-  int ok = kycg_ui_panel_ask(1, "store:", buf, sizeof(buf));
-  kycg_ui_panel_close();
+                     yame_ui_reset());
+  int ok = yame_ui_panel_ask(1, "store:", buf, sizeof(buf));
+  yame_ui_panel_close();
 
   if (!ok || !buf[0] || strcmp(buf, lc->root) == 0) return 0;
 
@@ -2254,9 +2283,9 @@ static int browse_catalogue(int argc, char *argv[]) {
           snprintf(path, sizeof(path), "%s/%s", c.dir, nm);
           int have = kycg_store_is_file(path);
           uint64_t sz = coll_size_of(&c, nm);
-          rows_push(&rows, have ? KYCG_ROW_HAVE : KYCG_ROW_MISSING,
+          rows_push(&rows, have ? YAME_ROW_HAVE : YAME_ROW_MISSING,
                     "%s\t%s\t%s\t%s", setn, nm,
-                    sz ? kycg_ui_human(sz, hb, sizeof(hb)) : "-",
+                    sz ? yame_ui_human(sz, hb, sizeof(hb)) : "-",
                     have ? "yes" : "no");
         }
         rows_emit(&rows, title, "set\tfile\tsize\tcached");
@@ -2288,7 +2317,7 @@ static int browse_catalogue(int argc, char *argv[]) {
     lc.title_sz = sizeof(title);
     lc.only = open_only;
 
-    kycg_ui_tree_t spec = {0};
+    yame_ui_tree_t spec = {0};
     spec.title = title;
     spec.header = "target\tkind\trows\tsource\tcached_sets";
     spec.roots = rows.a;
@@ -2311,7 +2340,7 @@ static int browse_catalogue(int argc, char *argv[]) {
       spec.preselect = on_preselect;
     }
 
-    int rc = kycg_ui_tree(&spec);
+    int rc = yame_ui_tree(&spec);
 
     if (rc >= 0) {          /* the widget ran; plain output is not wanted */
       picks_free(&lc.picks);

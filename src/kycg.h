@@ -16,7 +16,7 @@
 #ifndef _KYCG_H
 #define _KYCG_H
 
-#include "ui.h"
+#include "yame_ui.h"
 #include "assets.h"
 
 #define KYCG_VERSION "2.0.0"
@@ -25,11 +25,11 @@
  * Shared styling for help text. Each expands to an empty string off a TTY (see
  * ui.c), so a redirected --help is byte-identical to plain text.
  */
-#define KYCG_H_TITLE kycg_ui_bold()
-#define KYCG_H_KEY   kycg_ui_cyan()
-#define KYCG_H_NOTE  kycg_ui_dim()
-#define KYCG_H_WARN  kycg_ui_yellow()
-#define KYCG_H_OFF   kycg_ui_reset()
+#define KYCG_H_TITLE yame_ui_bold()
+#define KYCG_H_KEY   yame_ui_cyan()
+#define KYCG_H_NOTE  yame_ui_dim()
+#define KYCG_H_WARN  yame_ui_yellow()
+#define KYCG_H_OFF   yame_ui_reset()
 
 /**
  * Resolve a knowledgebase spec to file paths in the store.
@@ -88,11 +88,11 @@ void kycg_catalogue_free(kycg_catalogue_t *v, size_t n);
  * free to drift, which is the failure this project exists to avoid.
  *
  * kycg_kb_detail matches
- * kycg_ui_detail_fn and backs the `i` pane, which stays open while the cursor
+ * yame_ui_detail_fn and backs the `i` pane, which stays open while the cursor
  * moves.
  */
 void kycg_kb_detail(void *ctx, const char *root, const char *child_key,
-                    int cols, kycg_ui_detail_t *out);
+                    int cols, yame_ui_detail_t *out);
 
 /* Subcommand entry points, dispatched from main() on argv[1]. */
 /**

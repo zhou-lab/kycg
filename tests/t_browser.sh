@@ -81,18 +81,12 @@ check_lacks "the annotate picker offers no genome" "mm39" "$out"
 out=$(TERM=dumb drive "$KYCG fetch hg38" 'q'); rc=$?
 check_lacks "TERM=dumb draws no alternate screen" "$ESC[?1049h" "$out"
 
-## ---- 7. NO_COLOR strips ink, not the interface -------------------------- ##
-## NO_COLOR asks for no colour, not for no widget: the tree still runs (the
-## current row is marked with a glyph, not colour), so a NO_COLOR user can
-## still choose. What must vanish is the colour, not the browser.
-out=$(NO_COLOR=1 drive "$KYCG fetch" "$DOWN" 'q'); rc=$?
-check "the tree runs under NO_COLOR" 0 "$rc"
-check_has "and still draws the tree" "row 1 of" "$out"
-## No SGR colour/style codes (ESC[1m, ESC[36m, ...). The alternate-screen and
-## cursor-control escapes are not colour and must still be there.
-if printf '%s' "$out" | grep -qE "$ESC"'\[(0?[123]|[349][0-9])m'; then
-  echo "  FAIL NO_COLOR still emitted a colour SGR sequence"; fails=$((fails + 1))
-fi
-check_has "the widget still draws (cursor control present)" "$ESC[2J" "$out"
+## ---- 7. NO_COLOR is not a knob ------------------------------------------ ##
+## There was a block here asserting that NO_COLOR strips the colour and leaves
+## the widget. It went when the UI became YAME's: the browser is coloured
+## whenever it draws, and a reader who wants plain text has `-l`, `-y` and a
+## pipe, all of which bypass the widget entirely. Nothing in kycg reads
+## NO_COLOR any more, so there is nothing here to assert -- TERM=dumb and a
+## redirected run, above and throughout, are the fallbacks that still hold.
 
 done_testing

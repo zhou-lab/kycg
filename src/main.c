@@ -27,7 +27,7 @@
 #include "kycg.h"
 #include "registry.h"
 #include "store.h"
-#include "ui.h"
+#include "yame_ui.h"
 #include "yame_version.h"
 #include "assets.h"    /* yame_assets_have_curl */
 
@@ -41,14 +41,15 @@
  */
 /*
  * The help text is styled, but only when someone is looking: every colour
- * below comes from ui.c, which returns an empty string off a TTY, under
- * NO_COLOR, or on a dumb terminal. So `kycg 2>&1 | less` stays readable and
- * the bytes are identical to what they were before any of this.
+ * below comes from YAME's ui, which returns an empty string off a TTY or on a
+ * dumb terminal. So `kycg 2>&1 | less` stays readable and the bytes are
+ * identical to what they were before any of this. NO_COLOR is not consulted --
+ * see the note at the end of tests/t_browser.sh.
  */
-#define H_TITLE  kycg_ui_bold()
-#define H_KEY    kycg_ui_cyan()
-#define H_NOTE   kycg_ui_dim()
-#define H_OFF    kycg_ui_reset()
+#define H_TITLE  yame_ui_bold()
+#define H_KEY    yame_ui_cyan()
+#define H_NOTE   yame_ui_dim()
+#define H_OFF    yame_ui_reset()
 
 /**
  * The two facts worth stating right under the title: the backend this build is
