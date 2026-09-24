@@ -96,6 +96,26 @@ out=$("$KYCG" test -Z -m chrom.cm query.cg 2>&1 >/dev/null); rc=$?
 awk -v rc="$rc" 'BEGIN{exit !(rc != 0)}' ||
   { echo "  FAIL an unknown option was accepted"; fails=$((fails + 1)); }
 
+## ---- -m that names nothing: two mistakes, two answers ------------------- ##
+## Both come out of kycg_resolve_or_offer, and which one a user gets turns on
+## whether the name LOOKS like a path. The distinction is not cosmetic: a
+## mistyped filename answered with "run kycg fetch" sends someone to the
+## catalogue to hunt for a file that only ever existed on their own disk, and
+## a mistyped SET name answered with "no such file" hides that the catalogue
+## is exactly where to look. stdin is redirected, so neither can open a
+## browser instead of answering.
+out=$("$KYCG" test -m ./no_such_file.cm query.cg </dev/null 2>&1 >/dev/null); rc=$?
+check "a path that is not there exits 1" 1 "$rc"
+check_has "and is reported as a missing file" "no such file" "$out"
+check_has "and the path is quoted back" "no_such_file.cm" "$out"
+## A bare word is a store name, so the answer points at the catalogue.
+out=$("$KYCG" test -m NotAKnowledgebase query.cg </dev/null 2>&1 >/dev/null); rc=$?
+check "a name that matches nothing exits 1" 1 "$rc"
+check_has "and says nothing matches it" "nothing in the store matches" "$out"
+check_has "and says where to look" "kycg fetch" "$out"
+## The two answers must not be interchangeable.
+check_lacks "a bare name is not reported as a file" "no such file" "$out"
+
 ## ---- several queries in one call --------------------------------------- ##
 awk 'BEGIN{srand(23); for(i=0;i<300;i++) print (rand()<0.5)?1:0}' > q2.txt
 pack_binary q2.txt query2.cg

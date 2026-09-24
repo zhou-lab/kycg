@@ -81,6 +81,23 @@ check_lacks "the annotate picker offers no genome" "mm39" "$out"
 out=$(TERM=dumb drive "$KYCG fetch hg38" 'q'); rc=$?
 check_lacks "TERM=dumb draws no alternate screen" "$ESC[?1049h" "$out"
 
+## ---- 6b. d changes the store without leaving the browser ---------------- ##
+## The one key that edits state rather than the selection. Someone who opened
+## the browser against the wrong store should not have to quit, export
+## YAME_DATA_HOME and start again -- and the counts have to follow, or the
+## screen keeps describing the store they just left. The field arrives
+## prefilled with the current root, so the drive clears it before typing.
+mkdir -p "$PWD/store_two"
+DEL=$(printf '\177')
+clear80=$(printf '%0.s\177' $(seq 1 80))
+out=$(PTY_SETTLE=3 PTY_BEAT=1.2 PTY_TAIL=4 \
+      drive "$KYCG fetch" 'd' "$clear80" "$PWD/store_two" '\r' 'q'); rc=$?
+check "the browser survives a store change" 0 "$rc"
+check_has "the title names the store it moved to" "store_two" "$out"
+## The rows are rebuilt against the new root, not left as they were: an empty
+## store has every target at 0 cached.
+check_has "and the catalogue is still drawn" "row 1 of" "$out"
+
 ## ---- 7. NO_COLOR is not a knob ------------------------------------------ ##
 ## There was a block here asserting that NO_COLOR strips the colour and leaves
 ## the widget. It went when the UI became YAME's: the browser is coloured

@@ -1102,23 +1102,6 @@ int kycg_main_fetch(int argc, char *argv[]) {
 /* ------------------------------------------------ the catalogue browser */
 
 
-static int browse_usage(void) {
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Usage: kycg fetch [options] [target ...]\n");
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Browse knowledgebase collections and fetch from them.\n");
-  fprintf(stderr, "On a terminal this is an interactive tree: arrows move,\n");
-  fprintf(stderr, "right unfolds a target, space checks a set, f fetches the\n");
-  fprintf(stderr, "checked ones, q quits. Redirect stdout for plain TSV.\n");
-  fprintf(stderr, "With a target named, lists the individual sets it carries.\n");
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Options:\n");
-  fprintf(stderr, "    -d DIR    store directory [$YAME_DATA_HOME, else the shared store]\n");
-  fprintf(stderr, "    -h        this help\n");
-  fprintf(stderr, "\n");
-  return 1;
-}
-
 /*
  * `kycg fetch` output is buffered rather than printed directly, so it can be
  * handed to the in-place browser when someone is watching and written as plain
@@ -2084,8 +2067,13 @@ static int browse_catalogue(int argc, char *argv[]) {
   while ((c = getopt(argc, argv, "d:h")) >= 0) {
     switch (c) {
     case 'd': store = optarg; break;
-    case 'h': browse_usage(); return 0;
-    default: return browse_usage();
+    /* No -h arm and no usage text: kycg_main_fetch builds this argv itself --
+     * "fetch", an optional -d, then target names -- after its own getopt has
+     * taken the real options and rejected a bad one. Neither `-h` nor an
+     * unknown flag can reach here, so a second copy of the help was only ever
+     * a copy to drift. It had: it was plain where usage() is styled and
+     * listed fewer options. */
+    default: return 1;
     }
   }
 

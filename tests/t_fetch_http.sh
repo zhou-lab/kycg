@@ -123,6 +123,25 @@ check "-r still verifies" "$SETSHA" "$(sha_of "$dest")"
 ## report it as already current the way case 2 does.
 check_lacks "-r re-fetches rather than skipping" "already current" "$out"
 
+## ---- 3b. stale .part files are swept, live ones are not ----------------- ##
+## A download lands on a per-pid ".part" and is renamed once it verifies, so a
+## killed fetch leaves one behind. The next fetch into that directory clears
+## the ones older than a day and leaves anything newer alone -- another
+## process may be part way through writing it, and deleting that would turn a
+## concurrent fetch into a corrupt file. mtime is the only thing separating
+## the two cases, so the test sets it rather than waiting a day.
+partdir="$YAME_DATA_HOME/EPIC/KYCG"
+: > "$partdir/stale.part"
+: > "$partdir/fresh.part"
+touch -d '3 days ago' "$partdir/stale.part" 2>/dev/null ||
+  touch -t "$(date -v-3d +%Y%m%d%H%M 2>/dev/null)" "$partdir/stale.part"
+"$KYCG" fetch -f -r EPIC:Blacklist </dev/null >/dev/null 2>&1
+check "a day-old .part is swept" 0 \
+      "$([ -e "$partdir/stale.part" ] && echo 1 || echo 0)"
+check "a .part being written now is left alone" 1 \
+      "$([ -e "$partdir/fresh.part" ] && echo 1 || echo 0)"
+/bin/rm -f "$partdir/fresh.part"
+
 ## ---- 4. the catalogue counts what is cached, offline -------------------- ##
 ## No mirror needed: this is read from the store and the compiled set counts.
 cat=$(YAME_ASSETS_MIRROR="http://127.0.0.1:1" "$KYCG" fetch </dev/null 2>/dev/null)
@@ -297,6 +316,34 @@ if have_pty; then
     check_lacks "a mismatched query is offered nothing" "Blacklist" "$out"
   else
     echo "  skip: could not read the row count for the picker case"
+  fi
+
+  ## ---- 11c. -m names a set that is published but not here -------------- ##
+  ## The interactive half of case 10b. Off a terminal that is an error naming
+  ## the fetch command; on one, kycg opens the catalogue with exactly that set
+  ## checked, and the analysis carries on afterwards rather than making the
+  ## user retype it. The proof it carried on is the test RESULT at the end --
+  ## the spec is re-resolved after the browser closes, so a report naming the
+  ## set can only mean the fetch landed and the resolve then succeeded.
+  ## Priming matters: "published but not here" is a claim about a collection
+  ## kycg can see, so the collection is fetched first and only the set removed.
+  echo ok > mode
+  /bin/rm -rf "$YAME_DATA_HOME"
+  "$KYCG" fetch -f EPIC:Blacklist </dev/null >/dev/null 2>&1
+  nrow=$("$YAME" info "$dest" 2>/dev/null | tail -1 | cut -f4)
+  if [ -n "$nrow" ] && [ "$nrow" -gt 0 ] 2>/dev/null; then
+    awk -v n="$nrow" 'BEGIN{for(i=0;i<n;i++) print (i%11==0)}' > pre.txt
+    pack_binary pre.txt pre.cg
+    /bin/rm -f "$dest"                 # the set goes, the collection stays
+    out=$(PTY_SETTLE=4 PTY_BEAT=2 PTY_TAIL=6 \
+          pty_drive "$KYCG test -m EPIC:Blacklist pre.cg" 'f' 'y' ' ' 'q'); rc=$?
+    check_has "kycg says it is opening the catalogue" "Opening the catalogue" "$out"
+    check "the offered set was fetched" 1 \
+          "$([ -f "$dest" ] && echo 1 || echo 0)"
+    check "and the test then ran" 0 "$rc"
+    check_has "and the result names the set" "Blacklist" "$out"
+  else
+    echo "  skip: could not read the row count for the prefill case"
   fi
 
   ## ---- 12. regression: a checked row that carries no name -------------- ##
