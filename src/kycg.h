@@ -19,7 +19,7 @@
 #include "yame_ui.h"
 #include "assets.h"
 
-#define KYCG_VERSION "2.0.0"
+#define KYCG_VERSION "2.0.1"
 
 /*
  * Shared styling for help text. Each expands to an empty string off a TTY (see
