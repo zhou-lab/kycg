@@ -146,9 +146,10 @@ would produce a full table of confident, wrong answers.
   missing `-m` an error rather than a wait.
 - `estimate` (= log2 odds ratio) is not always finite. Zero overlap makes the
   odds ratio 0, and log2 clamps to a sentinel near -1022 (log2 of DBL_MIN);
-  infinite odds ratio lands near +1022. On a whole-genome query most sets have
-  no overlap, so most rows carry the sentinel — filter `abs(estimate) < 1000`
-  (or a tighter bound) before plotting `estimate`, as KYCG_plotVolcano does.
+  infinite odds ratio lands near +1024 (log2 of DBL_MAX). On a whole-genome
+  query most sets have no overlap, so most rows carry the sentinel — filter
+  `abs(estimate) < 1000` (or a tighter bound) before plotting `estimate`, as
+  KYCG_plotVolcano does.
 - Downloading happens in `fetch` and nowhere else.
 - Tags are per file, so there is no global tag to override; `-t` is gone.
 

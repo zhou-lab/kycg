@@ -443,7 +443,7 @@ cinderplot 'v.tsv
       It is <code class="inl">log2</code> of the odds ratio, and zero overlap makes that
       <code class="inl">log2(0)</code>, clamped to a sentinel near
       <code class="inl">-1022</code> (infinite odds ratio lands near
-      <code class="inl">+1022</code>). On a whole-genome query most sets have no overlap,
+      <code class="inl">+1024</code>). On a whole-genome query most sets have no overlap,
       so most rows carry it — filter <code class="inl">abs(estimate) &lt; 1000</code> before
       plotting, exactly as <code class="inl">KYCG_plotVolcano</code> does.</div>
     <div class="note"><code class="inl">neglog10_fdr</code> is precomputed because cinderplot
