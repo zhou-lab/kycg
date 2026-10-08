@@ -543,7 +543,7 @@ static void plan_check_present(plan_t *p, int force) {
 
   for (size_t i = 0; i < p->n; ++i) {
     plan_item_t *it = &p->a[i];
-    char path[4600];
+    char path[sizeof it->destdir + sizeof it->name]; /* fits "%s/%s" */
     snprintf(path, sizeof(path), "%s/%s",
              it->destdir[0] ? it->destdir : p->dir, it->name);
     if (!kycg_store_is_file(path)) continue;
@@ -761,7 +761,7 @@ static int execute_plan(const plan_t *plan, tally_t *t) {
 
     /* Most items land in plan->dir; the array probe ordering lands one level
      * up, at the platform parent (see the destdir on its plan item). */
-    char path[4600];
+    char path[sizeof it->destdir + sizeof it->name]; /* fits "%s/%s" */
     snprintf(path, sizeof(path), "%s/%s",
              it->destdir[0] ? it->destdir : plan->dir, it->name);
 
@@ -807,7 +807,7 @@ static int execute_plan(const plan_t *plan, tally_t *t) {
     FILE *fp = fopen(sp, "wb");
     if (fp) {
       for (size_t i = 0; i < plan->n; ++i) {
-        char path[4600], sha[65];
+        char path[sizeof plan->dir + sizeof plan->a[i].name], sha[65];
         snprintf(path, sizeof(path), "%s/%s", plan->dir, plan->a[i].name);
         if (kycg_store_is_file(path) && kycg_sha256_file(path, sha) == 0)
           fprintf(fp, "%s  %s\n", sha, plan->a[i].name);
