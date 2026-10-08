@@ -1,5 +1,5 @@
 {% set name = "kycg" %}
-{% set version = "2.0.1" %}
+{% set version = "2.1.0" %}
 
 package:
   name: {{ name }}
@@ -76,7 +76,9 @@ about:
     signatures — reporting a hypergeometric tail probability in log space, six
     effect-size coefficients, and a group-stratified Benjamini-Hochberg false
     discovery rate. Results agree with the R package to floating-point
-    tolerance.
+    tolerance. With `-c` it scores a continuous query (a beta value or score
+    per CpG) instead, with a GSEA-style set enrichment score and a pooled
+    permutation null, as knowYourCG's testEnrichmentSEA does.
 
     Its other half is `kycg fetch`, a browsable catalogue of the knowledgebase
     compendium for human and mouse whole-genome CpG references and seven
