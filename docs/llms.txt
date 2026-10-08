@@ -89,6 +89,7 @@ it.
 
   -m SPEC  path or target[:sets]; repeatable [required]
   -a STR   alternative: greater|less|two.sided [greater]
+  -c       continuous query: set enrichment score, as GSEA
   -G       correct FDR globally instead of within knowledgebase
   -s FILE  sample names for the query
   -M       load the knowledgebase into memory
@@ -107,6 +108,20 @@ Columns:
 
 The first eight are `yame summary`'s columns renamed; the rest kycg adds.
 `estimate` is Log2OddsRatio at full precision.
+
+`-c` takes a continuous query instead: one value per row, format 3 (scored
+as beta, uncovered rows missing) or format 4 (negative is missing). Each set
+is scored by a GSEA-style running sum over the rows sorted by value, as
+knowYourCG's testEnrichmentSEA does. `estimate` is the enrichment score in
+[-1, 1]: positive when the set crowds the LARGE values, negative when it
+crowds the small ones (knowYourCG >= 1.9.3; 1.8.x had the opposite sign).
+`log10_p` comes from 1000 permutations, both tails pooled into one null so
+negating the query never changes it, with a fitted normal past the last
+draw. The null is seeded from (rows, set size): reruns are identical. The
+row has the same columns; nU = nQ = rows with a value, overlap = the set's
+rows with a value, beta = their mean value, cf_* = NA. -a does not apply.
+
+  kycg test -c -m mm10:ChromHMM beta.cg
 
 Pool knowledgebases into ONE invocation: `-m mm10` against 30 sets decompresses
 the query once, 30 processes decompress it 30 times.
@@ -170,7 +185,9 @@ known set of knowledgebases.
 `make test` checks the hypergeometric tail and BH against R's `phyper()` /
 `p.adjust()` across small, array-scale, whole-genome and deep-tail regimes
 (worst relative error 2.6e-16). `tests/validate_vs_R.R` re-derives every column
-of a real run with the same calls knowYourCG makes. The tail uses Loader's
+of a real run with the same calls knowYourCG makes. `tests/validate_sea_vs_R.R`
+runs `-c` and testEnrichmentSEA on the same data: estimates agree to 4e-11,
+p-values in rank (R permutes 100 times, kycg 1000). The tail uses Loader's
 saddle-point expansion (as R's `dhyper()` does); BH is applied in log space,
 since a linear-space BH would assign FDR 0 to every underflowed row.
 

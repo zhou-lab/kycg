@@ -64,6 +64,7 @@
 #include "kycg.h"
 #include "args.h"
 #include "enrich.h"
+#include "sea.h"
 #include "store.h"
 #include "registry.h"
 #include "yame_ui.h"
@@ -82,6 +83,9 @@ typedef struct {
   int in_memory;
   int no_header;
   int full_name;
+  int continuous;    /* -c: set enrichment score of a continuous query */
+  int alt_given;
+  kycg_sea_cache_t nulls;
 } test_conf_t;
 
 /**
@@ -133,6 +137,7 @@ static int usage(void) {
   struct { const char *f, *d; } opt[] = {
     {"-m SPEC", "path or target[:sets]; repeatable [required]"},
     {"-a STR",  "alternative: greater|less|two.sided [greater]"},
+    {"-c",      "continuous query: set enrichment score, as GSEA"},
     {"-G",      "correct FDR globally instead of within knowledgebase"},
     {"-s FILE", "sample names for the query"},
     {"-M",      "load the knowledgebase into memory"},
@@ -144,6 +149,13 @@ static int usage(void) {
   for (size_t i = 0; i < sizeof(opt)/sizeof(opt[0]); ++i)
     fprintf(o, "    %s%-8s%s %s\n", KYCG_H_KEY, opt[i].f, KYCG_H_OFF, opt[i].d);
   fprintf(o, "\n");
+
+  fprintf(o, "    %sWith -c the query is a value per row (format 3 beta, or format 4),%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %sand each set is scored by where its rows fall in that order:%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %sestimate > 0 at the large values, < 0 at the small ones.%s\n\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
 
   fprintf(o, "    %sOmit -m on a terminal to pick from the store, filtered to the%s\n",
           KYCG_H_NOTE, KYCG_H_OFF);
@@ -236,10 +248,62 @@ static void results_push(results_t *v, kycg_result_t r) {
  * several categorical states, each of which is its own knowledgebase record
  * and so its own test.
  */
+/**
+ * The -c form of run_pair: walk every set the mask record carries against the
+ * sorted query and score each against its permutation null. The row is the
+ * same shape as a count test's, so the table reads the same either way: nU
+ * and nQ are the rows with a value, nD the set, overlap the set's rows with a
+ * value, beta their mean value. The effect-size columns do not apply.
+ */
+static void run_pair_sea(results_t *v, const kycg_sea_query_t *q,
+                         cdata_t *c_mask, const char *sq, const char *sm,
+                         const char *fname_qry, const char *fname_mask,
+                         test_conf_t *conf) {
+  kycg_sea_set_t *s = NULL;
+  size_t ns = kycg_sea_walk(q, c_mask, &s);
+  if (ns == (size_t)-1) {
+    wzfatal("kycg test -c: knowledgebase '%s' record '%s' is format %c. A "
+            "set must be format 0, 1, 2 or 6.\n", fname_mask, sm, c_mask->fmt);
+  }
+
+  for (size_t i = 0; i < ns; ++i) {
+    kycg_result_t r = {0};
+    r.query_file = strdup(fname_qry);
+    r.query      = strdup(sq);
+    r.db_file    = strdup(fname_mask);
+    r.db         = strdup(s[i].name ? s[i].name : sm);
+    r.group      = strdup(conf->by_group ? fname_mask : "(global)");
+
+    r.nU  = q->n;
+    r.nQ  = q->n;
+    r.nD  = s[i].nD;
+    r.nDQ = s[i].k;
+
+    /* No member has a value, or every row with a value is a member: there is
+     * no walk. knowYourCG reports such a set as estimate 0, p-value 1. */
+    if (!s[i].k || s[i].k >= q->n) {
+      r.estimate = 0;
+      r.log10_p  = 0;
+    } else {
+      r.estimate = kycg_sea_estimate(s[i].es);
+      const kycg_sea_null_t *nl = kycg_sea_cache_get(&conf->nulls, q->n, s[i].k);
+      r.log10_p = kycg_sea_log10_p(nl, fabs(r.estimate));
+    }
+
+    r.cf_jaccard = r.cf_mcc = r.cf_overlap = r.cf_npmi = r.cf_dice = NAN;
+    r.beta  = s[i].k ? s[i].sum / (double)s[i].k : NAN;
+    r.depth = NAN;
+    r.log10_fdr = NAN;
+    results_push(v, r);
+    free(s[i].name);
+  }
+  free(s);
+}
+
 static void run_pair(results_t *v, cdata_t *c_qry, cdata_t *c_mask,
                      const char *sq, const char *sm,
                      const char *fname_qry, const char *fname_mask,
-                     test_conf_t *conf) {
+                     test_conf_t *conf, const kycg_sea_query_t *q) {
 
   /* The only row-space guard kycg offers. YAME's per-format handlers make the
    * same comparison, but they report it from deep in the library; surfacing it
@@ -250,6 +314,11 @@ static void run_pair(results_t *v, cdata_t *c_qry, cdata_t *c_mask,
             " rows.\nThese files index different reference row lists and "
             "cannot be compared.\n",
             fname_qry, sq, c_qry->n, fname_mask, sm, c_mask->n);
+  }
+
+  if (conf->continuous) {
+    run_pair_sea(v, q, c_mask, sq, sm, fname_qry, fname_mask, conf);
+    return;
   }
 
   /* summarize1 takes non-const char* but does not modify the names. */
@@ -311,8 +380,8 @@ int main_test(int argc, char *argv[]) {
 
   int c;
   /* Options may follow the target; BSD getopt would stop at it. */
-  kycg_permute_args(argc, argv, "m:a:Gs:MFHo:h");
-  while ((c = getopt(argc, argv, "m:a:Gs:MFHo:h")) >= 0) {
+  kycg_permute_args(argc, argv, "m:a:cGs:MFHo:h");
+  while ((c = getopt(argc, argv, "m:a:cGs:MFHo:h")) >= 0) {
     switch (c) {
     case 'm': {
       /* A spec, not just a path: "mm10:CGI" names a set the same way fetch
@@ -336,7 +405,9 @@ int main_test(int argc, char *argv[]) {
     case 'M': conf.in_memory = 1; break;
     case 'F': conf.full_name = 1; break;
     case 'H': conf.no_header = 1; break;
+    case 'c': conf.continuous = 1; break;
     case 'a':
+      conf.alt_given = 1;
       if (strcmp(optarg, "greater") == 0)        conf.alt = KYCG_ALT_GREATER;
       else if (strcmp(optarg, "less") == 0)      conf.alt = KYCG_ALT_LESS;
       else if (strcmp(optarg, "two.sided") == 0) conf.alt = KYCG_ALT_TWO_SIDED;
@@ -351,6 +422,11 @@ int main_test(int argc, char *argv[]) {
     usage();
     wzfatal("Please supply a query file.\n");
   }
+  /* A set enrichment score is already one-sided, toward whichever end the set
+   * crowds; there is no alternative to choose. */
+  if (conf.continuous && conf.alt_given)
+    wzfatal("kycg test: -a does not apply with -c. The estimate's sign says "
+            "which end of the query the set crowds.\n");
   /* No -m: offer the store in the same tree `kycg fetch` uses. Only on a
    * terminal -- a pipeline that forgot -m must fail loudly rather than wait
    * for an answer nobody is there to give. */
@@ -486,6 +562,14 @@ int main_test(int argc, char *argv[]) {
 
       prepare_mask(&c_qry);
 
+      kycg_sea_query_t q = {0};
+      if (conf.continuous && kycg_sea_query_init(&q, &c_qry) != 0) {
+        wzfatal("kycg test -c: query '%s' record '%s' is format %c. A "
+                "continuous query must be format 3 (M/U counts, scored as "
+                "beta) or format 4 (one value per row).\n",
+                fname_qry, sq.s, c_qry.fmt);
+      }
+
       /* Every knowledgebase, against this one decompressed query record. */
       for (size_t mi = 0; mi < n_masks; ++mi) {
         mask_src_t *ms = &masks[mi];
@@ -498,7 +582,7 @@ int main_test(int argc, char *argv[]) {
             else ksprintf(&sm, "%" PRIu64, km + 1);
 
             run_pair(&v, &c_qry, &ms->mem[km], sq.s, sm.s,
-                     qry_disp, ms->disp, &conf);
+                     qry_disp, ms->disp, &conf, &q);
             free(sm.s);
           }
         } else {                          /* re-scan the seekable file */
@@ -519,7 +603,7 @@ int main_test(int argc, char *argv[]) {
             else ksprintf(&sm, "%" PRIu64, km + 1);
 
             run_pair(&v, &c_qry, &c_mask, sq.s, sm.s,
-                     qry_disp, ms->disp, &conf);
+                     qry_disp, ms->disp, &conf, &q);
             free(sm.s);
             free_cdata(&c_mask);
           }
@@ -537,6 +621,7 @@ int main_test(int argc, char *argv[]) {
         }
       }
 
+      kycg_sea_query_free(&q);
       free(sq.s);
       free_cdata(&c_qry);
       c_qry.s = NULL;
@@ -577,6 +662,7 @@ int main_test(int argc, char *argv[]) {
     free(masks[i].fname);
   }
   free(masks);
+  kycg_sea_cache_free(&conf.nulls);
   free(conf.fname_out);
   free(conf.fname_snames);
 

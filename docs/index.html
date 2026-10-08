@@ -363,6 +363,16 @@ Knowledgebases for 21,867,837 rows -- space to choose, t to test
       stdout falls back to plain TSV instead.</p>
     <div class="note">Testing against 30 knowledgebases in 30 processes decompresses the
       query 30 times. Pooling them decompresses it <b>once</b>.</div>
+    <p style="margin-top:11px"><code class="inl">-c</code> takes a <b>continuous</b> query
+      instead — a beta value or a score per row (format 3 or 4) — and asks whether each set
+      crowds its large or its small values, with a GSEA-style running sum, as knowYourCG's
+      <code class="inl">testEnrichmentSEA</code> does:</p>
+    <pre data-norun="needs a format 3 or 4 query"><code>kycg <span class="sub">test</span> -c -m mm10:ChromHMM beta.cg &gt; res.tsv</code></pre>
+    <p style="margin-top:11px"><code class="inl">estimate</code> is then the enrichment score
+      in [-1,&nbsp;1]: <b>positive</b> when the set sits at the large values, negative at the
+      small ones. That is GSEA's sign, and knowYourCG's from 1.9.3; 1.8.x had the reverse.
+      The p-value comes from 1000 permutations with both tails pooled, so negating the query
+      negates the estimate and leaves the p-value alone.</p>
   </section>
 
   <section class="card">
@@ -652,7 +662,7 @@ shasum -a 256 -c --ignore-missing SHA256SUMS</code></pre>
       <h3>Inference &amp; effect size</h3>
       <div class="scroll"><table class="t">
         <tr><th>Column</th><th>Meaning</th></tr>
-        <tr><td><code>estimate</code></td><td>log2 odds ratio, full precision</td></tr>
+        <tr><td><code>estimate</code></td><td>log2 odds ratio, full precision; under <code>-c</code>, the enrichment score (+ = large values)</td></tr>
         <tr><td><code>log10_p</code></td><td><b>the p-value.</b> One-sided hypergeometric tail</td></tr>
         <tr><td><code>neglog10_fdr</code></td><td><b>the FDR.</b> BH within stratum</td></tr>
         <tr><td><code>p_value</code>, <code>fdr</code></td><td>convenience only — these underflow to 0</td></tr>
@@ -680,7 +690,7 @@ ok    test_hypergeo        <span class="cm"># worst relative error 2.6e-16</span
 ok    test_enrich
 ...
 ok    t_usage
-<span class="sub">15 passed, 0 failed</span></code></pre>
+<span class="sub">17 passed, 0 failed</span></code></pre>
       <p style="font-size:.79rem;color:var(--muted);margin:8px 0 0">Across four regimes: small,
         array-scale (486K), whole-genome (29M), and the deep tail at
         <code class="inl">log10 p ≈ -584141</code>.</p>

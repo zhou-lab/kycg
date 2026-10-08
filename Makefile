@@ -138,7 +138,7 @@ TEST_SRC := $(wildcard $(TEST_DIR)/*.c)
 TEST_BIN := $(TEST_SRC:$(TEST_DIR)/%.c=$(TEST_DIR)/%)
 
 TEST_OBJ = $(SRC_DIR)/hypergeo.o $(SRC_DIR)/enrich.o $(SRC_DIR)/args.o \
-           $(SRC_DIR)/store.o $(SRC_DIR)/digest.o
+           $(SRC_DIR)/store.o $(SRC_DIR)/digest.o $(SRC_DIR)/sea.o
 
 $(TEST_DIR)/%: $(TEST_DIR)/%.c $(TEST_OBJ) $(YAME_LIB)
 	$(CC) $(CFLAGS) -o $@ $< $(TEST_OBJ) $$($(YAME_DIR)/yame-config --libs)
