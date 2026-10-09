@@ -1,0 +1,58 @@
+# Category of each knowledgebase, for the Knowledgebases tab of docs/index.html.
+# The four categories are the KnowYourCG paper's (Goldberg et al. 2025, Sci Adv,
+# doi:10.1126/sciadv.adw3027): sequence features, genomic features, trait
+# associates, technical associates. The paper defines them by example, not by
+# a per-knowledgebase table, so each row records its basis: "paper" when the
+# paper names that kind of set as an example, "inferred" when the assignment
+# applies the paper's definitions to a set it does not name.
+# A knowledgebase missing here is shown under "Uncategorized".
+#
+# knowledgebase	category	basis
+kmer10	Sequence features	paper
+Tetranuc2	Sequence features	paper
+Tetranuc4	Sequence features	paper
+nFlankCG	Sequence features	inferred
+nFlankCG50	Sequence features	inferred
+nFlankCG100	Sequence features	inferred
+GCfrac	Sequence features	inferred
+G4peaksHighConfidence	Sequence features	inferred
+ChromHMM	Genomic features	paper
+ChromHMMfullStack	Genomic features	paper
+REMCChromHMM	Genomic features	paper
+HM	Genomic features	paper
+GeneFeatures	Genomic features	paper
+MetagenePC	Genomic features	paper
+rmsk1	Genomic features	paper
+rmsk2	Genomic features	paper
+TFBS	Genomic features	paper
+TFBSrm	Genomic features	paper
+TFBSFreq	Genomic features	inferred
+EvoCons	Genomic features	paper
+ABCompartment	Genomic features	inferred
+CGI	Genomic features	inferred
+CTCFbind	Genomic features	inferred
+PMD	Genomic features	inferred
+EnsRegBuild	Genomic features	inferred
+UCSCEnsemblRegulatory	Genomic features	inferred
+ImprintingDMR	Genomic features	inferred
+IntergenicCpGs	Genomic features	inferred
+Centromere	Genomic features	inferred
+Chromosome	Genomic features	inferred
+ChromosomeXY	Genomic features	inferred
+Win30k	Genomic features	inferred
+Win100k	Genomic features	inferred
+Win1m	Genomic features	inferred
+TiSigBLUEPRINT	Trait associates	paper
+TiSigBrain	Trait associates	paper
+TiSigLoyfer	Trait associates	paper
+RoadMapPosGeneExpCpG	Trait associates	inferred
+RoadMapNegGeneExpCpG	Trait associates	inferred
+XCILinkedWGBS	Trait associates	inferred
+XCILinkedWGBSSorted	Trait associates	inferred
+IntermediateMeth	Trait associates	inferred
+IntermediateMethS	Trait associates	inferred
+CoRSIV	Trait associates	inferred
+Blacklist	Technical associates	paper
+InfiniumChemistry	Technical associates	paper
+ProbeType	Technical associates	paper
+ProbeCGnum	Technical associates	inferred

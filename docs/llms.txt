@@ -183,63 +183,81 @@ known set of knowledgebases.
 <!-- knowledgebases:begin -->
 ## Knowledgebases
 
-What `kycg fetch` offers, per collection: each knowledgebase with
-its number of sets (records or states in the .cm). Set names and
-sizes are on the page's Knowledgebases tab.
+What `kycg fetch` offers, per collection, grouped by the KnowYourCG
+paper's four categories: each knowledgebase with its number of sets
+(records or states in the .cm). Set names and sizes are on the
+page's Knowledgebases tab.
 
-- hg38 (29,401,795 CpGs; zhou-lab/KYCGKB_hg38@v2): ABCompartment (7), Blacklist
-  (1), Centromere (25), CGI (4), ChromHMM (19), ChromHMMfullStack (101),
-  Chromosome (25), ChromosomeXY (1), CTCFbind (1), HM (82), ImprintingDMR (1),
-  IntermediateMeth (1), IntermediateMethS (1), MetagenePC (30), nFlankCG (46),
-  nFlankCG100 (32), nFlankCG50 (18), PMD (3), REMCChromHMM (16), rmsk1 (20),
-  rmsk2 (60), RoadMapNegGeneExpCpG (1), RoadMapPosGeneExpCpG (1), Tetranuc2
-  (4), TFBS (1,359), TFBSrm (1,188), TiSigBLUEPRINT (448), TiSigBrain (266),
-  TiSigLoyfer (324), Win100k (29,511), XCILinkedWGBS (1), XCILinkedWGBSSorted
-  (1)
-- mm10 (21,867,837 CpGs; zhou-lab/KYCGKB_mm10@v2): Blacklist (1), CGI (4),
-  ChromHMM (19), ChromHMMfullStack (101), Chromosome (22), ChromosomeXY (1),
-  EnsRegBuild (6), EvoCons (1), GCfrac (140), GeneFeatures (6), HM (78), kmer10
-  (32,897), MetagenePC (30), nFlankCG (43), nFlankCG100 (30), nFlankCG50 (19),
-  PMD (3), rmsk1 (21), rmsk2 (59), Tetranuc2 (4), Tetranuc4 (11), TFBS (703),
-  TFBSFreq (7), TFBSrm (638), UCSCEnsemblRegulatory (7), Win100k (26,604),
-  Win1m (2,673), Win30k (88,442)
-- mm39 (21,889,506 CpGs; zhou-lab/KYCGKB_mm39@v2): ChromHMM (19)
-- MSA (284,309 probes; zhou-lab/InfiniumAnnotation@v8.2): ABCompartment (6),
-  Blacklist (2), Centromere (22), CGI (4), ChromHMM (19), ChromHMMfullStack
-  (100), Chromosome (26), CoRSIV (2), CTCFbind (2), EvoCons (2),
-  G4peaksHighConfidence (2), HM (82), ImprintingDMR (2), InfiniumChemistry (7),
-  IntergenicCpGs (2), IntermediateMeth (2), MetagenePC (30), nFlankCG (31), PMD
-  (3), ProbeCGnum (11), ProbeType (4), REMCChromHMM (16), rmsk1 (19), rmsk2
-  (57), RoadMapNegGeneExpCpG (2), RoadMapPosGeneExpCpG (2), Tetranuc2 (4),
-  TFBSrm (1,188), TiSigBLUEPRINT (410), TiSigBrain (264), TiSigLoyfer (301),
-  XCILinkedWGBSSorted (2)
-- EPICv2 (937,690 probes; zhou-lab/InfiniumAnnotation@v8.2): ABCompartment (6),
-  CGI (4), ChromHMM (19), CTCFbind (2), HM (82), ImprintingDMR (2),
-  InfiniumChemistry (7), MetagenePC (30), nFlankCG (37), PMD (2), ProbeType
-  (5), REMCChromHMM (16), rmsk1 (20), rmsk2 (58), Tetranuc2 (4), TFBSrm (1,188)
-- EPIC (866,553 probes; zhou-lab/InfiniumAnnotation@v8.2): ABCompartment (6),
-  Blacklist (2), CGI (4), ChromHMM (19), CTCFbind (2), HM (82), ImprintingDMR
-  (2), InfiniumChemistry (5), MetagenePC (30), nFlankCG (35), PMD (2),
-  ProbeType (4), REMCChromHMM (16), rmsk1 (20), rmsk2 (58), Tetranuc2 (4),
-  TFBSrm (1,188)
-- HM450 (486,427 probes; zhou-lab/InfiniumAnnotation@v8.2): ABCompartment (6),
-  Blacklist (2), CGI (4), ChromHMM (19), Chromosome (26), CTCFbind (2), HM
-  (82), ImprintingDMR (2), InfiniumChemistry (6), MetagenePC (30), nFlankCG
-  (34), PMD (2), ProbeType (5), REMCChromHMM (16), rmsk1 (20), rmsk2 (56),
-  Tetranuc2 (4), TFBSrm (1,188)
-- HM27 (27,722 probes; zhou-lab/InfiniumAnnotation@v8.2): ABCompartment (7),
-  CGI (4), ChromHMM (19), CTCFbind (2), HM (81), ImprintingDMR (2),
-  InfiniumChemistry (5), MetagenePC (30), nFlankCG (32), PMD (3), ProbeType
-  (2), REMCChromHMM (16), rmsk1 (14), rmsk2 (39), Tetranuc2 (4)
-- MM285 (287,692 probes; zhou-lab/InfiniumAnnotation@v8.2): Blacklist (2), CGI
-  (4), ChromHMM (19), Chromosome (23), EnsRegBuild (6), HM (78),
-  InfiniumChemistry (8), MetagenePC (30), nFlankCG (32), PMD (3), ProbeCGnum
-  (8), ProbeType (3), rmsk1 (21), rmsk2 (55), Tetranuc2 (4), Tetranuc4 (11),
-  TFBSrm (638)
-- Mammal40 (38,607 probes; zhou-lab/InfiniumAnnotation@v8.2): ABCompartment
-  (7), CGI (4), ChromHMM (19), CTCFbind (2), HM (81), ImprintingDMR (2),
-  InfiniumChemistry (5), MetagenePC (30), nFlankCG (31), PMD (3), ProbeType
-  (4), REMCChromHMM (16), rmsk1 (12), rmsk2 (36), Tetranuc2 (4)
+- hg38 (29,401,795 CpGs; zhou-lab/KYCGKB_hg38@v2)
+  Sequence features: nFlankCG (46), nFlankCG100 (32), nFlankCG50 (18),
+    Tetranuc2 (4)
+  Genomic features: ABCompartment (7), Centromere (25), CGI (4), ChromHMM (19),
+    ChromHMMfullStack (101), Chromosome (25), ChromosomeXY (1), CTCFbind (1),
+    HM (82), ImprintingDMR (1), MetagenePC (30), PMD (3), REMCChromHMM (16),
+    rmsk1 (20), rmsk2 (60), TFBS (1,359), TFBSrm (1,188), Win100k (29,511)
+  Trait associates: IntermediateMeth (1), IntermediateMethS (1),
+    RoadMapNegGeneExpCpG (1), RoadMapPosGeneExpCpG (1), TiSigBLUEPRINT (448),
+    TiSigBrain (266), TiSigLoyfer (324), XCILinkedWGBS (1),
+    XCILinkedWGBSSorted (1)
+  Technical associates: Blacklist (1)
+- mm10 (21,867,837 CpGs; zhou-lab/KYCGKB_mm10@v2)
+  Sequence features: GCfrac (140), kmer10 (32,897), nFlankCG (43), nFlankCG100
+    (30), nFlankCG50 (19), Tetranuc2 (4), Tetranuc4 (11)
+  Genomic features: CGI (4), ChromHMM (19), ChromHMMfullStack (101), Chromosome
+    (22), ChromosomeXY (1), EnsRegBuild (6), EvoCons (1), GeneFeatures (6),
+    HM (78), MetagenePC (30), PMD (3), rmsk1 (21), rmsk2 (59), TFBS (703),
+    TFBSFreq (7), TFBSrm (638), UCSCEnsemblRegulatory (7), Win100k (26,604),
+    Win1m (2,673), Win30k (88,442)
+  Technical associates: Blacklist (1)
+- mm39 (21,889,506 CpGs; zhou-lab/KYCGKB_mm39@v2)
+  Genomic features: ChromHMM (19)
+- MSA (284,309 probes; zhou-lab/InfiniumAnnotation@v8.2)
+  Sequence features: G4peaksHighConfidence (2), nFlankCG (31), Tetranuc2 (4)
+  Genomic features: ABCompartment (6), Centromere (22), CGI (4), ChromHMM (19),
+    ChromHMMfullStack (100), Chromosome (26), CTCFbind (2), EvoCons (2), HM
+    (82), ImprintingDMR (2), IntergenicCpGs (2), MetagenePC (30), PMD (3),
+    REMCChromHMM (16), rmsk1 (19), rmsk2 (57), TFBSrm (1,188)
+  Trait associates: CoRSIV (2), IntermediateMeth (2), RoadMapNegGeneExpCpG (2),
+    RoadMapPosGeneExpCpG (2), TiSigBLUEPRINT (410), TiSigBrain (264),
+    TiSigLoyfer (301), XCILinkedWGBSSorted (2)
+  Technical associates: Blacklist (2), InfiniumChemistry (7), ProbeCGnum (11),
+    ProbeType (4)
+- EPICv2 (937,690 probes; zhou-lab/InfiniumAnnotation@v8.2)
+  Sequence features: nFlankCG (37), Tetranuc2 (4)
+  Genomic features: ABCompartment (6), CGI (4), ChromHMM (19), CTCFbind (2), HM
+    (82), ImprintingDMR (2), MetagenePC (30), PMD (2), REMCChromHMM (16),
+    rmsk1 (20), rmsk2 (58), TFBSrm (1,188)
+  Technical associates: InfiniumChemistry (7), ProbeType (5)
+- EPIC (866,553 probes; zhou-lab/InfiniumAnnotation@v8.2)
+  Sequence features: nFlankCG (35), Tetranuc2 (4)
+  Genomic features: ABCompartment (6), CGI (4), ChromHMM (19), CTCFbind (2), HM
+    (82), ImprintingDMR (2), MetagenePC (30), PMD (2), REMCChromHMM (16),
+    rmsk1 (20), rmsk2 (58), TFBSrm (1,188)
+  Technical associates: Blacklist (2), InfiniumChemistry (5), ProbeType (4)
+- HM450 (486,427 probes; zhou-lab/InfiniumAnnotation@v8.2)
+  Sequence features: nFlankCG (34), Tetranuc2 (4)
+  Genomic features: ABCompartment (6), CGI (4), ChromHMM (19), Chromosome (26),
+    CTCFbind (2), HM (82), ImprintingDMR (2), MetagenePC (30), PMD (2),
+    REMCChromHMM (16), rmsk1 (20), rmsk2 (56), TFBSrm (1,188)
+  Technical associates: Blacklist (2), InfiniumChemistry (6), ProbeType (5)
+- HM27 (27,722 probes; zhou-lab/InfiniumAnnotation@v8.2)
+  Sequence features: nFlankCG (32), Tetranuc2 (4)
+  Genomic features: ABCompartment (7), CGI (4), ChromHMM (19), CTCFbind (2), HM
+    (81), ImprintingDMR (2), MetagenePC (30), PMD (3), REMCChromHMM (16),
+    rmsk1 (14), rmsk2 (39)
+  Technical associates: InfiniumChemistry (5), ProbeType (2)
+- MM285 (287,692 probes; zhou-lab/InfiniumAnnotation@v8.2)
+  Sequence features: nFlankCG (32), Tetranuc2 (4), Tetranuc4 (11)
+  Genomic features: CGI (4), ChromHMM (19), Chromosome (23), EnsRegBuild (6),
+    HM (78), MetagenePC (30), PMD (3), rmsk1 (21), rmsk2 (55), TFBSrm (638)
+  Technical associates: Blacklist (2), InfiniumChemistry (8), ProbeCGnum (8),
+    ProbeType (3)
+- Mammal40 (38,607 probes; zhou-lab/InfiniumAnnotation@v8.2)
+  Sequence features: nFlankCG (31), Tetranuc2 (4)
+  Genomic features: ABCompartment (7), CGI (4), ChromHMM (19), CTCFbind (2), HM
+    (81), ImprintingDMR (2), MetagenePC (30), PMD (3), REMCChromHMM (16),
+    rmsk1 (12), rmsk2 (36)
+  Technical associates: InfiniumChemistry (5), ProbeType (4)
 <!-- knowledgebases:end -->
 
 ## Correctness
