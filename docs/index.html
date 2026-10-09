@@ -195,7 +195,11 @@
   .kb-chip b{color:var(--fg);font-size:.95rem;font-variant-numeric:tabular-nums;margin-right:4px}
   details.kb-coll>summary h2::before{content:"▸ ";color:var(--muted)}
   details.kb-coll[open]>summary h2::before{content:"▾ "}
-  .kb-cat h3{font-size:.85rem;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);margin:14px 0 2px}
+  details.kb-cat>summary{cursor:pointer;list-style:none}
+  details.kb-cat>summary::-webkit-details-marker{display:none}
+  .kb-cat h3{display:inline-block;font-size:.85rem;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);margin:10px 0 2px}
+  .kb-cat h3::before{content:"▸ ";color:var(--muted)}
+  details.kb-cat[open]>summary h3::before{content:"▾ "}
   .kb-cat h3 .m{color:var(--muted);font-weight:400;margin-left:4px}
   .kb-find{display:flex;align-items:center;gap:10px;margin:4px 0 10px}
   .kb-find input{flex:1;max-width:520px;padding:7px 10px;font-size:.9rem;border:1px solid var(--line);
@@ -765,11 +769,11 @@ log10 fdr   OK   worst 2.96e-12
 <div class="kb-chips"><span class="kb-chip"><b>10</b>collections</span><span class="kb-chip"><b>191</b>knowledgebases</span><span class="kb-chip"><b>194,739</b>sets</span><span class="kb-chip"><b>27</b>sequence features</span><span class="kb-chip"><b>125</b>genomic features</span><span class="kb-chip"><b>17</b>trait associates</span><span class="kb-chip"><b>22</b>technical associates</span></div>
 <div class="kb-find"><input id="kb-q" type="search" placeholder="Filter by name, title, description, set or category" aria-label="Filter knowledgebases" autocomplete="off"><span id="kb-hits"></span></div>
 <p class="kb-jump"><a href="#kb-hg38">hg38</a> · <a href="#kb-mm10">mm10</a> · <a href="#kb-mm39">mm39</a> · <a href="#kb-MSA">MSA</a> · <a href="#kb-EPICv2">EPICv2</a> · <a href="#kb-EPIC">EPIC</a> · <a href="#kb-HM450">HM450</a> · <a href="#kb-HM27">HM27</a> · <a href="#kb-MM285">MM285</a> · <a href="#kb-Mammal40">Mammal40</a></p>
-<details class="full kb-coll" id="kb-hg38" open>
+<details class="full kb-coll" id="kb-hg38">
   <summary><h2>hg38 <span class="m">— whole genome, 29,401,795 CpGs · 32 knowledgebases · 33,598 sets</span></h2></summary>
   <p class="kb-tag">From <code class="inl">zhou-lab/KYCGKB_hg38@v2</code></p>
-  <div class="kb-cat">
-    <h3>Sequence features <span class="m">4</span></h3>
+  <details class="kb-cat">
+    <summary><h3>Sequence features <span class="m">4</span></h3></summary>
     <details class="kb" data-cat="Sequence features">
       <summary><b>nFlankCG</b> <span class="kb-t">Flanking CpG density</span><span class="kb-n">46 sets · 11.5 MB</span></summary>
       <p class="kb-d">How many CpGs surround this one, together with whether the immediate flanks are A/T or G/C. Local density drives methylation more strongly than almost any annotation, so this is the covariate to check before believing a subtler enrichment. Built from the WCGW / SCGS / SCGW context partition.</p>
@@ -906,9 +910,9 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>4 sets</td><td class="num">29,401,795</td><td></td></tr>
       </table></div>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Genomic features <span class="m">18</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Genomic features <span class="m">18</span></h3></summary>
     <details class="kb" data-cat="Genomic features">
       <summary><b>ABCompartment</b> <span class="kb-t">A/B compartments</span><span class="kb-n">7 sets · 10 KB</span></summary>
       <p class="kb-d">The two large-scale nuclear compartments from Hi-C: A is open and gene-rich, B is closed, late-replicating and the substrate on which partially methylated domains form. Subcompartment labels per CpG. A second build takes the most frequent call across 95 tumour and normal Hi-C maps, lifted hg19 to hg38.</p>
@@ -4010,9 +4014,9 @@ log10 fdr   OK   worst 2.96e-12
       <p class="kb-m"><b>Source</b> Reference genome index · <b>File</b> <code>Win100k.20220228.cm</code></p>
       <p class="kb-m">A tiling: 29,511 sets, <code>chr1:0</code> … <code>chrY:572</code>, too many to list. CpGs per set: min 27, median 821, max 5,242.</p>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Trait associates <span class="m">9</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Trait associates <span class="m">9</span></h3></summary>
     <details class="kb" data-cat="Trait associates">
       <summary><b>IntermediateMeth</b> <span class="kb-t">Intermediate methylation</span><span class="kb-n">1 set · 27 KB</span></summary>
       <p class="kb-d">CpGs persistently between 25% and 75%. Intermediate values usually mean a mixed cell population or allele-specific methylation rather than a genuinely half-methylated cell. Carries the number of datasets in which the CpG was intermediate.</p>
@@ -5138,9 +5142,9 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>1 sets</td><td class="num">11,394</td><td></td></tr>
       </table></div>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Technical associates <span class="m">1</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Technical associates <span class="m">1</span></h3></summary>
     <details class="kb" data-cat="Technical associates">
       <summary><b>Blacklist</b> <span class="kb-t">Blacklisted regions</span><span class="kb-n">1 set · 3 KB</span></summary>
       <p class="kb-d">Regions that produce artefactual signal in short-read assays. Not biology: a filter, and a check that an enrichment is not an artefact. Published intervals, unmodified.</p>
@@ -5151,13 +5155,13 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>1 sets</td><td class="num">1,070,297</td><td></td></tr>
       </table></div>
     </details>
-  </div>
+  </details>
 </details>
 <details class="full kb-coll" id="kb-mm10">
   <summary><h2>mm10 <span class="m">— whole genome, 21,867,837 CpGs · 28 knowledgebases · 152,570 sets</span></h2></summary>
   <p class="kb-tag">From <code class="inl">zhou-lab/KYCGKB_mm10@v2</code></p>
-  <div class="kb-cat">
-    <h3>Sequence features <span class="m">7</span></h3>
+  <details class="kb-cat">
+    <summary><h3>Sequence features <span class="m">7</span></h3></summary>
     <details class="kb" data-cat="Sequence features">
       <summary><b>GCfrac</b> <span class="kb-t">GC fraction</span><span class="kb-n">140 sets · 20.0 MB</span></summary>
       <p class="kb-d">Local GC content -- the broader correlate of CpG density, and a common confounder. Fraction of G+C in a 152 bp window centred on the CpG.</p>
@@ -5465,9 +5469,9 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>11 sets</td><td class="num">21,867,837</td><td></td></tr>
       </table></div>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Genomic features <span class="m">20</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Genomic features <span class="m">20</span></h3></summary>
     <details class="kb" data-cat="Genomic features">
       <summary><b>CGI</b> <span class="kb-t">CpG islands</span><span class="kb-n">4 sets · 0.1 MB</span></summary>
       <p class="kb-d">CpG-dense, usually promoter-associated and usually unmethylated; the single most informative partition of the methylome. Shores and shelves flank them and carry most tissue-specific variation. Island as published; Shore = +/-2 kb around it; Shelf = +/-4 kb minus the shore; OpenSea = the complement. Nearly disjoint rather than strictly so: on EPIC 49 probes fall in two states where flanks of neighbouring islands meet, and 716 (mostly control and SNP probes) fall in none.</p>
@@ -7345,9 +7349,9 @@ log10 fdr   OK   worst 2.96e-12
       <p class="kb-m"><b>Source</b> Reference genome index · <b>File</b> <code>Win30k.20220228.cm</code></p>
       <p class="kb-m">A tiling: 88,442 sets, <code>chr1:100</code> … <code>chrY:3028</code>, too many to list. CpGs per set: min 1, median 221, max 1,635.</p>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Technical associates <span class="m">1</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Technical associates <span class="m">1</span></h3></summary>
     <details class="kb" data-cat="Technical associates">
       <summary><b>Blacklist</b> <span class="kb-t">Blacklisted regions</span><span class="kb-n">1 set · <1 KB</span></summary>
       <p class="kb-d">Regions that produce artefactual signal in short-read assays. Not biology: a filter, and a check that an enrichment is not an artefact. Published intervals, unmodified.</p>
@@ -7358,13 +7362,13 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>1 sets</td><td class="num">1,851</td><td></td></tr>
       </table></div>
     </details>
-  </div>
+  </details>
 </details>
 <details class="full kb-coll" id="kb-mm39">
   <summary><h2>mm39 <span class="m">— whole genome, 21,889,506 CpGs · 1 knowledgebases · 19 sets</span></h2></summary>
   <p class="kb-tag">From <code class="inl">zhou-lab/KYCGKB_mm39@v2</code></p>
-  <div class="kb-cat">
-    <h3>Genomic features <span class="m">1</span></h3>
+  <details class="kb-cat">
+    <summary><h3>Genomic features <span class="m">1</span></h3></summary>
     <details class="kb" data-cat="Genomic features">
       <summary><b>ChromHMM</b> <span class="kb-t">Chromatin states</span><span class="kb-n">19 sets · 0.9 MB</span></summary>
       <p class="kb-d">Chromatin segmentation into states such as active TSS, enhancer, transcribed, quiescent and Polycomb-repressed. Methylation means different things in each, so this is the usual first pass at what kind of region a CpG set sits in. hg38: consensus state per CpG across 833 ENCODE samples. mm10: ENCODE v5 mouse segmentations, consensus over 200 bp windows.</p>
@@ -7393,13 +7397,13 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>19 sets</td><td class="num">21,889,506</td><td></td></tr>
       </table></div>
     </details>
-  </div>
+  </details>
 </details>
 <details class="full kb-coll" id="kb-MSA">
   <summary><h2>MSA <span class="m">— array, 284,309 probes · 32 knowledgebases · 2,626 sets</span></h2></summary>
   <p class="kb-tag">From <code class="inl">zhou-lab/InfiniumAnnotation@v8.2</code></p>
-  <div class="kb-cat">
-    <h3>Sequence features <span class="m">3</span></h3>
+  <details class="kb-cat">
+    <summary><h3>Sequence features <span class="m">3</span></h3></summary>
     <details class="kb" data-cat="Sequence features">
       <summary><b>G4peaksHighConfidence</b> <span class="kb-t">G-quadruplexes</span><span class="kb-n">2 sets · 5 KB</span></summary>
       <p class="kb-d">Sequences that fold into four-stranded G-quadruplexes, which affect replication and methylation maintenance. G4 formation and methylation are mutually antagonistic -- a folded G4 inhibits DNMT1 -- which is one proposed reason some CpG islands stay constitutively unmethylated. The high-confidence peak calls only; the exact upstream file is not recorded.</p>
@@ -7464,9 +7468,9 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>4 sets</td><td class="num">284,309</td><td></td></tr>
       </table></div>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Genomic features <span class="m">17</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Genomic features <span class="m">17</span></h3></summary>
     <details class="kb" data-cat="Genomic features">
       <summary><b>ABCompartment</b> <span class="kb-t">A/B compartments</span><span class="kb-n">6 sets · 0.1 MB</span></summary>
       <p class="kb-d">The two large-scale nuclear compartments from Hi-C: A is open and gene-rich, B is closed, late-replicating and the substrate on which partially methylated domains form. Subcompartment labels per CpG. A second build takes the most frequent call across 95 tumour and normal Hi-C maps, lifted hg19 to hg38.</p>
@@ -9200,9 +9204,9 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>1188 sets</td><td class="num">8,897,240</td><td></td></tr>
       </table></div>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Trait associates <span class="m">8</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Trait associates <span class="m">8</span></h3></summary>
     <details class="kb" data-cat="Trait associates">
       <summary><b>CoRSIV</b> <span class="kb-t">Correlated regions of systemic interindividual variation</span><span class="kb-n">2 sets · 5 KB</span></summary>
       <p class="kb-d">Regions where individuals differ reproducibly across every tissue, implying establishment in early development rather than tissue identity. Region coordinates with per-region CpG counts.</p>
@@ -10260,9 +10264,9 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>2 sets</td><td class="num">284,309</td><td></td></tr>
       </table></div>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Technical associates <span class="m">4</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Technical associates <span class="m">4</span></h3></summary>
     <details class="kb" data-cat="Technical associates">
       <summary><b>Blacklist</b> <span class="kb-t">Blacklisted regions</span><span class="kb-n">2 sets · <1 KB</span></summary>
       <p class="kb-d">Regions that produce artefactual signal in short-read assays. Not biology: a filter, and a check that an enrichment is not an artefact. Published intervals, unmodified.</p>
@@ -10323,13 +10327,13 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>4 sets</td><td class="num">284,309</td><td></td></tr>
       </table></div>
     </details>
-  </div>
+  </details>
 </details>
 <details class="full kb-coll" id="kb-EPICv2">
   <summary><h2>EPICv2 <span class="m">— array, 937,690 probes · 16 knowledgebases · 1,482 sets</span></h2></summary>
   <p class="kb-tag">From <code class="inl">zhou-lab/InfiniumAnnotation@v8.2</code></p>
-  <div class="kb-cat">
-    <h3>Sequence features <span class="m">2</span></h3>
+  <details class="kb-cat">
+    <summary><h3>Sequence features <span class="m">2</span></h3></summary>
     <details class="kb" data-cat="Sequence features">
       <summary><b>nFlankCG</b> <span class="kb-t">Flanking CpG density</span><span class="kb-n">37 sets · 0.6 MB</span></summary>
       <p class="kb-d">How many CpGs surround this one, together with whether the immediate flanks are A/T or G/C. Local density drives methylation more strongly than almost any annotation, so this is the covariate to check before believing a subtler enrichment. Built from the WCGW / SCGS / SCGW context partition.</p>
@@ -10389,9 +10393,9 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>4 sets</td><td class="num">937,690</td><td></td></tr>
       </table></div>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Genomic features <span class="m">12</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Genomic features <span class="m">12</span></h3></summary>
     <details class="kb" data-cat="Genomic features">
       <summary><b>ABCompartment</b> <span class="kb-t">A/B compartments</span><span class="kb-n">6 sets · 0.4 MB</span></summary>
       <p class="kb-d">The two large-scale nuclear compartments from Hi-C: A is open and gene-rich, B is closed, late-replicating and the substrate on which partially methylated domains form. Subcompartment labels per CpG. A second build takes the most frequent call across 95 tumour and normal Hi-C maps, lifted hg19 to hg38.</p>
@@ -11929,9 +11933,9 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>1188 sets</td><td class="num">42,320,538</td><td></td></tr>
       </table></div>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Technical associates <span class="m">2</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Technical associates <span class="m">2</span></h3></summary>
     <details class="kb" data-cat="Technical associates">
       <summary><b>InfiniumChemistry</b> <span class="kb-t">Infinium chemistry</span><span class="kb-n">7 sets · 0.2 MB</span></summary>
       <p class="kb-d">Finer design-chemistry partition than probe type, including colour channel. Generated by the manifest build pipeline; the rule is not in the lab journal.</p>
@@ -11962,13 +11966,13 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>5 sets</td><td class="num">937,690</td><td></td></tr>
       </table></div>
     </details>
-  </div>
+  </details>
 </details>
 <details class="full kb-coll" id="kb-EPIC">
   <summary><h2>EPIC <span class="m">— array, 866,553 probes · 17 knowledgebases · 1,479 sets</span></h2></summary>
   <p class="kb-tag">From <code class="inl">zhou-lab/InfiniumAnnotation@v8.2</code></p>
-  <div class="kb-cat">
-    <h3>Sequence features <span class="m">2</span></h3>
+  <details class="kb-cat">
+    <summary><h3>Sequence features <span class="m">2</span></h3></summary>
     <details class="kb" data-cat="Sequence features">
       <summary><b>nFlankCG</b> <span class="kb-t">Flanking CpG density</span><span class="kb-n">35 sets · 0.7 MB</span></summary>
       <p class="kb-d">How many CpGs surround this one, together with whether the immediate flanks are A/T or G/C. Local density drives methylation more strongly than almost any annotation, so this is the covariate to check before believing a subtler enrichment. Built from the WCGW / SCGS / SCGW context partition.</p>
@@ -12026,9 +12030,9 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>4 sets</td><td class="num">866,553</td><td></td></tr>
       </table></div>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Genomic features <span class="m">12</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Genomic features <span class="m">12</span></h3></summary>
     <details class="kb" data-cat="Genomic features">
       <summary><b>ABCompartment</b> <span class="kb-t">A/B compartments</span><span class="kb-n">6 sets · 0.4 MB</span></summary>
       <p class="kb-d">The two large-scale nuclear compartments from Hi-C: A is open and gene-rich, B is closed, late-replicating and the substrate on which partially methylated domains form. Subcompartment labels per CpG. A second build takes the most frequent call across 95 tumour and normal Hi-C maps, lifted hg19 to hg38.</p>
@@ -13566,9 +13570,9 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>1188 sets</td><td class="num">41,432,532</td><td></td></tr>
       </table></div>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Technical associates <span class="m">3</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Technical associates <span class="m">3</span></h3></summary>
     <details class="kb" data-cat="Technical associates">
       <summary><b>Blacklist</b> <span class="kb-t">Blacklisted regions</span><span class="kb-n">2 sets · 1 KB</span></summary>
       <p class="kb-d">Regions that produce artefactual signal in short-read assays. Not biology: a filter, and a check that an enrichment is not an artefact. Published intervals, unmodified.</p>
@@ -13607,13 +13611,13 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>4 sets</td><td class="num">866,553</td><td></td></tr>
       </table></div>
     </details>
-  </div>
+  </details>
 </details>
 <details class="full kb-coll" id="kb-HM450">
   <summary><h2>HM450 <span class="m">— array, 486,427 probes · 18 knowledgebases · 1,504 sets</span></h2></summary>
   <p class="kb-tag">From <code class="inl">zhou-lab/InfiniumAnnotation@v8.2</code></p>
-  <div class="kb-cat">
-    <h3>Sequence features <span class="m">2</span></h3>
+  <details class="kb-cat">
+    <summary><h3>Sequence features <span class="m">2</span></h3></summary>
     <details class="kb" data-cat="Sequence features">
       <summary><b>nFlankCG</b> <span class="kb-t">Flanking CpG density</span><span class="kb-n">34 sets · 0.4 MB</span></summary>
       <p class="kb-d">How many CpGs surround this one, together with whether the immediate flanks are A/T or G/C. Local density drives methylation more strongly than almost any annotation, so this is the covariate to check before believing a subtler enrichment. Built from the WCGW / SCGS / SCGW context partition.</p>
@@ -13670,9 +13674,9 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>4 sets</td><td class="num">486,427</td><td></td></tr>
       </table></div>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Genomic features <span class="m">13</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Genomic features <span class="m">13</span></h3></summary>
     <details class="kb" data-cat="Genomic features">
       <summary><b>ABCompartment</b> <span class="kb-t">A/B compartments</span><span class="kb-n">6 sets · 0.2 MB</span></summary>
       <p class="kb-d">The two large-scale nuclear compartments from Hi-C: A is open and gene-rich, B is closed, late-replicating and the substrate on which partially methylated domains form. Subcompartment labels per CpG. A second build takes the most frequent call across 95 tumour and normal Hi-C maps, lifted hg19 to hg38.</p>
@@ -15243,9 +15247,9 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>1188 sets</td><td class="num">32,801,099</td><td></td></tr>
       </table></div>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Technical associates <span class="m">3</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Technical associates <span class="m">3</span></h3></summary>
     <details class="kb" data-cat="Technical associates">
       <summary><b>Blacklist</b> <span class="kb-t">Blacklisted regions</span><span class="kb-n">2 sets · <1 KB</span></summary>
       <p class="kb-d">Regions that produce artefactual signal in short-read assays. Not biology: a filter, and a check that an enrichment is not an artefact. Published intervals, unmodified.</p>
@@ -15286,13 +15290,13 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>5 sets</td><td class="num">486,427</td><td></td></tr>
       </table></div>
     </details>
-  </div>
+  </details>
 </details>
 <details class="full kb-coll" id="kb-HM27">
   <summary><h2>HM27 <span class="m">— array, 27,722 probes · 15 knowledgebases · 260 sets</span></h2></summary>
   <p class="kb-tag">From <code class="inl">zhou-lab/InfiniumAnnotation@v8.2</code></p>
-  <div class="kb-cat">
-    <h3>Sequence features <span class="m">2</span></h3>
+  <details class="kb-cat">
+    <summary><h3>Sequence features <span class="m">2</span></h3></summary>
     <details class="kb" data-cat="Sequence features">
       <summary><b>nFlankCG</b> <span class="kb-t">Flanking CpG density</span><span class="kb-n">32 sets · 22 KB</span></summary>
       <p class="kb-d">How many CpGs surround this one, together with whether the immediate flanks are A/T or G/C. Local density drives methylation more strongly than almost any annotation, so this is the covariate to check before believing a subtler enrichment. Built from the WCGW / SCGS / SCGW context partition.</p>
@@ -15347,9 +15351,9 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>4 sets</td><td class="num">27,722</td><td></td></tr>
       </table></div>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Genomic features <span class="m">11</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Genomic features <span class="m">11</span></h3></summary>
     <details class="kb" data-cat="Genomic features">
       <summary><b>ABCompartment</b> <span class="kb-t">A/B compartments</span><span class="kb-n">7 sets · 12 KB</span></summary>
       <p class="kb-d">The two large-scale nuclear compartments from Hi-C: A is open and gene-rich, B is closed, late-replicating and the substrate on which partially methylated domains form. Subcompartment labels per CpG. A second build takes the most frequent call across 95 tumour and normal Hi-C maps, lifted hg19 to hg38.</p>
@@ -15666,9 +15670,9 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>39 sets</td><td class="num">2,934</td><td></td></tr>
       </table></div>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Technical associates <span class="m">2</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Technical associates <span class="m">2</span></h3></summary>
     <details class="kb" data-cat="Technical associates">
       <summary><b>InfiniumChemistry</b> <span class="kb-t">Infinium chemistry</span><span class="kb-n">5 sets · 8 KB</span></summary>
       <p class="kb-d">Finer design-chemistry partition than probe type, including colour channel. Generated by the manifest build pipeline; the rule is not in the lab journal.</p>
@@ -15694,13 +15698,13 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>2 sets</td><td class="num">27,722</td><td></td></tr>
       </table></div>
     </details>
-  </div>
+  </details>
 </details>
 <details class="full kb-coll" id="kb-MM285">
   <summary><h2>MM285 <span class="m">— array, 287,692 probes · 17 knowledgebases · 945 sets</span></h2></summary>
   <p class="kb-tag">From <code class="inl">zhou-lab/InfiniumAnnotation@v8.2</code></p>
-  <div class="kb-cat">
-    <h3>Sequence features <span class="m">3</span></h3>
+  <details class="kb-cat">
+    <summary><h3>Sequence features <span class="m">3</span></h3></summary>
     <details class="kb" data-cat="Sequence features">
       <summary><b>nFlankCG</b> <span class="kb-t">Flanking CpG density</span><span class="kb-n">32 sets · 0.2 MB</span></summary>
       <p class="kb-d">How many CpGs surround this one, together with whether the immediate flanks are A/T or G/C. Local density drives methylation more strongly than almost any annotation, so this is the covariate to check before believing a subtler enrichment. Built from the WCGW / SCGS / SCGW context partition.</p>
@@ -15775,9 +15779,9 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>11 sets</td><td class="num">287,692</td><td></td></tr>
       </table></div>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Genomic features <span class="m">10</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Genomic features <span class="m">10</span></h3></summary>
     <details class="kb" data-cat="Genomic features">
       <summary><b>CGI</b> <span class="kb-t">CpG islands</span><span class="kb-n">4 sets · 62 KB</span></summary>
       <p class="kb-d">CpG-dense, usually promoter-associated and usually unmethylated; the single most informative partition of the methylome. Shores and shelves flank them and carry most tissue-specific variation. Island as published; Shore = +/-2 kb around it; Shelf = +/-4 kb minus the shore; OpenSea = the complement. Nearly disjoint rather than strictly so: on EPIC 49 probes fall in two states where flanks of neighbouring islands meet, and 716 (mostly control and SNP probes) fall in none.</p>
@@ -16745,9 +16749,9 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>638 sets</td><td class="num">7,726,734</td><td></td></tr>
       </table></div>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Technical associates <span class="m">4</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Technical associates <span class="m">4</span></h3></summary>
     <details class="kb" data-cat="Technical associates">
       <summary><b>Blacklist</b> <span class="kb-t">Blacklisted regions</span><span class="kb-n">2 sets · <1 KB</span></summary>
       <p class="kb-d">Regions that produce artefactual signal in short-read assays. Not biology: a filter, and a check that an enrichment is not an artefact. Published intervals, unmodified.</p>
@@ -16805,13 +16809,13 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>3 sets</td><td class="num">287,692</td><td></td></tr>
       </table></div>
     </details>
-  </div>
+  </details>
 </details>
 <details class="full kb-coll" id="kb-Mammal40">
   <summary><h2>Mammal40 <span class="m">— array, 38,607 probes · 15 knowledgebases · 256 sets</span></h2></summary>
   <p class="kb-tag">From <code class="inl">zhou-lab/InfiniumAnnotation@v8.2</code></p>
-  <div class="kb-cat">
-    <h3>Sequence features <span class="m">2</span></h3>
+  <details class="kb-cat">
+    <summary><h3>Sequence features <span class="m">2</span></h3></summary>
     <details class="kb" data-cat="Sequence features">
       <summary><b>nFlankCG</b> <span class="kb-t">Flanking CpG density</span><span class="kb-n">31 sets · 26 KB</span></summary>
       <p class="kb-d">How many CpGs surround this one, together with whether the immediate flanks are A/T or G/C. Local density drives methylation more strongly than almost any annotation, so this is the covariate to check before believing a subtler enrichment. Built from the WCGW / SCGS / SCGW context partition.</p>
@@ -16865,9 +16869,9 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>4 sets</td><td class="num">38,607</td><td></td></tr>
       </table></div>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Genomic features <span class="m">11</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Genomic features <span class="m">11</span></h3></summary>
     <details class="kb" data-cat="Genomic features">
       <summary><b>ABCompartment</b> <span class="kb-t">A/B compartments</span><span class="kb-n">7 sets · 18 KB</span></summary>
       <p class="kb-d">The two large-scale nuclear compartments from Hi-C: A is open and gene-rich, B is closed, late-replicating and the substrate on which partially methylated domains form. Subcompartment labels per CpG. A second build takes the most frequent call across 95 tumour and normal Hi-C maps, lifted hg19 to hg38.</p>
@@ -17179,9 +17183,9 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>36 sets</td><td class="num">38,607</td><td></td></tr>
       </table></div>
     </details>
-  </div>
-  <div class="kb-cat">
-    <h3>Technical associates <span class="m">2</span></h3>
+  </details>
+  <details class="kb-cat">
+    <summary><h3>Technical associates <span class="m">2</span></h3></summary>
     <details class="kb" data-cat="Technical associates">
       <summary><b>InfiniumChemistry</b> <span class="kb-t">Infinium chemistry</span><span class="kb-n">5 sets · 4 KB</span></summary>
       <p class="kb-d">Finer design-chemistry partition than probe type, including colour channel. Generated by the manifest build pipeline; the rule is not in the lab journal.</p>
@@ -17209,7 +17213,7 @@ log10 fdr   OK   worst 2.96e-12
         <tr class="kb-sum"><td>4 sets</td><td class="num">38,607</td><td></td></tr>
       </table></div>
     </details>
-  </div>
+  </details>
 </details>
 <!-- knowledgebases:end -->
 </div>
@@ -17377,7 +17381,9 @@ log10 fdr   OK   worst 2.96e-12
     if (!q) return;
     var hits = document.getElementById("kb-hits");
     var colls = Array.prototype.slice.call(document.querySelectorAll("details.kb-coll"));
+    var cats = Array.prototype.slice.call(document.querySelectorAll("details.kb-cat"));
     var wasOpen = colls.map(function (c) { return c.open; });
+    var catOpen = cats.map(function (c) { return c.open; });
     var lines = Array.prototype.slice.call(document.querySelectorAll("details.kb")).map(function (d) {
       return { el: d, text: (d.dataset.cat + " " + d.textContent).toLowerCase(),
                cat: d.parentNode, coll: d.closest("details.kb-coll") };
@@ -17391,8 +17397,10 @@ log10 fdr   OK   worst 2.96e-12
         l.el.hidden = !ok;
         if (ok && s) { n++; seen.add(l.coll); }
       });
-      document.querySelectorAll(".kb-cat").forEach(function (c) {
-        c.hidden = !!s && !c.querySelector("details.kb:not([hidden])");
+      cats.forEach(function (c, i) {
+        var has = !!c.querySelector("details.kb:not([hidden])");
+        c.hidden = !!s && !has;
+        c.open = s ? has : catOpen[i];
       });
       colls.forEach(function (c, i) {
         c.hidden = !!s && !seen.has(c);

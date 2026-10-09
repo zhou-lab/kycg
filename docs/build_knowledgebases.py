@@ -197,8 +197,7 @@ def render(rows, kbs, sets, cat):
         unit = "CpGs" if kind == "genome" else "probes"
         tags = sorted({k["tag"] for k in kbs[c]})
         ns_c = sum(n_sets(sets[(c, k["file"])]) for k in kbs[c])
-        out.append(f'<details class="full kb-coll" id="kb-{c}"'
-                   f'{" open" if i == 0 else ""}>')
+        out.append(f'<details class="full kb-coll" id="kb-{c}">')
         out.append(
             f'  <summary><h2>{c} <span class="m">— '
             f'{"whole genome" if kind == "genome" else "array"}, '
@@ -207,13 +206,13 @@ def render(rows, kbs, sets, cat):
         out.append('  <p class="kb-tag">From ' + ", ".join(
             f'<code class="inl">{esc(t)}</code>' for t in tags) + "</p>")
         for category, items in by_category(kbs[c], cat):
-            out.append(f'  <div class="kb-cat">')
-            out.append(f'    <h3>{esc(category)} <span class="m">'
-                       f'{len(items)}</span></h3>')
+            out.append(f'  <details class="kb-cat">')
+            out.append(f'    <summary><h3>{esc(category)} <span class="m">'
+                       f'{len(items)}</span></h3></summary>')
             for k in items:
                 out += render_kb(k, sets[(c, k["file"])], c, nrow, unit,
                                  category)
-            out.append('  </div>')
+            out.append('  </details>')
         out.append('</details>')
     out.append(END)
     return "\n".join(out)
