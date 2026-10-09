@@ -91,6 +91,14 @@ if [ -x "$root/tools/make_registry.sh" ] &&
       fails=$((fails + 1)); }
 fi
 
+## The Knowledgebases tab and its llms.txt list are generated from the same
+## table plus docs/knowledgebase_counts.tsv. A registry bump that adds or
+## renames a .cm fails here until tools/make_kb_counts.sh is re-run.
+if [ -f "$root/docs/build_knowledgebases.py" ] && command -v python3 >/dev/null; then
+  out=$( cd "$root" && python3 docs/build_knowledgebases.py --check 2>&1 ) ||
+    { echo "  FAIL Knowledgebases tab: $out"; fails=$((fails + 1)); }
+fi
+
 ## check_dimensions.sh reads the row count with `yame info`; kycg has none, so
 ## a `kycg info` (or `./kycg info`) call there prints MISMATCH for every row.
 if [ -f "$root/tools/check_dimensions.sh" ]; then
