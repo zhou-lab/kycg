@@ -118,122 +118,188 @@ def read_categories():
     return cat
 
 
-def by_category(items, cat):
-    """[(category, [kb, ...])] in the paper's order, Uncategorized last."""
-    groups = OrderedDict((c, []) for c in CATS + [UNCAT])
-    for k in sorted(items, key=lambda k: k["name"].lower()):
-        groups[cat.get(k["name"], UNCAT)].append(k)
-    return [(c, v) for c, v in groups.items() if v]
+## the genome build an array's sets are projected from
+PARENT = {"EPICv2": "hg38", "EPIC": "hg38", "HM450": "hg38", "HM27": "hg38",
+          "MSA": "hg38", "Mammal40": "hg38", "MM285": "mm10"}
 
 
-def render_kb(k, ss, c, nrow, unit, category):
-    out = []
-    title = k["title"] or k["name"]
-    ns = n_sets(ss)
-    out.append(f'    <details class="kb" data-cat="{esc(category)}">')
-    out.append(
-        f'      <summary><b>{esc(k["name"])}</b> <span class="kb-t">'
-        f'{esc(title)}</span><span class="kb-n">{ns:,} '
-        f'set{"s" if ns != 1 else ""} · {mb(k["size"])}</span>'
-        f'</summary>')
-    if k["desc"]:
-        out.append(f'      <p class="kb-d">{esc(k["desc"])}</p>')
-    meta = []
-    if k["src"]:
-        meta.append(f'<b>Source</b> {esc(k["src"])}')
-    if k["cite"]:
-        meta.append(f'<b>Cite</b> {esc(k["cite"])}')
-    meta.append(f'<b>File</b> <code>{esc(k["file"])}</code>')
-    out.append('      <p class="kb-m">' + " · ".join(meta) + "</p>")
+def cat_id(category):
+    return "cat-" + category.split()[0].lower()
+
+
+def by_name(kbs):
+    """knowledgebase name -> [(collection, kb), ...] in collection order."""
+    out = OrderedDict()
+    for c in colls_in_order(kbs):
+        for k in kbs[c]:
+            out.setdefault(k["name"], []).append((c, k))
+    return out
+
+
+def set_names(ss):
+    """The set names, minus the NA state arrays carry for the rest of the
+    row space; None for a tiling, whose names are not listed."""
     if isinstance(ss, dict):
-        out.append(
-            f'      <p class="kb-m">A tiling: {ss["n"]:,} sets, '
-            f'<code>{esc(ss["first"])}</code> … '
-            f'<code>{esc(ss["last"])}</code>, too many to list. '
-            f'{unit} per set: min {ss["min"]:,}, median '
-            f'{ss["median"]:,}, max {ss["max"]:,}.</p>')
-        out.append('    </details>')
-        return out
-    total = sum(n for _, n in ss)
-    out.append('      <div class="scroll"><table class="t">')
-    out.append(f'        <tr><th>Set</th><th class="num">{unit}</th>'
-               f'<th class="num">% of {c}</th></tr>')
+        return None
+    return [n for n, _ in ss if n != "NA"]
+
+
+def compare(c, sets, builds):
+    """How collection c's sets relate to its parent genome build's: a note,
+    and whether the set table is still worth showing."""
+    par = PARENT.get(c)
+    if par is None:
+        return "", True
+    if par not in builds:
+        return f"array only (no {par} build)", True
+    mine = set_names(sets[(c, builds[c]["file"])])
+    theirs = set_names(sets[(par, builds[par]["file"])])
+    if mine is None or theirs is None:
+        return "", True
+    if sorted(mine) == sorted(theirs):
+        return f"same sets as {par}", False
+    ## A one-set knowledgebase: the genome record is unnamed ("1") where the
+    ## array state carries the knowledgebase's name. Same set, two labels.
+    if len(mine) == 1 and len(theirs) == 1:
+        return f"same set as {par}", False
+    ## Some genome builds join a label's parts with "~", arrays with ";".
+    mine = {s.replace(";", "~") for s in mine}
+    theirs = {s.replace(";", "~") for s in theirs}
+    if mine == theirs:
+        return f"same sets as {par} (labels use ; for ~)", False
+    miss = len(theirs - mine)
+    extra = len(mine - theirs)
+    parts = []
+    if miss:
+        parts.append(f"{miss} of {par}'s sets missing")
+    if extra:
+        parts.append(f"{extra} not in {par}")
+    return f"differs from {par}: " + ", ".join(parts), True
+
+
+def set_table(ss, c, nrow, unit):
+    if isinstance(ss, dict):
+        return [f'        <p class="kb-m">A tiling: {ss["n"]:,} sets, '
+                f'<code>{esc(ss["first"])}</code> … '
+                f'<code>{esc(ss["last"])}</code>, too many to list. '
+                f'{unit} per set: min {ss["min"]:,}, median '
+                f'{ss["median"]:,}, max {ss["max"]:,}.</p>']
+    out = ['        <div class="scroll"><table class="t">',
+           f'          <tr><th>Set</th><th class="num">{unit}</th>'
+           f'<th class="num">% of {c}</th></tr>']
     for name, n in ss:
         pct = 100 * n / nrow if nrow else 0
-        out.append(f'        <tr><td><code>{esc(name)}</code></td>'
+        out.append(f'          <tr><td><code>{esc(name)}</code></td>'
                    f'<td class="num">{n:,}</td>'
                    f'<td class="num">{pct:.2f}</td></tr>')
-    out.append(f'        <tr class="kb-sum"><td>{len(ss)} sets</td>'
-               f'<td class="num">{total:,}</td><td></td></tr>')
-    out.append('      </table></div>')
+    out.append(f'          <tr class="kb-sum"><td>{len(ss)} sets</td>'
+               f'<td class="num">{sum(n for _, n in ss):,}</td><td></td></tr>')
+    out.append('        </table></div>')
+    return out
+
+
+def render_kb(name, items, rows, sets, category, stats):
+    k0 = items[0][1]
+    title = k0["title"] or name
+    builds = {c: k for c, k in items}
+    out = [f'    <details class="kb" id="kb-{esc(name)}" '
+           f'data-cat="{esc(category)}">',
+           f'      <summary><b>{esc(name)}</b> <span class="kb-t">'
+           f'{esc(title)}</span><span class="kb-n">' +
+           "".join(f'<span class="kb-bdg">{c}</span>' for c, _ in items) +
+           f' {len(items)} file{"s" if len(items) != 1 else ""}</span>'
+           f'</summary>']
+    if k0["desc"]:
+        out.append(f'      <p class="kb-d">{esc(k0["desc"])}</p>')
+    meta = []
+    if k0["src"]:
+        meta.append(f'<b>Source</b> {esc(k0["src"])}')
+    if k0["cite"]:
+        meta.append(f'<b>Cite</b> {esc(k0["cite"])}')
+    if meta:
+        out.append('      <p class="kb-m">' + " · ".join(meta) + "</p>")
+    for c, k in items:
+        nrow, kind = rows.get(c, (0, ""))
+        unit = "CpGs" if kind == "genome" else "probes"
+        ss = sets[(c, k["file"])]
+        ns = n_sets(ss)
+        note, show = compare(c, sets, builds)
+        if note.startswith("same"):
+            stats["same"] += 1
+        elif note.startswith("differs"):
+            stats["differs"].append(f"{name}/{c}: {note}")
+        elif note.startswith("array only"):
+            stats["only"].append(f"{name}/{c}")
+        head = (f'<b>{c}</b> <span class="kb-t">{ns:,} '
+                f'set{"s" if ns != 1 else ""} · {mb(k["size"])} · '
+                f'<code>{esc(k["file"])}</code> · {esc(k["tag"])}</span>' +
+                (f' <span class="kb-note{"" if show else " same"}">'
+                 f'{esc(note)}</span>' if note else ""))
+        bid = f'kb-{esc(name)}-{c}'
+        if not show:
+            out.append(f'      <div class="kb-b" id="{bid}">{head}</div>')
+            continue
+        out.append(f'      <details class="kb-b" id="{bid}">')
+        out.append(f'        <summary>{head}</summary>')
+        out += set_table(ss, c, nrow, unit)
+        out.append('      </details>')
     out.append('    </details>')
     return out
 
 
-def render(rows, kbs, sets, cat):
+def render(rows, kbs, sets, cat, stats):
     out = [BEGIN]
-    n_kb = sum(len(v) for v in kbs.values())
+    names = by_name(kbs)
+    n_file = sum(len(v) for v in kbs.values())
     n_set = sum(n_sets(sets[(c, k["file"])]) for c in kbs for k in kbs[c])
-    ## head counts, as chips: totals, then knowledgebases per category
-    per_cat = defaultdict(int)
-    for c in kbs:
-        for k in kbs[c]:
-            per_cat[cat.get(k["name"], UNCAT)] += 1
-    chips = [(len(kbs), "collections"), (n_kb, "knowledgebases"),
-             (n_set, "sets")]
-    chips += [(per_cat[c], c.lower()) for c in CATS + [UNCAT] if per_cat[c]]
+    groups = OrderedDict((c, []) for c in CATS + [UNCAT])
+    for name in sorted(names, key=str.lower):
+        groups[cat.get(name, UNCAT)].append(name)
+    groups = OrderedDict((c, v) for c, v in groups.items() if v)
+    chips = [(len(names), "knowledgebases"), (len(kbs), "builds & platforms"),
+             (n_file, "files"), (n_set, "sets")]
+    chips += [(len(v), c.lower()) for c, v in groups.items()]
     out.append('<div class="kb-chips">' + "".join(
         f'<span class="kb-chip"><b>{n:,}</b>{esc(label)}</span>'
         for n, label in chips) + "</div>")
     out.append(
         '<div class="kb-find"><input id="kb-q" type="search" '
-        'placeholder="Filter by name, title, description, set or category" '
-        'aria-label="Filter knowledgebases" autocomplete="off">'
+        'placeholder="Filter by name, title, description, set, category or '
+        'build" aria-label="Filter knowledgebases" autocomplete="off">'
         '<span id="kb-hits"></span></div>')
     out.append('<p class="kb-jump">' + " · ".join(
-        f'<a href="#kb-{c}">{c}</a>' for c in colls_in_order(kbs)) + "</p>")
-    for i, c in enumerate(colls_in_order(kbs)):
-        nrow, kind = rows.get(c, (0, ""))
-        unit = "CpGs" if kind == "genome" else "probes"
-        tags = sorted({k["tag"] for k in kbs[c]})
-        ns_c = sum(n_sets(sets[(c, k["file"])]) for k in kbs[c])
-        out.append(f'<details class="full kb-coll" id="kb-{c}">')
-        out.append(
-            f'  <summary><h2>{c} <span class="m">— '
-            f'{"whole genome" if kind == "genome" else "array"}, '
-            f'{nrow:,} {unit} · {len(kbs[c])} knowledgebases · '
-            f'{ns_c:,} sets</span></h2></summary>')
-        out.append('  <p class="kb-tag">From ' + ", ".join(
-            f'<code class="inl">{esc(t)}</code>' for t in tags) + "</p>")
-        for category, items in by_category(kbs[c], cat):
-            out.append(f'  <details class="kb-cat">')
-            out.append(f'    <summary><h3>{esc(category)} <span class="m">'
-                       f'{len(items)}</span></h3></summary>')
-            for k in items:
-                out += render_kb(k, sets[(c, k["file"])], c, nrow, unit,
-                                 category)
-            out.append('  </details>')
+        f'<a href="#{cat_id(c)}">{esc(c)}</a>' for c in groups) + "</p>")
+    for category, members in groups.items():
+        out.append(f'<details class="full kb-cat" id="{cat_id(category)}">')
+        out.append(f'  <summary><h2>{esc(category)} <span class="m">'
+                   f'{len(members)} knowledgebases</span></h2></summary>')
+        for name in members:
+            out += render_kb(name, names[name], rows, sets, category, stats)
         out.append('</details>')
     out.append(END)
     return "\n".join(out)
 
 
 def render_llms(rows, kbs, sets, cat):
+    names = by_name(kbs)
     out = [LBEGIN, "## Knowledgebases", "",
-           "What `kycg fetch` offers, per collection, grouped by the KnowYourCG",
-           "paper's four categories: each knowledgebase with its number of sets",
-           "(records or states in the .cm). Set names and sizes are on the",
-           "page's Knowledgebases tab.", ""]
-    for c in colls_in_order(kbs):
-        nrow, kind = rows.get(c, (0, ""))
-        unit = "CpGs" if kind == "genome" else "probes"
-        tags = ", ".join(sorted({k["tag"] for k in kbs[c]}))
-        out.append(f"- {c} ({nrow:,} {unit}; {tags})")
-        for category, items in by_category(kbs[c], cat):
-            names = ", ".join(
-                f'{k["name"]} ({n_sets(sets[(c, k["file"])]):,})'
-                for k in items)
-            out.append("  " + wrap(f"{category}: {names}", indent="    "))
+           "What `kycg fetch` offers, grouped by the KnowYourCG paper's four",
+           "categories: each knowledgebase, then the builds and platforms that",
+           "carry it with their number of sets (records or states in the .cm).",
+           "Set names and sizes are on the page's Knowledgebases tab.", ""]
+    for category in CATS + [UNCAT]:
+        members = [n for n in sorted(names, key=str.lower)
+                   if cat.get(n, UNCAT) == category]
+        if not members:
+            continue
+        out.append(f"### {category}")
+        for n in members:
+            items = names[n]
+            title = items[0][1]["title"] or n
+            builds = ", ".join(
+                f'{c} {n_sets(sets[(c, k["file"])]):,}' for c, k in items)
+            out.append(wrap(f"- {n} ({title}): {builds}"))
+        out.append("")
     out.append(LEND)
     return "\n".join(out)
 
@@ -262,6 +328,7 @@ def main():
     rows, kbs = read_registry()
     sets = read_counts()
     cat = read_categories()
+    stats = dict(same=0, differs=[], only=[])
     missing = [f"{c}/{k['file']}" for c in kbs for k in kbs[c]
                if (c, k["file"]) not in sets]
     if missing:
@@ -269,7 +336,7 @@ def main():
                  "; re-run tools/make_kb_counts.sh")
     stale = []
     for path, begin, end, body in (
-            (PAGE, BEGIN, END, render(rows, kbs, sets, cat)),
+            (PAGE, BEGIN, END, render(rows, kbs, sets, cat, stats)),
             (LLMS, LBEGIN, LEND, render_llms(rows, kbs, sets, cat))):
         old = open(path).read()
         new = splice(old, begin, end, body, path)
@@ -280,6 +347,14 @@ def main():
         else:
             open(path, "w").write(new)
             print("wrote", os.path.relpath(path, ROOT))
+    if "--stats" in sys.argv[1:]:
+        print(f"array builds identical to their genome build: {stats['same']}")
+        print(f"array builds that differ: {len(stats['differs'])}")
+        for d in stats["differs"]:
+            print("  " + d)
+        print(f"array-only knowledgebase builds: {len(stats['only'])}")
+        for d in stats["only"]:
+            print("  " + d)
     if stale:
         sys.exit("stale: " + ", ".join(stale) +
                  "; run docs/build_knowledgebases.py")

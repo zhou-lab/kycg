@@ -183,81 +183,87 @@ known set of knowledgebases.
 <!-- knowledgebases:begin -->
 ## Knowledgebases
 
-What `kycg fetch` offers, per collection, grouped by the KnowYourCG
-paper's four categories: each knowledgebase with its number of sets
-(records or states in the .cm). Set names and sizes are on the
-page's Knowledgebases tab.
+What `kycg fetch` offers, grouped by the KnowYourCG paper's four
+categories: each knowledgebase, then the builds and platforms that
+carry it with their number of sets (records or states in the .cm).
+Set names and sizes are on the page's Knowledgebases tab.
 
-- hg38 (29,401,795 CpGs; zhou-lab/KYCGKB_hg38@v2)
-  Sequence features: nFlankCG (46), nFlankCG100 (32), nFlankCG50 (18),
-    Tetranuc2 (4)
-  Genomic features: ABCompartment (7), Centromere (25), CGI (4), ChromHMM (19),
-    ChromHMMfullStack (101), Chromosome (25), ChromosomeXY (1), CTCFbind (1),
-    HM (82), ImprintingDMR (1), MetagenePC (30), PMD (3), REMCChromHMM (16),
-    rmsk1 (20), rmsk2 (60), TFBS (1,359), TFBSrm (1,188), Win100k (29,511)
-  Trait associates: IntermediateMeth (1), IntermediateMethS (1),
-    RoadMapNegGeneExpCpG (1), RoadMapPosGeneExpCpG (1), TiSigBLUEPRINT (448),
-    TiSigBrain (266), TiSigLoyfer (324), XCILinkedWGBS (1),
-    XCILinkedWGBSSorted (1)
-  Technical associates: Blacklist (1)
-- mm10 (21,867,837 CpGs; zhou-lab/KYCGKB_mm10@v2)
-  Sequence features: GCfrac (140), kmer10 (32,897), nFlankCG (43), nFlankCG100
-    (30), nFlankCG50 (19), Tetranuc2 (4), Tetranuc4 (11)
-  Genomic features: CGI (4), ChromHMM (19), ChromHMMfullStack (101), Chromosome
-    (22), ChromosomeXY (1), EnsRegBuild (6), EvoCons (1), GeneFeatures (6),
-    HM (78), MetagenePC (30), PMD (3), rmsk1 (21), rmsk2 (59), TFBS (703),
-    TFBSFreq (7), TFBSrm (638), UCSCEnsemblRegulatory (7), Win100k (26,604),
-    Win1m (2,673), Win30k (88,442)
-  Technical associates: Blacklist (1)
-- mm39 (21,889,506 CpGs; zhou-lab/KYCGKB_mm39@v2)
-  Genomic features: ChromHMM (19)
-- MSA (284,309 probes; zhou-lab/InfiniumAnnotation@v8.2)
-  Sequence features: G4peaksHighConfidence (2), nFlankCG (31), Tetranuc2 (4)
-  Genomic features: ABCompartment (6), Centromere (22), CGI (4), ChromHMM (19),
-    ChromHMMfullStack (100), Chromosome (26), CTCFbind (2), EvoCons (2), HM
-    (82), ImprintingDMR (2), IntergenicCpGs (2), MetagenePC (30), PMD (3),
-    REMCChromHMM (16), rmsk1 (19), rmsk2 (57), TFBSrm (1,188)
-  Trait associates: CoRSIV (2), IntermediateMeth (2), RoadMapNegGeneExpCpG (2),
-    RoadMapPosGeneExpCpG (2), TiSigBLUEPRINT (410), TiSigBrain (264),
-    TiSigLoyfer (301), XCILinkedWGBSSorted (2)
-  Technical associates: Blacklist (2), InfiniumChemistry (7), ProbeCGnum (11),
-    ProbeType (4)
-- EPICv2 (937,690 probes; zhou-lab/InfiniumAnnotation@v8.2)
-  Sequence features: nFlankCG (37), Tetranuc2 (4)
-  Genomic features: ABCompartment (6), CGI (4), ChromHMM (19), CTCFbind (2), HM
-    (82), ImprintingDMR (2), MetagenePC (30), PMD (2), REMCChromHMM (16),
-    rmsk1 (20), rmsk2 (58), TFBSrm (1,188)
-  Technical associates: InfiniumChemistry (7), ProbeType (5)
-- EPIC (866,553 probes; zhou-lab/InfiniumAnnotation@v8.2)
-  Sequence features: nFlankCG (35), Tetranuc2 (4)
-  Genomic features: ABCompartment (6), CGI (4), ChromHMM (19), CTCFbind (2), HM
-    (82), ImprintingDMR (2), MetagenePC (30), PMD (2), REMCChromHMM (16),
-    rmsk1 (20), rmsk2 (58), TFBSrm (1,188)
-  Technical associates: Blacklist (2), InfiniumChemistry (5), ProbeType (4)
-- HM450 (486,427 probes; zhou-lab/InfiniumAnnotation@v8.2)
-  Sequence features: nFlankCG (34), Tetranuc2 (4)
-  Genomic features: ABCompartment (6), CGI (4), ChromHMM (19), Chromosome (26),
-    CTCFbind (2), HM (82), ImprintingDMR (2), MetagenePC (30), PMD (2),
-    REMCChromHMM (16), rmsk1 (20), rmsk2 (56), TFBSrm (1,188)
-  Technical associates: Blacklist (2), InfiniumChemistry (6), ProbeType (5)
-- HM27 (27,722 probes; zhou-lab/InfiniumAnnotation@v8.2)
-  Sequence features: nFlankCG (32), Tetranuc2 (4)
-  Genomic features: ABCompartment (7), CGI (4), ChromHMM (19), CTCFbind (2), HM
-    (81), ImprintingDMR (2), MetagenePC (30), PMD (3), REMCChromHMM (16),
-    rmsk1 (14), rmsk2 (39)
-  Technical associates: InfiniumChemistry (5), ProbeType (2)
-- MM285 (287,692 probes; zhou-lab/InfiniumAnnotation@v8.2)
-  Sequence features: nFlankCG (32), Tetranuc2 (4), Tetranuc4 (11)
-  Genomic features: CGI (4), ChromHMM (19), Chromosome (23), EnsRegBuild (6),
-    HM (78), MetagenePC (30), PMD (3), rmsk1 (21), rmsk2 (55), TFBSrm (638)
-  Technical associates: Blacklist (2), InfiniumChemistry (8), ProbeCGnum (8),
-    ProbeType (3)
-- Mammal40 (38,607 probes; zhou-lab/InfiniumAnnotation@v8.2)
-  Sequence features: nFlankCG (31), Tetranuc2 (4)
-  Genomic features: ABCompartment (7), CGI (4), ChromHMM (19), CTCFbind (2), HM
-    (81), ImprintingDMR (2), MetagenePC (30), PMD (3), REMCChromHMM (16),
-    rmsk1 (12), rmsk2 (36)
-  Technical associates: InfiniumChemistry (5), ProbeType (4)
+### Sequence features
+- G4peaksHighConfidence (G-quadruplexes): MSA 2
+- GCfrac (GC fraction): mm10 140
+- kmer10 (10-mer context): mm10 32,897
+- nFlankCG (Flanking CpG density): hg38 46, mm10 43, MSA 31, EPICv2 37, EPIC
+  35, HM450 34, HM27 32, MM285 32, Mammal40 31
+- nFlankCG100 (Flanking CpG density, 100 bp): hg38 32, mm10 30
+- nFlankCG50 (Flanking CpG density, 50 bp): hg38 18, mm10 19
+- Tetranuc2 (Tetranucleotide context): hg38 4, mm10 4, MSA 4, EPICv2 4, EPIC
+  4, HM450 4, HM27 4, MM285 4, Mammal40 4
+- Tetranuc4 (Tetranucleotide context, uncollapsed): mm10 11, MM285 11
+
+### Genomic features
+- ABCompartment (A/B compartments): hg38 7, MSA 6, EPICv2 6, EPIC 6, HM450 6,
+  HM27 7, Mammal40 7
+- Centromere (Centromeres): hg38 25, MSA 22
+- CGI (CpG islands): hg38 4, mm10 4, MSA 4, EPICv2 4, EPIC 4, HM450 4, HM27
+  4, MM285 4, Mammal40 4
+- ChromHMM (Chromatin states): hg38 19, mm10 19, mm39 19, MSA 19, EPICv2 19,
+  EPIC 19, HM450 19, HM27 19, MM285 19, Mammal40 19
+- ChromHMMfullStack (Chromatin states, full stack): hg38 101, mm10 101, MSA
+  100
+- Chromosome (Chromosome): hg38 25, mm10 22, MSA 26, HM450 26, MM285 23
+- ChromosomeXY (Sex chromosomes): hg38 1, mm10 1
+- CTCFbind (CTCF binding sites): hg38 1, MSA 2, EPICv2 2, EPIC 2, HM450 2,
+  HM27 2, Mammal40 2
+- EnsRegBuild (Ensembl Regulatory Build): mm10 6, MM285 6
+- EvoCons (Evolutionary conservation): mm10 1, MSA 2
+- GeneFeatures (Gene features): mm10 6
+- HM (Histone modifications): hg38 82, mm10 78, MSA 82, EPICv2 82, EPIC 82,
+  HM450 82, HM27 81, MM285 78, Mammal40 81
+- ImprintingDMR (Imprinted DMRs): hg38 1, MSA 2, EPICv2 2, EPIC 2, HM450 2,
+  HM27 2, Mammal40 2
+- IntergenicCpGs (Intergenic CpGs): MSA 2
+- MetagenePC (Metagene position): hg38 30, mm10 30, MSA 30, EPICv2 30, EPIC
+  30, HM450 30, HM27 30, MM285 30, Mammal40 30
+- PMD (Partially methylated domains): hg38 3, mm10 3, MSA 3, EPICv2 2, EPIC
+  2, HM450 2, HM27 3, MM285 3, Mammal40 3
+- REMCChromHMM (Chromatin states, Roadmap): hg38 16, MSA 16, EPICv2 16, EPIC
+  16, HM450 16, HM27 16, Mammal40 16
+- rmsk1 (Repeats, class): hg38 20, mm10 21, MSA 19, EPICv2 20, EPIC 20, HM450
+  20, HM27 14, MM285 21, Mammal40 12
+- rmsk2 (Repeats, family): hg38 60, mm10 59, MSA 57, EPICv2 58, EPIC 58,
+  HM450 56, HM27 39, MM285 55, Mammal40 36
+- TFBS (Transcription factor binding sites): hg38 1,359, mm10 703
+- TFBSFreq (TFBS density): mm10 7
+- TFBSrm (Transcription factor binding sites, ReMap): hg38 1,188, mm10 638,
+  MSA 1,188, EPICv2 1,188, EPIC 1,188, HM450 1,188, MM285 638
+- UCSCEnsemblRegulatory (Regulatory features via UCSC): mm10 7
+- Win100k (100 kb windows): hg38 29,511, mm10 26,604
+- Win1m (1 Mb windows): mm10 2,673
+- Win30k (30 kb windows): mm10 88,442
+
+### Trait associates
+- CoRSIV (Correlated regions of systemic interindividual variation): MSA 2
+- IntermediateMeth (Intermediate methylation): hg38 1, MSA 2
+- IntermediateMethS (Intermediate methylation, sorted cells): hg38 1
+- RoadMapNegGeneExpCpG (CpGs negatively correlated with expression): hg38 1,
+  MSA 2
+- RoadMapPosGeneExpCpG (CpGs positively correlated with expression): hg38 1,
+  MSA 2
+- TiSigBLUEPRINT (Tissue signatures, blood): hg38 448, MSA 410
+- TiSigBrain (Tissue signatures, brain): hg38 266, MSA 264
+- TiSigLoyfer (Tissue signatures, Loyfer atlas): hg38 324, MSA 301
+- XCILinkedWGBS (X-inactivation linked CpGs): hg38 1
+- XCILinkedWGBSSorted (X-inactivation linked, sorted cells): hg38 1, MSA 2
+
+### Technical associates
+- Blacklist (Blacklisted regions): hg38 1, mm10 1, MSA 2, EPIC 2, HM450 2,
+  MM285 2
+- InfiniumChemistry (Infinium chemistry): MSA 7, EPICv2 7, EPIC 5, HM450 6,
+  HM27 5, MM285 8, Mammal40 5
+- ProbeCGnum (CpGs per probe): MSA 11, MM285 8
+- ProbeType (Probe type): MSA 4, EPICv2 5, EPIC 4, HM450 5, HM27 2, MM285 3,
+  Mammal40 4
+
 <!-- knowledgebases:end -->
 
 ## Correctness
