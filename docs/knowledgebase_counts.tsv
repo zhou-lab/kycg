@@ -116,11 +116,11 @@ EPIC	HM.20221013.cm	HistoneLysineAcetylation	19664
 EPIC	HM.20221013.cm	HistoneLysineCrotonylation	46128					
 EPIC	ImprintingDMR.20220818.cm	NA	865469					
 EPIC	ImprintingDMR.20220818.cm	ImprintingDMR	1084					
-EPIC	InfiniumChemistry.cm	II	724429					
-EPIC	InfiniumChemistry.cm	I.T	21101					
-EPIC	InfiniumChemistry.cm	I.C	49932					
+EPIC	InfiniumChemistry.cm	II	724397					
+EPIC	InfiniumChemistry.cm	I.T	21103					
+EPIC	InfiniumChemistry.cm	I.C	49944					
 EPIC	InfiniumChemistry.cm	I.R	53128					
-EPIC	InfiniumChemistry.cm	I.A	17963					
+EPIC	InfiniumChemistry.cm	I.A	17981					
 EPIC	MetagenePC.20220911.cm	-10;-76650 -/+25600	442827					
 EPIC	MetagenePC.20220911.cm	-1;0 -/+50	48688					
 EPIC	MetagenePC.20220911.cm	-2;-150 -/+100	91568					
@@ -3363,11 +3363,11 @@ HM450	HM.20221013.cm	HistoneLysineAcetylation	16714
 HM450	HM.20221013.cm	HistoneLysineCrotonylation	39954					
 HM450	ImprintingDMR.20220818.cm	NA	485405					
 HM450	ImprintingDMR.20220818.cm	ImprintingDMR	1022					
-HM450	InfiniumChemistry.cm	II	350957					
-HM450	InfiniumChemistry.cm	I.T	19965					
-HM450	InfiniumChemistry.cm	I.C	46287					
+HM450	InfiniumChemistry.cm	II	350927					
+HM450	InfiniumChemistry.cm	I.T	19967					
+HM450	InfiniumChemistry.cm	I.C	46297					
 HM450	InfiniumChemistry.cm	I.R	51800					
-HM450	InfiniumChemistry.cm	I.A	17417					
+HM450	InfiniumChemistry.cm	I.A	17435					
 HM450	InfiniumChemistry.cm	NA	1					
 HM450	MetagenePC.20220911.cm	-10;-76650 -/+25600	262178					
 HM450	MetagenePC.20220911.cm	-1;0 -/+50	37693					
@@ -6196,11 +6196,11 @@ MSA	HM.20221013.cm	HistoneLysineAcetylation	4629
 MSA	HM.20221013.cm	HistoneLysineCrotonylation	10277					
 MSA	ImprintingDMR.20220818.cm	NA	282863					
 MSA	ImprintingDMR.20220818.cm	ImprintingDMR	1446					
-MSA	InfiniumChemistry.cm	II	206881					
+MSA	InfiniumChemistry.cm	II	206880					
 MSA	InfiniumChemistry.cm	I.C	36266					
 MSA	InfiniumChemistry.cm	I.R	18240					
 MSA	InfiniumChemistry.cm	I.T	13821					
-MSA	InfiniumChemistry.cm	I.A	7727					
+MSA	InfiniumChemistry.cm	I.A	7728					
 MSA	InfiniumChemistry.cm	I.G	1228					
 MSA	InfiniumChemistry.cm	I.Y	146					
 MSA	IntergenicCpGs.20220811.cm	NA	234540					
