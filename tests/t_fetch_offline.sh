@@ -63,6 +63,7 @@ check "still nothing downloaded" 0 "$(find "$store" -type f | wc -l | tr -d ' ')
 out=$("$KYCG" fetch -f -o "" mm10 2>&1 >/dev/null); rc=$?
 check "an empty -o exits non-zero" 1 "$rc"
 check_has "and says -o needs set names" "set names" "$out"
+check_has "and that the value was empty" "-o was given an empty value" "$out"
 out=$("$KYCG" fetch -f -o PMD.20220911.cm mm10 2>&1 >/dev/null); rc=$?
 check "a filename in -o exits non-zero" 1 "$rc"
 check_has "and names the confusion" "not a file name" "$out"

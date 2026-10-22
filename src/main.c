@@ -117,6 +117,11 @@ int main(int argc, char *argv[]) {
 
   if (argc < 2) return usage();
 
+  /* `kycg <cmd> --help` is `kycg <cmd> -h`: each subcommand's getopt knows only
+   * the short form, and would otherwise refuse the long one with exit 1. */
+  for (int i = 2; i < argc; ++i)
+    if (strcmp(argv[i], "--help") == 0) argv[i] = "-h";
+
   if      (strcmp(argv[1], "test") == 0)  ret = main_test(argc - 1, argv + 1);
   else if (strcmp(argv[1], "fetch") == 0) ret = kycg_main_fetch(argc - 1, argv + 1);
   else if (strcmp(argv[1], "annotate") == 0) ret = main_annotate(argc - 1, argv + 1);

@@ -33,6 +33,18 @@ check "an unknown option exits 1" 1 "$rc"
 h=$("$KYCG" -h 2>&1); rc=$?
 check "-h exits 0" 0 "$rc"
 check "--help exits 0" 0 "$("$KYCG" --help >/dev/null 2>&1; echo $?)"
+## and at every subcommand, in both spellings: llms.txt says all levels
+for sub in fetch test annotate; do
+  check "$sub -h exits 0"     0 "$("$KYCG" $sub -h     </dev/null >/dev/null 2>&1; echo $?)"
+  check "$sub --help exits 0" 0 "$("$KYCG" $sub --help </dev/null >/dev/null 2>&1; echo $?)"
+done
+
+## A missing -m off a terminal is one sentence, not the help with the
+## sentence at the bottom.
+out=$("$KYCG" test nosuch.cg </dev/null 2>&1 >/dev/null); rc=$?
+check "test without -m exits 1" 1 "$rc"
+check_has "and says what is missing" "at least one knowledgebase with -m" "$out"
+check "and only that" 1 "$(printf '%s\n' "$out" | grep -c .)"
 check "--help matches -h" "$h" "$("$KYCG" --help 2>&1)"
 
 for sub in test annotate fetch; do

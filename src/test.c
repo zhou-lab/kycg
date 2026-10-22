@@ -500,8 +500,9 @@ int main_test(int argc, char *argv[]) {
   }
 
   if (!n_masks) {
-    usage();
-    wzfatal("Please supply at least one knowledgebase with -m.\n");
+    /* The one missing flag, said alone: the 35-line help would bury it. */
+    wzfatal("kycg test: please supply at least one knowledgebase with -m "
+            "(see kycg test -h).\n");
   }
 
   mask_src_t *masks = calloc(n_masks, sizeof(mask_src_t));

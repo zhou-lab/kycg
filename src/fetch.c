@@ -947,9 +947,13 @@ int kycg_main_fetch(int argc, char *argv[]) {
 
   /* -o names sets, not files. Catch the confusion before anything is fetched. */
   if (conf.only && !only_is_valid(conf.only)) {
-    fprintf(stderr,
-            "kycg fetch: -o takes comma-separated set names (CGI,ChromHMM), not "
-            "a file name%s.\n", *conf.only ? " or path" : " (it was empty)");
+    if (!*conf.only)
+      fprintf(stderr, "kycg fetch: -o was given an empty value; it takes "
+                      "comma-separated set names (CGI,ChromHMM).\n");
+    else
+      fprintf(stderr,
+              "kycg fetch: -o takes comma-separated set names (CGI,ChromHMM), "
+              "not a file name or path.\n");
     return 1;
   }
 
