@@ -2,6 +2,8 @@
 # Verify the row-space dimensions pinned in src/registry.h against live data.
 #
 #   tools/check_dimensions.sh          # needs yame on PATH and network
+#   CHECK_DIMENSIONS_PARSE_ONLY=1 tools/check_dimensions.sh
+#                                      # offline: parse the registry only
 #
 # WHY A SEPARATE SCRIPT
 #   The dimensions are pinned rather than derived because they are needed
@@ -48,35 +50,38 @@ import re, subprocess, sys, os, json, urllib.request
 
 tmp = sys.argv[1]
 reg = open("src/registry.h").read()
-iatag = re.search(r'#define KYCG_IA_TAG\s+"([^"]+)"', reg).group(1)
+
+## KYCG_FILES: one row per file, key / store_path / url / sha256 / size.
+files = re.findall(
+    r'\{ "([^"]+)", "([^"]+)",\s*"([^"]+)",\s*"[0-9a-f]{64}", (\d+),', reg)
+
+## The two collection tables: name, pinned rows, and the slice of KYCG_FILES
+## that holds the collection's sets (KYCG_FILES + start, n files).
+colls = re.findall(
+    r'\{ "([A-Za-z0-9]+)", (\d+), \d+, KYCG_FILES \+ (\d+), (\d+),', reg)
+colls += re.findall(
+    r'\{ "([A-Za-z0-9]+)", (\d+), \d+, (?:"[^"]*"|NULL), (?:"[^"]*"|NULL), '
+    r'KYCG_FILES \+ (\d+), (\d+),', reg)
+if not files or not colls:
+    sys.exit("check_dimensions.sh: could not parse src/registry.h; "
+             "has the registry layout changed?")
 
 rows = []   # (label, url, expected_rows)
-
-for m in re.finditer(r'\{ "([a-z0-9]+)", (\d+), (\d+), "(KYCGKB_[^"]+)", "([^"]+)"', reg):
-    genome, nrow, _nset, repo, tag = m.groups()
-    try:
-        d = json.load(urllib.request.urlopen(
-            f"https://api.github.com/repos/zhou-lab/{repo}/contents/?ref={tag}"))
-        cm = [f for f in d if f["name"].endswith(".cm")]
-        small = min(cm, key=lambda x: x["size"])["name"]
-    except Exception:
-        print(f"  {genome:<12} {'SKIP':<12} could not list repo"); continue
-    rows.append((genome,
-                 f"https://github.com/zhou-lab/{repo}/raw/{tag}/{small}", nrow))
-
-for m in re.finditer(r'\{ "([A-Za-z0-9]+)", (\d+), (\d+), "[0-9a-f]{64}"', reg):
-    plat, nrow, _nset = m.groups()
-    base = (f"https://github.com/zhou-lab/InfiniumAnnotation/raw/{iatag}"
-            f"/{plat}/KYCG")
-    try:
-        sums = urllib.request.urlopen(base + "/SHA256SUMS").read().decode()
-    except Exception:
-        print(f"  {plat:<12} {'SKIP':<12} no manifest"); continue
-    cm = [l.split()[1] for l in sums.splitlines()
-          if l.strip().endswith(".cm")]
+for name, nrow, start, n in colls:
+    ## the smallest .cm in the slice: every record in a collection indexes the
+    ## same row list, so the cheapest one answers for all of them
+    cm = [f for f in files[int(start):int(start) + int(n)]
+          if f[1].endswith(".cm")]
     if not cm:
-        print(f"  {plat:<12} {'SKIP':<12} no .cm found"); continue
-    rows.append((plat, f"{base}/{cm[0]}", nrow))
+        print(f"  {name:<12} {'SKIP':<12} no .cm in the registry"); continue
+    small = min(cm, key=lambda f: int(f[3]))
+    rows.append((name, small[2], nrow))
+
+## The suite runs the parse alone, offline: a registry layout change then
+## fails `make test` instead of the next person who runs this by hand.
+if os.environ.get("CHECK_DIMENSIONS_PARSE_ONLY"):
+    print(f"parsed {len(rows)} collections from {len(files)} files")
+    sys.exit(0 if len(rows) == len(colls) else 1)
 
 fail = 0
 for label, url, want in rows:
