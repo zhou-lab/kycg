@@ -117,17 +117,28 @@ static void ordering_free(ordering_t *o) {
  * over a digest helps nobody), a file that is not there at all is fatal.
  */
 static int ordering_load(const char *store, const char *platform,
-                         ordering_t *out) {
+                         const char *spec_hint, ordering_t *out) {
   char spec[4096], path[4096], advice[1024] = {0};
   snprintf(spec, sizeof(spec), "%s/%s.ordering.tsv.gz", platform, platform);
 
   yame_store_state_t st = yame_store_resolve(kycg_fetch_cfg(), spec, store,
                                              path, sizeof(path), NULL,
                                              advice, sizeof(advice));
+  /* The repair is kycg's own fetch of the sets named: it brings the ordering
+   * THIS build pins. libyame's advice names a `yame fetch`, which brings the
+   * one the installed yame pins, and that need not be the same release. */
+  char fix[1200];
+  if (spec_hint && strchr(spec_hint, ':'))
+    snprintf(fix, sizeof(fix), "kycg fetch -f %s", spec_hint);
+  else
+    snprintf(fix, sizeof(fix), "kycg fetch -f %s:<set>", platform);
+  (void)advice;
+
   if (st == YAME_STORE_STALE)
     fprintf(stderr,
-            "kycg annotate: the %s ordering on disk is not the one this build "
-            "pins;\n  using it anyway. %s\n", platform, advice);
+            "kycg annotate: the %s ordering on disk is from a different "
+            "release than this build pins;\n  using it anyway. To replace "
+            "it: %s -r\n", platform, fix);
 
   gzFile fp = (st == YAME_STORE_CURRENT || st == YAME_STORE_STALE)
             ? gzopen(path, "rb") : NULL;
@@ -143,9 +154,9 @@ static int ordering_load(const char *store, const char *platform,
   }
   if (!fp) {
     fprintf(stderr,
-            "kycg annotate: cannot read the probe ordering for %s.\n", platform);
-    if (advice[0]) fprintf(stderr, "  %s\n", advice);
-    else fprintf(stderr, "  Fetch that one file:\n      yame fetch %s\n", spec);
+            "kycg annotate: cannot read the probe ordering for %s (%s).\n"
+            "  It comes with any set fetched for the platform:\n      %s\n",
+            platform, spec, fix);
     return -1;
   }
 
@@ -487,7 +498,7 @@ int main_annotate(int argc, char *argv[]) {
 
   const char *store = kycg_store_root(NULL);
   ordering_t ord = {0};
-  if (ordering_load(store, platform, &ord) != 0) return 1;
+  if (ordering_load(store, platform, specs[0], &ord) != 0) return 1;
   if (ord.n != ar->rows) {
     fprintf(stderr,
             "kycg annotate: the ordering for %s has %zu probes but this build "

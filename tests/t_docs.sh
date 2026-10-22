@@ -24,6 +24,13 @@ if [ -f "$root/conda-recipe/meta.yaml" ]; then
   ## ships a 0.4 binary labelled 0.3 and there is no way to tell afterwards.
   v_rec=$(sed -n 's/^{% set version = "\([^"]*\)".*/\1/p' "$root/conda-recipe/meta.yaml")
   check "conda-recipe/meta.yaml matches the binary" "$v_bin" "$v_rec"
+  ## and the yame it pins beside kycg is the YAME kycg links, or the two
+  ## commands fetch different copies of one file into one store
+  if [ -f "$root/external/YAME/src/yame_version.h" ]; then
+    y_rec=$(sed -n 's/^{% set yame_version = "\([^"]*\)".*/\1/p' "$root/conda-recipe/meta.yaml")
+    y_sub=$(sed -n 's/.*define YAME_VERSION "v\{0,1\}\([^"]*\)".*/\1/p' "$root/external/YAME/src/yame_version.h")
+    check "conda-recipe pins the yame the submodule is" "$y_sub" "$y_rec"
+  fi
 fi
 
 ## ---- every command the docs name is dispatchable ------------------------ ##

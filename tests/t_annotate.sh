@@ -165,5 +165,8 @@ out=$(YAME_DATA_HOME="$none" "$KYCG" annotate -m cgi.cm -p "$PLAT" probes.tsv \
         2>&1 >/dev/null); rc=$?
 check "a missing ordering exits non-zero" 1 "$rc"
 check_has "and names the path it wanted" "$PLAT.ordering.tsv.gz" "$out"
+## and the fetch is kycg's: a `yame fetch` would bring the copy yame pins,
+## which need not be the release this build reads
+check_has "and the kycg fetch that brings it" "kycg fetch -f $PLAT:" "$out"
 
 done_testing

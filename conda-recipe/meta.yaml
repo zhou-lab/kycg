@@ -1,5 +1,9 @@
 {% set name = "kycg" %}
 {% set version = "2.1.0" %}
+## The YAME this build links (external/YAME). The yame COMMAND installed beside
+## kycg must pin the same registry, or the two fetch different copies of one
+## file into one store; tests/t_docs.sh checks this against the submodule.
+{% set yame_version = "1.61" %}
 
 package:
   name: {{ name }}
@@ -32,6 +36,9 @@ requirements:
     # automatically; listed for clarity.
     - zlib
     - libcurl
+  run_constrained:
+    # not a dependency, but if yame is installed it must be the one kycg links
+    - yame {{ yame_version }}
 
 test:
   requires:
@@ -40,7 +47,7 @@ test:
     # installs one binary. That is also exactly what a user needs for the
     # documented `yame info` row-space check, so depending on it here tests
     # the install instructions as well as the code.
-    - yame
+    - yame {{ yame_version }}
   source_files:
     # The command-level tests, and the docs they check the binary against.
     # Run against the INSTALLED package rather than a build tree: conda-build
