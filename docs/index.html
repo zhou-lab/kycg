@@ -236,8 +236,8 @@
             aria-label="Copy a prompt for your coding agent"><span class="ico">⧉</span>agent prompt</button>
     <span class="install">
       <button id="install-btn" type="button"
-              data-cmd="conda install -c zhou-lab -c conda-forge kycg yame"
-              title="conda install -c zhou-lab -c conda-forge kycg yame — click to copy"><span class="ico">⧉</span>conda install</button>
+              data-cmd="conda install -c zhou-lab -c conda-forge kycg yame cinderplot"
+              title="conda install -c zhou-lab -c conda-forge kycg yame cinderplot — click to copy"><span class="ico">⧉</span>conda install</button>
       <a class="ana" href="https://anaconda.org/zhou-lab/kycg"
          title="anaconda.org/zhou-lab/kycg" rel="noopener">↗</a>
     </span>
@@ -269,13 +269,17 @@
 
   <section class="card">
     <h2>Install <span class="m">— then fetch once</span></h2>
-    <pre data-example="10_install"><code><span class="cm"># both binaries, from conda</span>
-conda install -c zhou-lab -c conda-forge kycg yame
+    <pre data-example="10_install"><code><span class="cm"># kycg, yame and cinderplot, from conda</span>
+conda install -c zhou-lab -c conda-forge kycg yame cinderplot
 
 <span class="cm"># or build from source (YAME is a submodule)</span>
 git clone --recurse-submodules \
   https://github.com/zhou-lab/kycg
-cd kycg &amp;&amp; make &amp;&amp; make yame-bin</code></pre>
+cd kycg &amp;&amp; make &amp;&amp; make yame-bin
+
+<span class="cm"># the sample data every example below runs in</span>
+git clone https://github.com/zhou-lab/kycg-examples
+cd kycg-examples/data</code></pre>
     <p style="margin-top:11px"><b>Install <code class="inl">yame</code> too.</b> kycg links
       libyame statically, so the backend's <i>library</i> is inside the binary — but the
       <code class="inl">yame</code> <i>command</i> is a separate package, and the row-space
@@ -289,7 +293,7 @@ cd kycg &amp;&amp; make &amp;&amp; make yame-bin</code></pre>
       <code class="inl">kycg --version</code> (or <code class="inl">-v</code>) reports the
       coupled YAME version, the registry tag it can verify, and whether the build has
       libcurl.</p>
-    <pre data-norun="the interactive browser; needs a terminal"><code><span class="cm"># guided: location, collection, sets, confirm</span>
+    <pre data-norun="the interactive browser; needs a terminal"><code><span class="cm"># browse everything</span>
 kycg <span class="sub">fetch</span>
 
 <span class="cm"># or name what you want outright</span>
@@ -344,7 +348,7 @@ $ kycg <span class="sub">fetch</span> -f mm10:CGI
   </section>
 
   <section class="card">
-    <h2>Pick what you need <span class="m">— r, i, -o</span></h2>
+    <h2>Pick what you need <span class="m">— i, -o</span></h2>
     <p>The full hg38 collection is 363&nbsp;MB. You rarely want all of it.</p>
     <pre data-norun="the browser as it draws"><code><span class="cm"># a tree — → unfolds a target in place</span>
 $ kycg <span class="sub">fetch</span>
@@ -354,7 +358,7 @@ $ kycg <span class="sub">fetch</span>
     ├ CGI       CGI…cm       120 KB  cached
     ├ ChromHMM  ChromHMM…cm  857 KB  cached
     ├ PMD       PMD…cm      16.3 KB  cached
-  row 1 of 10  •  0 selected  •  → open  ← close  space select  <b>i</b> close  f fetch  d store   q quit
+  row 1 of 10  •  0 selected  •  <b>i</b> close  f fetch  h keys  q quit
 
 <span class="cm"># or name it directly — opens with those checked</span>
 $ kycg <span class="sub">fetch</span> hg38:CGI,ChromHMM
@@ -386,13 +390,14 @@ $ kycg <span class="sub">fetch</span> -f hg38:CGI,ChromHMM</code></pre>
     <h2>Test <span class="m">— the core</span></h2>
     <p>Hypergeometric tail, six effect sizes, stratified FDR. 21.8M rows in
       <b>0.12&nbsp;s</b>.</p>
-    <pre data-example="50_test"><code>kycg <span class="sub">test</span> -m ~/.local/share/yame/mm10/KYCG/ChromHMM.20220414.cm \
-  query.cg &gt; res.tsv</code></pre>
+    <pre data-example="50_test"><code>kycg <span class="sub">fetch</span> -f mm10:ChromHMM,CGI,PMD
+kycg <span class="sub">test</span> -m mm10:ChromHMM onecell.cg &gt; res.tsv</code></pre>
     <p style="margin-top:11px"><code class="inl">-m</code> is <b>repeatable</b> — this is what
       makes a store worth having. One pass, one table, one FDR correction:</p>
-    <pre data-example="51_test_store_glob"><code>kycg <span class="sub">test</span> $(for f in ~/.local/share/yame/mm10/KYCG/*.cm; do
-        printf -- '-m %s ' $f; done) \
-  query.cg &gt; res.tsv</code></pre>
+    <pre data-example="51_test_store_glob"><code><span class="cm"># every mm10 set you have fetched</span>
+kycg <span class="sub">test</span> -m mm10 onecell.cg &gt; res_all.tsv</code></pre>
+    <p style="margin-top:11px">A path works anywhere a name does:
+      <code class="inl">-m path/to/some.cm</code> is taken literally.</p>
     <p style="margin-top:11px">Omit <code class="inl">-m</code> on a terminal and kycg offers
       the store — filtered to the sets that share your query's row space, so the list
       cannot be picked wrong:</p>
@@ -408,13 +413,12 @@ Knowledgebases for 21,867,837 rows -- space to choose, t to test
       ├──   [x] ChromHMM.20220414.cm                   v2         857.4 KB
 <span class="sub">❯</span>     ├──   [ ] ChromHMMfullStack.20231222.cm          v2           6.1 MB
   <span class="cm">…</span>
-  <span class="cm">row 7 of 31  •  2 selected  •  i info  f fetch  t test  h keys  q quit</span></code></pre>
+  <span class="cm">row 7 of 31  •  2 selected  •  i close  f fetch  t test  h keys  q quit</span></code></pre>
     <p style="margin-top:11px">It is the same browser <code class="inl">fetch</code> uses,
       showing only the collections whose row count matches the query. A set you do not
       have yet is still listed: check it, <code class="inl">f</code> to fetch it, then
       <code class="inl">t</code> to test against it without leaving.
-      The browser is coloured whenever it draws; for plain text use
-      <code class="inl">-l</code>, <code class="inl">-y</code> or a pipe. A terminal that
+      The browser is coloured whenever it draws; for plain text use a pipe. A terminal that
       cannot address the cursor (<code class="inl">TERM=dumb</code>) or a redirected
       stdout falls back to plain TSV instead.</p>
     <div class="note">Testing against 30 knowledgebases in 30 processes decompresses the
@@ -434,15 +438,14 @@ Knowledgebases for 21,867,837 rows -- space to choose, t to test
   <section class="card">
     <h2>Read the result <span class="m">— top hits</span></h2>
     <p>One row per (query&nbsp;sample, knowledgebase&nbsp;record), sorted by significance.</p>
-    <pre data-example="52_test_read"><code>$ kycg <span class="sub">test</span> -m ChromHMM.cm -m CGI.cm -m PMD.cm \
-    onecell.cg | cut -f3,4,10,13
-
-db_file          db         estimate  fdr
-PMD…cm           commonHMD  0.275     0
-ChromHMM…cm      Quies      0.199     0
-ChromHMM…cm      QuiesG     0.253     0
-ChromHMM…cm      Tx         0.307     0
-CGI…cm           Shore      0.196     9.17e-266</code></pre>
+    <pre data-example="52_test_read"><code>$ kycg <span class="sub">test</span> -m mm10:ChromHMM,CGI,PMD onecell.cg \
+    | cut -f3,4,10,13 | head -6
+db_file               db         estimate      fdr
+PMD.20220911.cm       commonHMD  0.2752239496  0
+ChromHMM.20220414.cm  Quies      0.1987932193  0
+ChromHMM.20220414.cm  QuiesG     0.2533138994  0
+ChromHMM.20220414.cm  Tx         0.3065761345  0
+CGI.20220904.cm       Shore      0.195587212   9.17072e-266</code></pre>
     <div class="note warn"><b>Those zeros are real, and they are why this tool is log-space.</b>
       <code class="inl">p_value</code> and <code class="inl">fdr</code> are conveniences,
       recovered as <code class="inl">10^log10_p</code>; they underflow around
@@ -459,10 +462,10 @@ CGI…cm           Shore      0.196     9.17e-266</code></pre>
       own package (<code class="inl">conda install -c zhou-lab -c conda-forge yame</code>, or
       <code class="inl">make yame-bin</code> in a source tree). kycg itself has no
       <code class="inl">info</code> subcommand.</p>
-    <pre data-example="40_rowspace"><code>$ yame <span class="sub">info</span> onecell.cg ChromHMM.20220414.cm
-File        Sample Ncol Nrow     Format UnitBytes Keys
-onecell.cg  1      NA   21867837 3      1         NA
-ChromHMM…cm 1      NA   21867837 2      1         N=19|Quies,…</code></pre>
+    <pre data-example="40_rowspace"><code>$ yame <span class="sub">info</span> onecell.cg chromhmm.cm
+File         Sample  NSample  Nrow      Format  UnitBytes  Keys
+onecell.cg   1       NA       21867837  3       1          NA
+chromhmm.cm  1       NA       21867837  2       1          N=19|Quies,Het,Quies3,Quies2,...</code></pre>
     <p style="margin-top:11px">Mismatches fail loudly, naming both files and both counts:</p>
     <pre data-norun="an error, not a command"><code><span class="hl">Row count mismatch: query 'small.cg' record '1'
 has 5 rows but knowledgebase 'chromhmm.cm'
@@ -482,11 +485,12 @@ lists and cannot be compared.</span></code></pre>
       <code class="inl">test</code> asks whether a group of probes is enriched somewhere,
       <code class="inl">annotate</code> asks where one probe actually falls. It reads a
       TSV of probe IDs and writes it back with one column added per knowledgebase.</p>
-    <pre data-example="60_annotate"><code>$ kycg <span class="sub">annotate</span> -m EPIC:CGI,ProbeType hits.tsv
+    <pre data-example="60_annotate"><code>$ printf 'Probe_ID\teffect\ncg00000029\t0.51\ncg00000109\t-0.22\n' &gt; hits.tsv
+$ kycg <span class="sub">annotate</span> -m EPIC:CGI,ProbeType hits.tsv
 <span class="cm"># every input column and row kept, in order, plus:</span>
-Probe_ID     …   CGI     ProbeType
-cg00000029   …   opensea cg
-cg00000109   …   island  cg
+Probe_ID    effect  CGI      ProbeType
+cg00000029  0.51    Shore    cg
+cg00000109  -0.22   OpenSea  cg
 
 <span class="cm"># -i gives a 0/1 indicator column per set instead of names</span>
 $ kycg <span class="sub">annotate</span> -i -m EPIC:CGI hits.tsv</code></pre>
@@ -531,11 +535,11 @@ cinderplot 'v.tsv
     <a href="https://github.com/zhou-lab/kycg-examples">kycg-examples</a>).</p>
   <pre data-example="80_case_studies" style="margin-bottom:14px"><code><span class="cm"># the plotting is cinderplot; install it alongside kycg and yame</span>
 conda install -c zhou-lab -c conda-forge cinderplot
-git clone https://github.com/zhou-lab/kycg-examples
-bash kycg-examples/scripts/tissue_tfbs_enrichment.sh   <span class="cm"># the three TF panels</span>
-bash kycg-examples/scripts/metagene_profile.sh         <span class="cm"># the metagene profile</span></code></pre>
+cd ..                                       <span class="cm"># from kycg-examples/data to the clone</span>
+bash scripts/tissue_tfbs_enrichment.sh      <span class="cm"># the three TF panels</span>
+bash scripts/metagene_profile.sh            <span class="cm"># the metagene profile</span></code></pre>
   <p style="font-size:.82rem;color:var(--muted);margin:-4px 0 14px">The
-    <code class="inl">kycg-examples</code> repo also carries the sample
+    <code class="inl">kycg-examples</code> clone from the install block carries the sample
     <code class="inl">.cg</code> / <code class="inl">.cm</code> the snippets above use
     (<code class="inl">onecell.cg</code> and friends) — neither the package nor the main
     repo ships query data.</p>
@@ -546,7 +550,8 @@ bash kycg-examples/scripts/metagene_profile.sh         <span class="cm"># the me
              alt="Paired dot plot: top TFs for fetal brain and hepatocyte, disjoint signatures"
              loading="lazy">
         <button class="zoom" type="button" data-full="figures/tissue_tfbs.png" title="expand">⤢</button>
-        <div class="code"><pre data-norun="the shape of the call; the runnable form is in kycg-examples"><code><span class="cm"># tissue Hypo probes vs TF sites</span>
+        <div class="code"><pre data-norun="the shape of the call; the runnable form is in kycg-examples"><code><span class="cm"># the shape of the call; the script is in kycg-examples</span>
+<span class="cm"># tissue Hypo probes vs TF sites</span>
 kycg <span class="sub">test</span> -m MM285:TFBSrm *_hypo.cg
 cinderplot 'aes(factor(tf), neglog10_fdr,
   colour=tissue, size=overlap)
@@ -563,7 +568,8 @@ cinderplot 'aes(factor(tf), neglog10_fdr,
              alt="Volcano: fetal-brain hypomethylation vs TF binding, neuronal TFs labeled"
              loading="lazy">
         <button class="zoom" type="button" data-full="figures/brain_volcano.png" title="expand">⤢</button>
-        <div class="code"><pre data-norun="the shape of the call; the runnable form is in kycg-examples"><code>kycg <span class="sub">test</span> -a two.sided \
+        <div class="code"><pre data-norun="the shape of the call; the runnable form is in kycg-examples"><code><span class="cm"># the shape of the call; the script is in kycg-examples</span>
+kycg <span class="sub">test</span> -a two.sided \
   -m MM285:TFBSrm fetal_brain_hypo.cg
 cinderplot 'aes(estimate, neglog10_fdr,
   colour=sig) + geom_point() + geom_text()'</code></pre></div>
@@ -577,7 +583,8 @@ cinderplot 'aes(estimate, neglog10_fdr,
              alt="Horizontal bar chart of top hepatocyte-enriched TFs by -log10 FDR"
              loading="lazy">
         <button class="zoom" type="button" data-full="figures/hep_bar.png" title="expand">⤢</button>
-        <div class="code"><pre data-norun="the shape of the call; the runnable form is in kycg-examples"><code>kycg <span class="sub">test</span> -m MM285:TFBSrm hepatocyte_hypo.cg
+        <div class="code"><pre data-norun="the shape of the call; the runnable form is in kycg-examples"><code><span class="cm"># the shape of the call; the script is in kycg-examples</span>
+kycg <span class="sub">test</span> -m MM285:TFBSrm hepatocyte_hypo.cg
 cinderplot 'aes(factor(tf), neglog10_fdr)
   + geom_col() + coord_flip()'</code></pre></div>
       </div>
@@ -591,7 +598,8 @@ cinderplot 'aes(factor(tf), neglog10_fdr)
              alt="Metagene methylation profile: promoter dip, gene-body rise, downstream return"
              loading="lazy">
         <button class="zoom" type="button" data-full="figures/metagene.png" title="expand">⤢</button>
-        <div class="code"><pre data-norun="the shape of the call; the runnable form is in kycg-examples"><code><span class="cm"># sample beta over metagene bins</span>
+        <div class="code"><pre data-norun="the shape of the call; the runnable form is in kycg-examples"><code><span class="cm"># the shape of the call; the script is in kycg-examples</span>
+<span class="cm"># sample beta over metagene bins</span>
 kycg <span class="sub">test</span> -m MM285:MetagenePC mm285_sample.cg
 cinderplot 'aes(pos, beta)
   + geom_line() + geom_point()'</code></pre></div>
@@ -684,7 +692,7 @@ zhou-lab/KYCGKB_hg38@v2:CGI.20220904.cm</code></pre>
         <code class="inl">.part</code> sibling and are renamed only after the digest matches, so
         an interrupted fetch cannot leave a file that later reads as valid. The store is
         re-checkable with no kycg code at all:</p>
-      <pre data-example="90_verify_store"><code>cd ~/.local/share/yame/MSA/KYCG
+      <pre data-example="90_verify_store"><code>cd "${YAME_DATA_HOME:-$HOME/.local/share/yame}/MSA/KYCG"
 shasum -a 256 -c --ignore-missing SHA256SUMS</code></pre>
       <p style="font-size:.79rem;color:var(--muted);margin:8px 0 0"><code class="inl">--ignore-missing</code>
         matters because you rarely hold every set the directory could hold: the manifest
@@ -746,7 +754,7 @@ ok    test_hypergeo        <span class="cm"># worst relative error 2.6e-16</span
 ok    test_enrich
 ...
 ok    t_usage
-<span class="sub">17 passed, 0 failed</span></code></pre>
+<span class="sub">18 passed, 0 failed</span></code></pre>
       <p style="font-size:.79rem;color:var(--muted);margin:8px 0 0">Across four regimes: small,
         array-scale (486K), whole-genome (29M), and the deep tail at
         <code class="inl">log10 p ≈ -584141</code>.</p>
@@ -754,10 +762,16 @@ ok    t_usage
     <div>
       <h3>End to end — every column</h3>
       <pre data-norun="an R parity run; needs R and knowYourCG"><code>$ Rscript tests/validate_vs_R.R res.tsv
-log10_p     OK   worst 4.09e-12
-estimate    OK   worst 4.75e-10
-log10 fdr   OK   worst 2.96e-12
-<span class="sub">PASS</span>: agrees with R on every column.</code></pre>
+Comparing 19 rows against R
+  log10_p        OK     worst abs diff 4.09e-12
+  estimate       OK     worst abs diff 4.75e-10
+  log10 fdr      OK     worst abs diff 2.96e-12
+  cf_jaccard     OK     worst abs diff 4.88e-12
+  cf_mcc         OK     worst abs diff 4.6e-12
+  cf_overlap     OK     worst abs diff 2.68e-11
+  cf_npmi        OK     worst abs diff 1.47e-11
+  cf_dice        OK     worst abs diff 2.11e-11
+<span class="sub">PASS</span>: kycg agrees with R on every column.</code></pre>
       <p style="font-size:.79rem;color:var(--muted);margin:8px 0 0">Residual is output text
         precision, not computation. Counts are byte-identical to
         <code class="inl">yame summary</code>.</p>

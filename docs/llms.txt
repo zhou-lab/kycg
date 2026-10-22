@@ -34,7 +34,7 @@ Source build (YAME is a submodule; `make` drives its `make lib`):
   cd kycg && make            # make CURL=0 builds without fetch
   make yame-bin              # the yame COMMAND (make alone builds only libyame)
 
-Dependencies are YAME's: vendored htslib, zlib, libm, pthreads. libcurl is
+Dependencies are YAME's: vendored htslib, zlib, libm, pthreads, librt. libcurl is
 optional and used only by `kycg fetch`. `kycg --version` (alias `-v`) prints
 the build, the YAME it links, the store, the registry tag it can verify, and
 whether curl is in. `-h`/`--help` (all levels) exit 0.
@@ -77,7 +77,7 @@ then writes a SHA256SUMS derived from the same rows, so the store re-verifies
 with `sha256sum -c` and no kycg code. A set upstream with no row in the
 registry cannot be verified, so it is not offered. The digest is checked again
 when a file is READ: a copy this build does not pin warns and the command
-proceeds; a file that is absent is an error naming the `yame fetch` that gets
+proceeds; a file that is absent is an error naming the `kycg fetch` that gets
 it.
 
 ## test — set enrichment
@@ -106,7 +106,7 @@ Columns:
   cf_jaccard cf_mcc cf_overlap cf_npmi cf_dice
   beta depth
 
-The first eight are `yame summary`'s columns renamed; the rest kycg adds.
+The first nine are `yame summary`'s columns renamed; the rest kycg adds.
 `estimate` is Log2OddsRatio at full precision.
 
 `-c` takes a continuous query instead: one value per row, format 3 (scored

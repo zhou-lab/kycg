@@ -1,6 +1,7 @@
 ## title: annotate a table of probe IDs
 ## The lookup half of the same data: where does THIS probe fall? Arrays only,
 ## and the platform is named, never inferred.
+cd kycg-examples/data
 kycg fetch -f EPIC:CGI,ProbeType
 
 printf 'Probe_ID\teffect\ncg00000029\t0.51\ncg00000109\t-0.22\n' > hits.tsv
