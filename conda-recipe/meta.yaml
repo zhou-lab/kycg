@@ -1,5 +1,5 @@
 {% set name = "kycg" %}
-{% set version = "2.1.0" %}
+{% set version = "2.1.1" %}
 ## The YAME this build links (external/YAME). The yame COMMAND installed beside
 ## kycg must pin the same registry, or the two fetch different copies of one
 ## file into one store; tests/t_docs.sh checks this against the submodule.
