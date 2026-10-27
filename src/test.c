@@ -88,6 +88,8 @@ typedef struct {
   int continuous;    /* -c: set enrichment score of a continuous query */
   int alt_given;
   kycg_sea_cache_t nulls;
+  cdata_t restrict_u;  /* -u: rows the test may use, a fmt0 bitset; s NULL if none */
+  char *restrict_desc; /* the -u specs, for error messages */
 } test_conf_t;
 
 /**
@@ -138,6 +140,7 @@ static int usage(void) {
   fprintf(o, "%sOptions%s\n", KYCG_H_TITLE, KYCG_H_OFF);
   struct { const char *f, *d; } opt[] = {
     {"-m SPEC", "path or target[:sets]; repeatable [required]"},
+    {"-u FILE", "restrict the universe to the rows set in this record; repeatable, ANDed"},
     {"-p PLAT", "queries are probe ID lists for this array (- reads stdin)"},
     {"-a STR",  "alternative: greater|less|two.sided [greater]"},
     {"-c",      "continuous query: set enrichment score, as GSEA"},
@@ -179,6 +182,14 @@ static int usage(void) {
   fprintf(o, "      %sthreshold on log10_p and neglog10_fdr, which stay in log space.%s\n\n",
           KYCG_H_NOTE, KYCG_H_OFF);
 
+  fprintf(o, "    %sWith -u only rows set in the restriction count, for the query and%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %sthe universe alike: a cg-only or unmasked background. REC names a%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %srecord of a multi-record file (its index name); the first by default.%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "      %skycg test -p EPIC -u EPIC/KYCG/ProbeType.cm:cg -m EPIC:CGI hits.txt%s\n\n",
+          KYCG_H_KEY, KYCG_H_OFF);
   fprintf(o, "    %sQuery and knowledgebase must index the same reference row list;%s\n",
           KYCG_H_NOTE, KYCG_H_OFF);
   fprintf(o, "    %skycg checks their lengths agree but cannot verify they describe%s\n",
@@ -437,11 +448,157 @@ static void read_id_list(const char *fname, const kycg_ordering_t *ord,
   *out = c;
 }
 
+/**
+ * Load one -u spec into a fmt0 bitset and AND it into conf->restrict_u.
+ *
+ * A spec is a path, or path:REC. REC picks a record of a multi-record file
+ * by its index name, or, in a categorical (format 2) record, the state whose
+ * rows to keep: ProbeType.cm:cg is the cg probes. A path that exists is taken
+ * literally, so a colon in a file name still works. Otherwise the record must
+ * be a set (format 0, 1 or 6; for 6 the set bit is used).
+ */
+static void load_restriction(const char *spec, test_conf_t *conf) {
+  char *path = strdup(spec), *rec = NULL;
+  FILE *probe = fopen(path, "rb");
+  if (probe) fclose(probe);
+  else {
+    char *colon = strrchr(path, ':');
+    if (colon) { *colon = '\0'; rec = colon + 1; }
+    probe = fopen(path, "rb");
+    if (!probe) wzfatal("kycg test -u: cannot open '%s'.\n", spec);
+    fclose(probe);
+  }
+
+  long want = 0;
+  const char *state = rec;     /* REC is a state unless it names a record */
+  if (rec) {
+    snames_t sn = loadSampleNamesFromIndex(path);
+    for (int i = 0; i < sn.n; ++i)
+      if (strcmp(sn.s[i], rec) == 0) { want = i; state = NULL; break; }
+    cleanSampleNames2(sn);
+  }
+
+  cfile_t cf = open_cfile(path);
+  cdata_t c = {0};
+  for (long k = 0;; ++k) {
+    c = read_cdata1(&cf);
+    if (c.n == 0) wzfatal("kycg test -u: cannot read record %ld of '%s'.\n", want + 1, path);
+    if (k == want) break;
+    free_cdata(&c);
+  }
+  bgzf_close(cf.fh);
+
+  if (c.fmt == '2') {
+    if (!state)
+      wzfatal("kycg test -u: '%s' is categorical; name the state to keep, "
+              "as %s:<state>.\n", spec, path);
+    prepare_mask(&c);
+    if (!c.aux) fmt2_set_aux(&c);
+    f2_aux_t *aux = (f2_aux_t *)c.aux;
+    uint64_t k = aux->nk;
+    for (uint64_t i = 0; i < aux->nk; ++i)
+      if (strcmp(aux->keys[i], state) == 0) { k = i; break; }
+    if (k == aux->nk)
+      wzfatal("kycg test -u: '%s' has no state or record named '%s'.\n", path, state);
+    cdata_t b = {0};
+    b.fmt = '0'; b.compressed = 1; b.n = c.n;
+    b.s = wzcalloc((b.n >> 3) + 1, 1);
+    for (uint64_t i = 0; i < c.n; ++i)
+      if (f2_get_uint64(&c, i) == k) FMT0_SET(b, i);
+    free_cdata(&c);
+    c = b;
+  } else if (state) {
+    wzfatal("kycg test -u: '%s' has no record named '%s'.\n", path, state);
+  } else if (c.fmt != '0' && c.fmt != '1' && c.fmt != '6') {
+    wzfatal("kycg test -u: '%s' is format %c. A restriction must be a set "
+            "(format 0, 1 or 6) or a state of a categorical record.\n", spec, c.fmt);
+  }
+  prepare_mask(&c);
+  if (c.fmt == '6') {                 /* keep the set bit as a fmt0 bitset */
+    cdata_t b = {0};
+    b.fmt = '0'; b.compressed = 1; b.n = c.n;
+    b.s = wzcalloc((b.n >> 3) + 1, 1);
+    for (uint64_t i = 0; i < c.n; ++i)
+      if (FMT6_IN_SET(c, i)) FMT0_SET(b, i);
+    free_cdata(&c);
+    c = b;
+  }
+
+  if (!conf->restrict_u.s) {
+    conf->restrict_u = c;
+  } else {
+    if (c.n != conf->restrict_u.n)
+      wzfatal("kycg test -u: '%s' has %" PRIu64 " rows but an earlier "
+              "restriction has %" PRIu64 ".\n", spec, c.n, conf->restrict_u.n);
+    for (uint64_t i = 0; i <= (c.n >> 3); ++i) conf->restrict_u.s[i] &= c.s[i];
+    free_cdata(&c);
+  }
+
+  kstring_t d = {0};
+  if (conf->restrict_desc) { kputs(conf->restrict_desc, &d); kputs(", ", &d); free(conf->restrict_desc); }
+  kputs(spec, &d);
+  conf->restrict_desc = d.s;
+  free(path);
+}
+
+/**
+ * Drop every row outside the -u restriction from a prepared query record.
+ *
+ * A dropped row leaves the universe as well as the set, so the 2x2 counts
+ * see only restricted rows. Each format already has a way to say "this row
+ * is not measured", and that is what an excluded row becomes: a set (fmt0)
+ * turns into set+universe (fmt6) with the universe bit off, fmt6 loses its
+ * universe bit, fmt3 its M/U counts, fmt4 its value (negative is missing).
+ */
+static void restrict_query(cdata_t *c, const cdata_t *r,
+                           const char *fname_qry, const char *sq,
+                           const test_conf_t *conf) {
+  if (c->n != r->n) {
+    wzfatal("kycg test -u: row count mismatch. Query '%s' record '%s' has %"
+            PRIu64 " rows but the restriction (%s) has %" PRIu64 ".\n",
+            fname_qry, sq, c->n, conf->restrict_desc, r->n);
+  }
+  switch (c->fmt) {
+  case '0': {
+    cdata_t o = {0};
+    o.fmt = '6'; o.compressed = 0; o.n = c->n;
+    o.s = wzcalloc((o.n >> 2) + 1, 1);
+    for (uint64_t i = 0; i < c->n; ++i) {
+      if (!FMT0_IN_SET(*r, i)) continue;
+      if (FMT0_IN_SET(*c, i)) FMT6_SET1(o, i);
+      else FMT6_SET0(o, i);
+    }
+    free_cdata(c);
+    *c = o;
+    break;
+  }
+  case '6':
+    for (uint64_t i = 0; i < c->n; ++i)
+      if (!FMT0_IN_SET(*r, i)) FMT6_SET_NA(*c, i);
+    break;
+  case '3':
+    for (uint64_t i = 0; i < c->n; ++i)
+      if (!FMT0_IN_SET(*r, i)) memset(c->s + i * c->unit, 0, c->unit);
+    break;
+  case '4': {
+    float *v = (float *)c->s;
+    for (uint64_t i = 0; i < c->n; ++i)
+      if (!FMT0_IN_SET(*r, i)) v[i] = -1.0f;
+    break;
+  }
+  default:
+    wzfatal("kycg test -u: query '%s' record '%s' is format %c, which -u "
+            "cannot restrict (formats 0, 1, 3, 4 and 6 can).\n",
+            fname_qry, sq, c->fmt);
+  }
+}
+
 /** Test one query record against every knowledgebase. */
 static void run_record(results_t *v, cdata_t *c_qry, const char *sq,
                        const char *fname_qry, const char *qry_disp,
                        mask_src_t *masks, size_t n_masks, test_conf_t *conf) {
   prepare_mask(c_qry);
+  if (conf->restrict_u.s) restrict_query(c_qry, &conf->restrict_u, fname_qry, sq, conf);
 
   kycg_sea_query_t q = {0};
   if (conf->continuous && kycg_sea_query_init(&q, c_qry) != 0) {
@@ -516,8 +673,8 @@ int main_test(int argc, char *argv[]) {
 
   int c;
   /* Options may follow the target; BSD getopt would stop at it. */
-  kycg_permute_args(argc, argv, "m:p:a:cGs:MFHo:h");
-  while ((c = getopt(argc, argv, "m:p:a:cGs:MFHo:h")) >= 0) {
+  kycg_permute_args(argc, argv, "m:p:u:a:cGs:MFHo:h");
+  while ((c = getopt(argc, argv, "m:p:u:a:cGs:MFHo:h")) >= 0) {
     switch (c) {
     case 'm': {
       /* A spec, not just a path: "mm10:CGI" names a set the same way fetch
@@ -537,6 +694,7 @@ int main_test(int argc, char *argv[]) {
     }
     case 'o': conf.fname_out = strdup(optarg); break;
     case 'p': conf.platform = strdup(optarg); break;
+    case 'u': load_restriction(optarg, &conf); break;
     case 's': conf.fname_snames = strdup(optarg); break;
     case 'G': conf.by_group = 0; break;
     case 'M': conf.in_memory = 1; break;
@@ -776,6 +934,8 @@ int main_test(int argc, char *argv[]) {
   free(conf.fname_out);
   free(conf.fname_snames);
   free(conf.platform);
+  free_cdata(&conf.restrict_u);
+  free(conf.restrict_desc);
 
   return 0;
 }
