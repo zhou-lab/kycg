@@ -86,8 +86,10 @@ it.
   kycg test -m mm10:CGI,ChromHMM   query.cg
   kycg test -m mm10                query.cg   # everything cached for mm10
   kycg test -m path/to/some.cm     query.cg   # a path is taken literally
+  kycg test -p EPIC -m EPIC:CGI    hits.txt   # array query as probe IDs
 
   -m SPEC  path or target[:sets]; repeatable [required]
+  -p PLAT  queries are probe ID lists for this array (- reads stdin)
   -a STR   alternative: greater|less|two.sided [greater]
   -c       continuous query: set enrichment score, as GSEA
   -G       correct FDR globally instead of within knowledgebase
@@ -108,6 +110,16 @@ Columns:
 
 The first nine are `yame summary`'s columns renamed; the rest kycg adds.
 `estimate` is Log2OddsRatio at full precision.
+
+`-p PLAT` takes an array query as a text file of probe IDs, one per line
+(first field if there are several; blank lines, # comments, a Probe_ID
+header and duplicates are skipped). IDs are mapped to rows through the
+platform's ordering file, giving exactly the record `yame pack -f b` would
+write, so results are identical to the packed route. The universe is every
+probe on the array. IDs not on the platform are dropped with a note on
+stderr; a list with none on it is an error. Not combinable with -c or -s.
+
+  kycg test -p MSA -m MSA:CGI,ChromHMM,HM hits.txt
 
 `-c` takes a continuous query instead: one value per row, format 3 (scored
 as beta, uncovered rows missing) or format 4 (negative is missing). Each set
