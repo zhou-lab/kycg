@@ -666,11 +666,15 @@ cinderplot 'aes(pos, beta)
     what <i>this build</i> says the file is — never against a manifest the same server served,
     which is why the mirror you fetch from is untrusted infrastructure. The trade is
     deliberate: a set published upstream with no row in the registry cannot be verified, so it
-    is not offered. The table is the authority for what exists. The check is not only at
-    download time: a file is classified again when it is <i>read</i>, so a store filled by an
-    older kycg, by another tool at another tag, or by hand says so on the first command that
-    uses it — a warning, and the run continues; a file that is absent is an error naming the
-    fetch that gets it.</p>
+    is not offered. The table is the authority for what exists. At read time only the probe
+    ordering <code class="inl">annotate</code> reads is checked again: a copy this build does
+    not pin warns and the run continues, and an absent one is an error naming the fetch that
+    gets it. <code class="inl">kycg test</code> does not re-hash knowledgebase files on each
+    run, to stay fast. To re-verify a store — after a refresh, after copying it between
+    machines, or when results look off — fetch the sets again:
+    <code class="inl">kycg fetch -f mm10:ChromHMM,CGI</code> re-hashes each file present and
+    downloads again any whose digest no longer matches (<code class="inl">-r</code>
+    re-downloads them all regardless).</p>
   <div class="cols3">
     <div>
       <h3>One row per file</h3>
