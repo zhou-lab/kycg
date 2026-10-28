@@ -55,6 +55,7 @@ kycg fetch                        # browse and download knowledgebases
 kycg test -m mm10:CGI query.cg    # set enrichment -> TSV on stdout
 kycg test -c -m mm10:CGI beta.cg  # continuous query: enrichment score
 kycg test -p EPIC -m EPIC:CGI hits.txt  # array query as a probe ID list
+kycg test -u EPIC:ProbeType:cg -m EPIC:CGI q.cg  # restrict the universe (cg only)
 kycg annotate -m EPIC:CGI in.tsv  # label a table of probe IDs
 kycg --version                    # build, coupled YAME, registry tags
 ```
