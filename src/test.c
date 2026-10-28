@@ -67,6 +67,7 @@
 #include "sea.h"
 #include "store.h"
 #include "registry.h"
+#include "ordering.h"
 #include "yame_ui.h"
 
 /* YAME (submodule) */
@@ -78,6 +79,7 @@
 typedef struct {
   char *fname_out;
   char *fname_snames;
+  char *platform;    /* -p: queries are probe ID lists on this array */
   kycg_alt_t alt;
   int by_group;      /* stratify BH by knowledgebase; on by default */
   int in_memory;
@@ -136,6 +138,7 @@ static int usage(void) {
   fprintf(o, "%sOptions%s\n", KYCG_H_TITLE, KYCG_H_OFF);
   struct { const char *f, *d; } opt[] = {
     {"-m SPEC", "path or target[:sets]; repeatable [required]"},
+    {"-p PLAT", "queries are probe ID lists for this array (- reads stdin)"},
     {"-a STR",  "alternative: greater|less|two.sided [greater]"},
     {"-c",      "continuous query: set enrichment score, as GSEA"},
     {"-G",      "correct FDR globally instead of within knowledgebase"},
@@ -149,6 +152,15 @@ static int usage(void) {
   for (size_t i = 0; i < sizeof(opt)/sizeof(opt[0]); ++i)
     fprintf(o, "    %s%-8s%s %s\n", KYCG_H_KEY, opt[i].f, KYCG_H_OFF, opt[i].d);
   fprintf(o, "\n");
+
+  fprintf(o, "    %sWith -p a query is a text file of probe IDs, one per line (the%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %sfirst column if there are several). The universe is every probe%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %son the array, as when the list is packed into a .cg:%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "      %skycg test -p EPIC -m EPIC:CGI,ChromHMM hits.txt%s\n\n",
+          KYCG_H_KEY, KYCG_H_OFF);
 
   fprintf(o, "    %sWith -c the query is a value per row (format 3 beta, or format 4),%s\n",
           KYCG_H_NOTE, KYCG_H_OFF);
@@ -369,6 +381,130 @@ static void run_pair(results_t *v, cdata_t *c_qry, cdata_t *c_mask,
   free(st);
 }
 
+/**
+ * Read a probe ID list into a format-0 query over the platform's rows.
+ *
+ * An array result is usually a list of probe IDs, and packing it into a .cg
+ * only to have kycg unpack it again is a detour. The record built here is the
+ * one `yame pack -f b` would write for the same list, so the statistics
+ * cannot differ between the two routes.
+ *
+ * One ID per line, first field (tab, comma or space separated). Blank lines,
+ * # comments and a Probe_ID header are skipped; duplicates count once. IDs
+ * the platform does not have are left out with one note on stderr, since a
+ * list exported from a larger array routinely carries a few.
+ */
+static void read_id_list(const char *fname, const kycg_ordering_t *ord,
+                         const char *platform, cdata_t *out) {
+  FILE *in = strcmp(fname, "-") == 0 ? stdin : fopen(fname, "r");
+  if (!in) wzfatal("kycg test: cannot open '%s'.\n", fname);
+
+  cdata_t c = {0};
+  c.fmt = '0';
+  c.compressed = 1;
+  c.n = ord->n;
+  c.s = wzcalloc((c.n >> 3) + 1, 1);
+
+  uint64_t n_ids = 0, n_found = 0, n_missing = 0;
+  char missing_eg[128] = {0};
+  char *line = NULL;
+  size_t cap = 0;
+  while (getline(&line, &cap, in) >= 0) {
+    char *id = line + strspn(line, " \t");
+    id[strcspn(id, "\t, \r\n")] = '\0';
+    if (!*id || *id == '#' || strcmp(id, "Probe_ID") == 0) continue;
+    ++n_ids;
+    long row = kycg_ordering_find(ord, id);
+    if (row < 0) {
+      if (!n_missing++) snprintf(missing_eg, sizeof(missing_eg), "%s", id);
+      continue;
+    }
+    if (!FMT0_IN_SET(c, (uint64_t)row)) ++n_found;
+    FMT0_SET(c, (uint64_t)row);
+  }
+  free(line);
+  if (in != stdin) fclose(in);
+
+  if (!n_found) {
+    wzfatal("kycg test: none of the %" PRIu64 " IDs in '%s' are %s probes.\n"
+            "Check the platform given with -p.\n", n_ids, fname, platform);
+  }
+  if (n_missing) {
+    fprintf(stderr, "kycg test: %" PRIu64 " of %" PRIu64 " IDs in '%s' are "
+            "not %s probes and were left out (e.g. %s).\n",
+            n_missing, n_ids, fname, platform, missing_eg);
+  }
+  *out = c;
+}
+
+/** Test one query record against every knowledgebase. */
+static void run_record(results_t *v, cdata_t *c_qry, const char *sq,
+                       const char *fname_qry, const char *qry_disp,
+                       mask_src_t *masks, size_t n_masks, test_conf_t *conf) {
+  prepare_mask(c_qry);
+
+  kycg_sea_query_t q = {0};
+  if (conf->continuous && kycg_sea_query_init(&q, c_qry) != 0) {
+    wzfatal("kycg test -c: query '%s' record '%s' is format %c. A "
+            "continuous query must be format 3 (M/U counts, scored as "
+            "beta) or format 4 (one value per row).\n",
+            fname_qry, sq, c_qry->fmt);
+  }
+
+  /* Every knowledgebase, against this one decompressed query record. */
+  for (size_t mi = 0; mi < n_masks; ++mi) {
+    mask_src_t *ms = &masks[mi];
+
+    if (ms->n_mem) {                  /* records already in memory */
+      for (uint64_t km = 0; km < ms->n_mem; ++km) {
+        kstring_t sm = {0};
+        if (ms->snames.n && km < (unsigned)ms->snames.n)
+          kputs(ms->snames.s[km], &sm);
+        else ksprintf(&sm, "%" PRIu64, km + 1);
+
+        run_pair(v, c_qry, &ms->mem[km], sq, sm.s,
+                 qry_disp, ms->disp, conf, &q);
+        free(sm.s);
+      }
+    } else {                          /* re-scan the seekable file */
+      if (bgzf_seek(ms->cf.fh, 0, SEEK_SET) != 0) {
+        wzfatal("[%s:%d] Cannot seek knowledgebase '%s'.\n",
+                __func__, __LINE__, ms->fname);
+      }
+      uint64_t n_mask_rec = 0;
+      for (uint64_t km = 0;; ++km) {
+        cdata_t c_mask = read_cdata1(&ms->cf);
+        if (c_mask.n == 0) break;
+        ++n_mask_rec;
+        prepare_mask(&c_mask);
+
+        kstring_t sm = {0};
+        if (ms->snames.n && km < (unsigned)ms->snames.n)
+          kputs(ms->snames.s[km], &sm);
+        else ksprintf(&sm, "%" PRIu64, km + 1);
+
+        run_pair(v, c_qry, &c_mask, sq, sm.s,
+                 qry_disp, ms->disp, conf, &q);
+        free(sm.s);
+        free_cdata(&c_mask);
+      }
+
+      /* Zero records is not an empty result, it is a file that could not
+       * be read as a knowledgebase -- truncated, corrupt, or simply not a
+       * .cm. Reporting success with an empty table would let a pipeline
+       * treat "the knowledgebase failed to load" as "nothing was
+       * enriched", which are opposite conclusions. */
+      if (!n_mask_rec) {
+        wzfatal("[%s:%d] No records in knowledgebase '%s'. The file is "
+                "empty or not a readable .cm.\n",
+                __func__, __LINE__, ms->fname);
+      }
+    }
+  }
+
+  kycg_sea_query_free(&q);
+}
+
 int main_test(int argc, char *argv[]) {
   test_conf_t conf = {0};
   conf.alt = KYCG_ALT_GREATER;
@@ -380,8 +516,8 @@ int main_test(int argc, char *argv[]) {
 
   int c;
   /* Options may follow the target; BSD getopt would stop at it. */
-  kycg_permute_args(argc, argv, "m:a:cGs:MFHo:h");
-  while ((c = getopt(argc, argv, "m:a:cGs:MFHo:h")) >= 0) {
+  kycg_permute_args(argc, argv, "m:p:a:cGs:MFHo:h");
+  while ((c = getopt(argc, argv, "m:p:a:cGs:MFHo:h")) >= 0) {
     switch (c) {
     case 'm': {
       /* A spec, not just a path: "mm10:CGI" names a set the same way fetch
@@ -400,6 +536,7 @@ int main_test(int argc, char *argv[]) {
       break;
     }
     case 'o': conf.fname_out = strdup(optarg); break;
+    case 'p': conf.platform = strdup(optarg); break;
     case 's': conf.fname_snames = strdup(optarg); break;
     case 'G': conf.by_group = 0; break;
     case 'M': conf.in_memory = 1; break;
@@ -427,6 +564,29 @@ int main_test(int argc, char *argv[]) {
   if (conf.continuous && conf.alt_given)
     wzfatal("kycg test: -a does not apply with -c. The estimate's sign says "
             "which end of the query the set crowds.\n");
+  if (conf.platform && conf.continuous)
+    wzfatal("kycg test: -p takes a list of probe IDs, which has no values "
+            "to score; -c needs a format 3 or 4 query.\n");
+  if (conf.platform && conf.fname_snames)
+    wzfatal("kycg test: -s does not apply with -p; each ID list is one "
+            "query.\n");
+
+  /* -p: the ordering turns probe IDs into rows. Loaded once, checked against
+   * the row count this build pins, as annotate does. */
+  kycg_ordering_t ord = {0};
+  if (conf.platform) {
+    const kycg_array_reg_t *ar = NULL;
+    for (const kycg_array_reg_t *r = KYCG_ARRAY_REGISTRY; r->platform; ++r)
+      if (strcmp(r->platform, conf.platform) == 0) { ar = r; break; }
+    if (!ar)
+      wzfatal("kycg test: '%s' is not an array platform this build knows. "
+              "Run `kycg fetch` to see what is available.\n", conf.platform);
+    if (kycg_ordering_load(kycg_store_root(NULL), conf.platform,
+                           conf.platform, "test", &ord) != 0) return 1;
+    if (ord.n != ar->rows)
+      wzfatal("kycg test: the ordering for %s has %zu probes but this build "
+              "pins %" PRIu64 ".\n", conf.platform, ord.n, ar->rows);
+  }
   /* No -m: offer the store in the same tree `kycg fetch` uses. Only on a
    * terminal -- a pipeline that forgot -m must fail loudly rather than wait
    * for an answer nobody is there to give. */
@@ -436,7 +596,7 @@ int main_test(int argc, char *argv[]) {
       wzfatal("Please supply a query file.\n");
     }
 
-    uint64_t qrows = first_record_rows(argv[optind]);
+    uint64_t qrows = conf.platform ? ord.n : first_record_rows(argv[optind]);
     if (!qrows) wzfatal("Cannot read a record from query '%s'.\n", argv[optind]);
 
     /* Targets are filtered by the row counts pinned in the registry, so this
@@ -537,13 +697,21 @@ int main_test(int argc, char *argv[]) {
 
   for (int j = optind; j < argc; ++j) {
     char *fname_qry = argv[j];
+    const char *qry_disp = conf.full_name ? fname_qry : get_basename(fname_qry);
+
+    if (conf.platform) {                /* a probe ID list: one record */
+      cdata_t c_qry = {0};
+      read_id_list(fname_qry, &ord, conf.platform, &c_qry);
+      run_record(&v, &c_qry, "1", fname_qry, qry_disp, masks, n_masks, &conf);
+      free_cdata(&c_qry);
+      continue;
+    }
+
     cfile_t cf_qry = open_cfile(fname_qry);
 
     snames_t snames_qry;
     if (conf.fname_snames) snames_qry = loadSampleNames(conf.fname_snames, 1);
     else snames_qry = loadSampleNamesFromIndex(fname_qry);
-
-    const char *qry_disp = conf.full_name ? fname_qry : get_basename(fname_qry);
 
     uint64_t n_qry_rec = 0;
     for (uint64_t kq = 0;; ++kq) {
@@ -561,68 +729,8 @@ int main_test(int argc, char *argv[]) {
       if (snames_qry.n) kputs(snames_qry.s[kq], &sq);
       else ksprintf(&sq, "%" PRIu64, kq + 1);
 
-      prepare_mask(&c_qry);
+      run_record(&v, &c_qry, sq.s, fname_qry, qry_disp, masks, n_masks, &conf);
 
-      kycg_sea_query_t q = {0};
-      if (conf.continuous && kycg_sea_query_init(&q, &c_qry) != 0) {
-        wzfatal("kycg test -c: query '%s' record '%s' is format %c. A "
-                "continuous query must be format 3 (M/U counts, scored as "
-                "beta) or format 4 (one value per row).\n",
-                fname_qry, sq.s, c_qry.fmt);
-      }
-
-      /* Every knowledgebase, against this one decompressed query record. */
-      for (size_t mi = 0; mi < n_masks; ++mi) {
-        mask_src_t *ms = &masks[mi];
-
-        if (ms->n_mem) {                  /* records already in memory */
-          for (uint64_t km = 0; km < ms->n_mem; ++km) {
-            kstring_t sm = {0};
-            if (ms->snames.n && km < (unsigned)ms->snames.n)
-              kputs(ms->snames.s[km], &sm);
-            else ksprintf(&sm, "%" PRIu64, km + 1);
-
-            run_pair(&v, &c_qry, &ms->mem[km], sq.s, sm.s,
-                     qry_disp, ms->disp, &conf, &q);
-            free(sm.s);
-          }
-        } else {                          /* re-scan the seekable file */
-          if (bgzf_seek(ms->cf.fh, 0, SEEK_SET) != 0) {
-            wzfatal("[%s:%d] Cannot seek knowledgebase '%s'.\n",
-                    __func__, __LINE__, ms->fname);
-          }
-          uint64_t n_mask_rec = 0;
-          for (uint64_t km = 0;; ++km) {
-            cdata_t c_mask = read_cdata1(&ms->cf);
-            if (c_mask.n == 0) break;
-            ++n_mask_rec;
-            prepare_mask(&c_mask);
-
-            kstring_t sm = {0};
-            if (ms->snames.n && km < (unsigned)ms->snames.n)
-              kputs(ms->snames.s[km], &sm);
-            else ksprintf(&sm, "%" PRIu64, km + 1);
-
-            run_pair(&v, &c_qry, &c_mask, sq.s, sm.s,
-                     qry_disp, ms->disp, &conf, &q);
-            free(sm.s);
-            free_cdata(&c_mask);
-          }
-
-          /* Zero records is not an empty result, it is a file that could not
-           * be read as a knowledgebase -- truncated, corrupt, or simply not a
-           * .cm. Reporting success with an empty table would let a pipeline
-           * treat "the knowledgebase failed to load" as "nothing was
-           * enriched", which are opposite conclusions. */
-          if (!n_mask_rec) {
-            wzfatal("[%s:%d] No records in knowledgebase '%s'. The file is "
-                    "empty or not a readable .cm.\n",
-                    __func__, __LINE__, ms->fname);
-          }
-        }
-      }
-
-      kycg_sea_query_free(&q);
       free(sq.s);
       free_cdata(&c_qry);
       c_qry.s = NULL;
@@ -636,6 +744,7 @@ int main_test(int argc, char *argv[]) {
     bgzf_close(cf_qry.fh);
     cleanSampleNames2(snames_qry);
   }
+  kycg_ordering_free(&ord);
 
   /* FDR is a property of the whole table, so it waits until every pair has
    * been tested; then the table is ordered for reporting. */
@@ -666,6 +775,7 @@ int main_test(int argc, char *argv[]) {
   kycg_sea_cache_free(&conf.nulls);
   free(conf.fname_out);
   free(conf.fname_snames);
+  free(conf.platform);
 
   return 0;
 }
