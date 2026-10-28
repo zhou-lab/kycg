@@ -2,6 +2,7 @@
 # Canonical: https://zhou-lab.github.io/kycg/llms.txt
 # Human guide: https://zhou-lab.github.io/kycg/
 # Source: https://github.com/zhou-lab/kycg
+# Web server (no install): https://zhouserver.research.chop.edu/knowyourcg/
 # For exact flags, always run: kycg <command> -h
 
 ## What it is
