@@ -91,6 +91,8 @@ typedef struct {
   cdata_t restrict_u;  /* -u: rows the test may use, a fmt0 bitset; s NULL if none */
   char *restrict_desc; /* the -u specs, for error messages */
   int set_query;       /* the record was a set (fmt0) before -u made it fmt6 */
+  cdata_t qbits;       /* that set, ANDed with -u, for the bitset fast path */
+  uint64_t n_restrict; /* rows in the -u restriction */
 } test_conf_t;
 
 /**
@@ -328,6 +330,59 @@ static void run_pair_sea(results_t *v, const kycg_sea_query_t *q,
   free(s);
 }
 
+/* Rows set in all of a, b and (when given) c: three fmt0 bitsets of n rows. */
+static uint64_t popcount_and(const uint8_t *a, const uint8_t *b,
+                             const uint8_t *c, uint64_t n) {
+  uint64_t cnt = 0, nb = n >> 3, i = 0;
+  for (; i + 8 <= nb; i += 8) {
+    uint64_t x, y, z = ~0ULL;
+    memcpy(&x, a + i, 8); memcpy(&y, b + i, 8);
+    if (c) memcpy(&z, c + i, 8);
+    cnt += (uint64_t)__builtin_popcountll(x & y & z);
+  }
+  for (; i < nb; ++i)
+    cnt += (uint64_t)__builtin_popcount(a[i] & b[i] & (c ? c[i] : 0xff));
+  if (n & 7) {                        /* the last partial byte */
+    uint8_t keep = (uint8_t)((1u << (n & 7)) - 1);
+    cnt += (uint64_t)__builtin_popcount(a[nb] & b[nb] & (c ? c[nb] : 0xff) & keep);
+  }
+  return cnt;
+}
+
+/**
+ * The -u fast path for a set query against a set mask.
+ *
+ * The general route restricts by turning the query into fmt6, and YAME
+ * summarizes fmt6 a row at a time: on a whole genome that is ten times the
+ * bitset route, and a knowledgebase of a thousand records takes minutes.
+ * With both sides plain sets the four counts are just popcounts -- universe
+ * R, query Q&R, database M&R, overlap Q&M&R -- which is exactly what the
+ * restricted fmt6 summary computes.
+ */
+static void run_pair_bits(results_t *v, cdata_t *c_mask,
+                          const char *sq, const char *sm,
+                          const char *fname_qry, const char *fname_mask,
+                          test_conf_t *conf) {
+  const uint8_t *r = conf->restrict_u.s, *q = conf->qbits.s, *m = c_mask->s;
+  uint64_t n = conf->qbits.n;
+  kycg_result_t res = {0};
+  res.query_file = strdup(fname_qry);
+  res.query      = strdup(sq);
+  res.db_file    = strdup(fname_mask);
+  res.db         = strdup(sm);
+  res.group      = strdup(conf->by_group ? fname_mask : "(global)");
+  res.nU  = conf->n_restrict;
+  res.nQ  = popcount_and(q, r, NULL, n);
+  res.nD  = popcount_and(m, r, NULL, n);
+  res.nDQ = popcount_and(q, m, r, n);
+  res.beta = NAN;
+  res.depth = NAN;
+  kycg_effect_sizes(&res);
+  kycg_result_pvalue(&res, conf->alt);
+  res.log10_fdr = NAN;
+  results_push(v, res);
+}
+
 static void run_pair(results_t *v, cdata_t *c_qry, cdata_t *c_mask,
                      const char *sq, const char *sm,
                      const char *fname_qry, const char *fname_mask,
@@ -346,6 +401,11 @@ static void run_pair(results_t *v, cdata_t *c_qry, cdata_t *c_mask,
 
   if (conf->continuous) {
     run_pair_sea(v, q, c_mask, sq, sm, fname_qry, fname_mask, conf);
+    return;
+  }
+
+  if (conf->qbits.s && c_mask->fmt == '0') {
+    run_pair_bits(v, c_mask, sq, sm, fname_qry, fname_mask, conf);
     return;
   }
 
@@ -557,6 +617,9 @@ static void load_restriction(const char *spec, test_conf_t *conf) {
     free_cdata(&c);
   }
 
+  conf->n_restrict = popcount_and(conf->restrict_u.s, conf->restrict_u.s, NULL,
+                                  conf->restrict_u.n);
+
   kstring_t d = {0};
   if (conf->restrict_desc) { kputs(conf->restrict_desc, &d); kputs(", ", &d); free(conf->restrict_desc); }
   kputs(spec, &d);
@@ -625,6 +688,12 @@ static void run_record(results_t *v, cdata_t *c_qry, const char *sq,
                        mask_src_t *masks, size_t n_masks, test_conf_t *conf) {
   prepare_mask(c_qry);
   conf->set_query = conf->restrict_u.s && c_qry->fmt == '0';
+  free_cdata(&conf->qbits);
+  if (conf->set_query && !conf->continuous) {
+    conf->qbits = *c_qry;                         /* keep the bitset ... */
+    conf->qbits.s = wzcalloc((c_qry->n >> 3) + 1, 1);
+    memcpy(conf->qbits.s, c_qry->s, (c_qry->n + 7) >> 3);
+  }
   if (conf->restrict_u.s) restrict_query(c_qry, &conf->restrict_u, fname_qry, sq, conf);
 
   kycg_sea_query_t q = {0};
@@ -962,6 +1031,7 @@ int main_test(int argc, char *argv[]) {
   free(conf.fname_snames);
   free(conf.platform);
   free_cdata(&conf.restrict_u);
+  free_cdata(&conf.qbits);
   free(conf.restrict_desc);
 
   return 0;

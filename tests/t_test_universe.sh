@@ -62,6 +62,16 @@ awk '{print ($1=="keep")?1:0}' r3.txt > r3bits.txt
 reference r3bits.txt r3
 check "FILE:STATE keeps that state's rows" "$(cols ref_r3.tsv)" "$(cols u3.tsv)"
 
+## ---- a set knowledgebase: the popcount path, not YAME's fmt6 summary ---- ##
+awk -v n="$N" 'BEGIN{for(i=1;i<=n;i++) print (i%11<4)?1:0}' > m.txt
+pack_binary m.txt m.cm
+"$KYCG" test -u r1.cg -u r2.cg -m m.cm q.cg > ub.tsv || exit 1
+awk '$1==1{print NR}' r12.txt > idx.txt
+"$YAME" rowsub -l idx.txt q.cg > q_sub.cg || exit 1
+"$YAME" rowsub -l idx.txt m.cm > m_sub.cm || exit 1
+"$KYCG" test -m m_sub.cm q_sub.cg > ref_b.tsv || exit 1
+check "a set knowledgebase matches rowsub too" "$(cols ref_b.tsv)" "$(cols ub.tsv)"
+
 ## ---- refusals -------------------------------------------------------------- ##
 out=$("$KYCG" test -u r3.cm -m kb.cm q.cg 2>&1 >/dev/null); rc=$?
 check "a categorical file without a state exits non-zero" 1 "$rc"
