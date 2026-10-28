@@ -17,7 +17,7 @@ test a query set, annotate a probe table. Arrays and whole genomes, no R.
 📖 **[Documentation](https://zhou-lab.github.io/kycg/)** ·
 🧬 [KnowYourCG v1 (R/Bioconductor)](https://bioconductor.org/packages/knowYourCG/) ·
 🔬 [Validated against it](tests/validate_vs_R.R) ·
-🌐 [Web server](https://zhouserver.research.chop.edu/knowyourcg/)
+🌐 [Try it online](https://zhouserver.research.chop.edu/knowyourcg/)
 
 </div>
 
