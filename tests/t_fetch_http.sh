@@ -168,7 +168,7 @@ echo corrupt > mode
 out=$("$KYCG" fetch -f EPIC:Blacklist </dev/null 2>&1); rc=$?
 awk -v rc="$rc" 'BEGIN{exit !(rc != 0)}' ||
   { echo "  FAIL corrupted bytes were accepted"; fails=$((fails + 1)); }
-printf '%s\n' "$out" | grep -qiE 'sha|digest|checksum|verif' ||
+grep -qiE 'sha|digest|checksum|verif' <<<"$out" ||
   { echo "  FAIL the corruption was not described:"; sed 's/^/       /' <<<"$out"
     fails=$((fails + 1)); }
 check "corrupted bytes are not kept" 0 \
@@ -280,9 +280,9 @@ if have_pty; then
   [ -f "$dest" ] && check "and it verifies" "$SETSHA" "$(sha_of "$dest")"
   ## The panel reports the outcome; a failure count of zero here would mean
   ## the 404s were swallowed.
-  printf '%s\n' "$out" | grep -qi "fetched" ||
+  grep -qi "fetched" <<<"$out" ||
     { echo "  FAIL the panel never reported a tally"; fails=$((fails + 1)); }
-  printf '%s\n' "$out" | grep -qi "failed" ||
+  grep -qi "failed" <<<"$out" ||
     { echo "  FAIL the 16 missing files were not reported as failures"
       fails=$((fails + 1)); }
 

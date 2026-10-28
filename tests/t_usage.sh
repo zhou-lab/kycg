@@ -68,7 +68,7 @@ check "annotate with no args exits 1" 1 "$rc"
 v=$("$KYCG" --version 2>&1); rc=$?
 check "--version exits 0" 0 "$rc"
 check_has "--version names kycg" "kycg" "$v"
-if ! printf '%s\n' "$v" | grep -qE "YAME[[:space:]]+v[0-9]+\.[0-9]+"; then
+if ! grep -qE "YAME[[:space:]]+v[0-9]+\.[0-9]+" <<<"$v"; then
   echo "  FAIL --version reports a YAME version"
   echo "       actual: $v"; fails=$((fails + 1))
 fi
