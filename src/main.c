@@ -90,6 +90,11 @@ static void print_registry_info(FILE *out) {
                                   : "absent (built without it; fetch disabled)");
 }
 
+/* The paper behind the method. Shown under -h and --version only, never in a
+ * result: a table is data a pipeline reads. */
+#define KYCG_CITATION "Goldberg et al., Science Advances 2025, " \
+                      "doi:10.1126/sciadv.adw3027"
+
 static int usage(void) {
   FILE *o = stderr;
   fprintf(o, "\n");
@@ -108,6 +113,9 @@ static int usage(void) {
   cmd(o, "test",  "set enrichment against a knowledgebase");
   cmd(o, "annotate", "label a TSV of probe IDs by set membership");
   fprintf(o, "\n");
+
+  fprintf(o, "%sCite%s\n", H_TITLE, H_OFF);
+  fprintf(o, "    %s\n\n", KYCG_CITATION);
 
   return 1;
 }
@@ -135,6 +143,7 @@ int main(int argc, char *argv[]) {
     printf("kycg %s\n", KYCG_VERSION);
     print_build_info(stdout);
     print_registry_info(stdout);
+    printf("    %scite%s           %s\n", H_NOTE, H_OFF, KYCG_CITATION);
     return 0;
   } else {
     fprintf(stderr, "kycg: unrecognized command '%s'.\n", argv[1]);

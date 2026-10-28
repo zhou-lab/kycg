@@ -81,6 +81,9 @@ check_has "--version honours YAME_DATA_HOME" "$PWD/store_here" "$v"
 v=$("$KYCG" --version 2>&1)
 check_has "--version reports the registry tag" "InfiniumAnnotation" "$v"
 check_has "--version reports network support" "libcurl" "$v"
+## The paper is named where people look for it, never in a result.
+check_has "--version cites the paper" "10.1126/sciadv.adw3027" "$v"
+check_has "-h cites the paper" "10.1126/sciadv.adw3027" "$("$KYCG" -h 2>&1)"
 ## -v is an alias for --version.
 check "-v matches --version" "$v" "$("$KYCG" -v 2>&1)"
 
