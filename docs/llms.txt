@@ -87,8 +87,10 @@ it.
   kycg test -m mm10                query.cg   # everything cached for mm10
   kycg test -m path/to/some.cm     query.cg   # a path is taken literally
   kycg test -p EPIC -m EPIC:CGI    hits.txt   # array query as probe IDs
+  kycg test -u EPIC:ProbeType:cg -m EPIC:CGI q.cg  # cg-only universe
 
   -m SPEC  path or target[:sets]; repeatable [required]
+  -u SPEC  restrict the universe to FILE[:REC]; repeatable, ANDed
   -p PLAT  queries are probe ID lists for this array (- reads stdin)
   -a STR   alternative: greater|less|two.sided [greater]
   -c       continuous query: set enrichment score, as GSEA
@@ -120,6 +122,18 @@ probe on the array. IDs not on the platform are dropped with a note on
 stderr; a list with none on it is an error. Not combinable with -c or -s.
 
   kycg test -p MSA -m MSA:CGI,ChromHMM,HM hits.txt
+
+`-u FILE[:REC]` restricts the universe: only rows set in the restriction
+count, for the query and the universe alike, so the result is the one you
+would get by cutting the query and every knowledgebase down to those rows
+first (`yame rowsub`). The restriction is a set record (format 0, 1 or 6),
+or one state of a categorical record named by REC (`ProbeType.cm:cg` keeps
+the cg probes); REC can also pick a record of a multi-record file by its
+index name. FILE resolves like -m, so `EPIC:ProbeType:cg` names the store's
+set. Repeat -u to intersect restrictions. Only binary queries (format 0, 1,
+6) can be restricted; binarize a valued query first.
+
+  kycg test -p EPIC -u EPIC:ProbeType:cg -m EPIC:CGI,ChromHMM hits.txt
 
 `-c` takes a continuous query instead: one value per row, format 3 (scored
 as beta, uncovered rows missing) or format 4 (negative is missing). Each set
