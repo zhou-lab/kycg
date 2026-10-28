@@ -132,7 +132,8 @@ or one state of a categorical record named by REC (`ProbeType.cm:cg` keeps
 the cg probes); REC can also pick a record of a multi-record file by its
 index name. FILE resolves like -m, so `EPIC:ProbeType:cg` names the store's
 set. Repeat -u to intersect restrictions. Only binary queries (format 0, 1,
-6) can be restricted; binarize a valued query first.
+6) can be restricted; binarize a valued query first. -u does not combine
+with -c.
 
   kycg test -p EPIC -u EPIC:ProbeType:cg -m EPIC:CGI,ChromHMM hits.txt
 
