@@ -403,6 +403,11 @@ kycg <span class="sub">test</span> -m mm10:ChromHMM onecell.cg &gt; res.tsv</cod
 kycg <span class="sub">test</span> -m mm10 onecell.cg &gt; res_all.tsv</code></pre>
     <p style="margin-top:11px">A path works anywhere a name does:
       <code class="inl">-m path/to/some.cm</code> is taken literally.</p>
+    <p style="margin-top:11px"><code class="inl">-u</code> <b>restricts the universe</b>
+      to the rows set in one record, for the query and the knowledgebase alike — a
+      cg-only background, say: <code class="inl">kycg test -p EPIC -u EPIC:ProbeType:cg
+      -m EPIC:CGI hits.txt</code>. It is repeatable (ANDed), takes binary queries, and
+      does not combine with <code class="inl">-c</code>.</p>
     <p style="margin-top:11px">Omit <code class="inl">-m</code> on a terminal and kycg offers
       the store — filtered to the sets that share your query's row space, so the list
       cannot be picked wrong:</p>
@@ -661,11 +666,15 @@ cinderplot 'aes(pos, beta)
     what <i>this build</i> says the file is — never against a manifest the same server served,
     which is why the mirror you fetch from is untrusted infrastructure. The trade is
     deliberate: a set published upstream with no row in the registry cannot be verified, so it
-    is not offered. The table is the authority for what exists. The check is not only at
-    download time: a file is classified again when it is <i>read</i>, so a store filled by an
-    older kycg, by another tool at another tag, or by hand says so on the first command that
-    uses it — a warning, and the run continues; a file that is absent is an error naming the
-    fetch that gets it.</p>
+    is not offered. The table is the authority for what exists. At read time only the probe
+    ordering <code class="inl">annotate</code> reads is checked again: a copy this build does
+    not pin warns and the run continues, and an absent one is an error naming the fetch that
+    gets it. <code class="inl">kycg test</code> does not re-hash knowledgebase files on each
+    run, to stay fast. To re-verify a store — after a refresh, after copying it between
+    machines, or when results look off — fetch the sets again:
+    <code class="inl">kycg fetch -f mm10:ChromHMM,CGI</code> re-hashes each file present and
+    downloads again any whose digest no longer matches (<code class="inl">-r</code>
+    re-downloads them all regardless).</p>
   <div class="cols3">
     <div>
       <h3>One row per file</h3>

@@ -76,10 +76,13 @@ download is verified against that, never against a fetched manifest. Downloads
 land on a `.part` sibling and are renamed only after the digest matches. kycg
 then writes a SHA256SUMS derived from the same rows, so the store re-verifies
 with `sha256sum -c` and no kycg code. A set upstream with no row in the
-registry cannot be verified, so it is not offered. The digest is checked again
-when a file is READ: a copy this build does not pin warns and the command
-proceeds; a file that is absent is an error naming the `kycg fetch` that gets
-it.
+registry cannot be verified, so it is not offered. At read time only the
+probe ordering `annotate` reads is checked again: a copy this build does not
+pin warns and the command proceeds; an absent one is an error naming the
+`kycg fetch` that gets it. `kycg test` does NOT re-hash knowledgebase files on
+each run. To re-verify, fetch the sets again (`kycg fetch -f mm10:ChromHMM,CGI`):
+each file present is re-hashed and re-downloaded if its digest no longer
+matches; `-r` re-downloads regardless.
 
 ## test — set enrichment
 
@@ -132,7 +135,8 @@ or one state of a categorical record named by REC (`ProbeType.cm:cg` keeps
 the cg probes); REC can also pick a record of a multi-record file by its
 index name. FILE resolves like -m, so `EPIC:ProbeType:cg` names the store's
 set. Repeat -u to intersect restrictions. Only binary queries (format 0, 1,
-6) can be restricted; binarize a valued query first.
+6) can be restricted; binarize a valued query first. -u does not combine
+with -c.
 
   kycg test -p EPIC -u EPIC:ProbeType:cg -m EPIC:CGI,ChromHMM hits.txt
 

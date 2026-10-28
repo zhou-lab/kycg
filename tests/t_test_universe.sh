@@ -76,6 +76,7 @@ check "a set knowledgebase matches rowsub too" "$(cols ref_b.tsv)" "$(cols ub.ts
 out=$("$KYCG" test -u r3.cm -m kb.cm q.cg 2>&1 >/dev/null); rc=$?
 check "a categorical file without a state exits non-zero" 1 "$rc"
 check_has "and asks for one" "name the state" "$out"
+check_has "in the form it was given" "r3.cm:<state>" "$out"
 
 out=$("$KYCG" test -u r3.cm:nosuch -m kb.cm q.cg 2>&1 >/dev/null); rc=$?
 check "an unknown state exits non-zero" 1 "$rc"
@@ -98,5 +99,9 @@ pack_mu mu.txt mu.cg
 out=$("$KYCG" test -u r1.cg -m kb.cm mu.cg 2>&1 >/dev/null); rc=$?
 check "a format 3 query with -u exits non-zero" 1 "$rc"
 check_has "and says to binarize" "binarize" "$out"
+
+out=$("$KYCG" test -c -u r1.cg -m kb.cm mu.cg 2>&1 >/dev/null); rc=$?
+check "-u with -c exits non-zero" 1 "$rc"
+check_has "and says they do not combine" "does not combine with -c" "$out"
 
 done_testing

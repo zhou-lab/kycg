@@ -193,7 +193,9 @@ static int usage(void) {
           KYCG_H_NOTE, KYCG_H_OFF);
   fprintf(o, "    %srecord; without it the first record is used.%s\n",
           KYCG_H_NOTE, KYCG_H_OFF);
-  fprintf(o, "    %sFILE resolves like -m. -u takes binary queries (format 0, 1, 6).%s\n",
+  fprintf(o, "    %sFILE resolves like -m. -u takes binary queries (format 0, 1, 6)%s\n",
+          KYCG_H_NOTE, KYCG_H_OFF);
+  fprintf(o, "    %sand does not combine with -c.%s\n",
           KYCG_H_NOTE, KYCG_H_OFF);
   fprintf(o, "      %skycg test -p EPIC -u EPIC:ProbeType:cg -m EPIC:CGI hits.txt%s\n\n",
           KYCG_H_KEY, KYCG_H_OFF);
@@ -572,9 +574,12 @@ static void load_restriction(const char *spec, test_conf_t *conf) {
   bgzf_close(cf.fh);
 
   if (c.fmt == '2') {
+    if (!state && rec)
+      wzfatal("kycg test -u: record '%s' of '%s' is categorical, and -u "
+              "names a state only in a file's first record.\n", rec, path);
     if (!state)
       wzfatal("kycg test -u: '%s' is categorical; name the state to keep, "
-              "as %s:<state>.\n", spec, path);
+              "as %s:<state>.\n", spec, spec);
     prepare_mask(&c);
     if (!c.aux) fmt2_set_aux(&c);
     f2_aux_t *aux = (f2_aux_t *)c.aux;
@@ -821,6 +826,12 @@ int main_test(int argc, char *argv[]) {
   if (conf.platform && conf.continuous)
     wzfatal("kycg test: -p takes a list of probe IDs, which has no values "
             "to score; -c needs a format 3 or 4 query.\n");
+  /* -c scores valued queries and -u restricts binary ones, so no query can
+   * take both; say so before any query is read. */
+  if (conf.restrict_u.s && conf.continuous)
+    wzfatal("kycg test: -u does not combine with -c. -u restricts binary "
+            "queries; to restrict a valued query, subset its rows and the "
+            "knowledgebase's with yame rowsub first.\n");
   if (conf.platform && conf.fname_snames)
     wzfatal("kycg test: -s does not apply with -p; each ID list is one "
             "query.\n");
